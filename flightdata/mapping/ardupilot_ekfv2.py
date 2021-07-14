@@ -146,3 +146,9 @@ log_field_map['MAGMagY'] = MappedField(Fields.MAGNETOMETER, 1, "MAGMagY", 1)
 log_field_map['MAGMagZ'] = MappedField(Fields.MAGNETOMETER, 2, "MAGMagZ", 1)
 
 ardupilot_ekfv2_io_info = FieldIOInfo(log_field_map)
+
+
+log_field_map["NKQ1Q1"]  = MappedField(Fields.QUATERNION, 0, "NKQ1Q1", 1)
+log_field_map["NKQ1Q2"]  = MappedField(Fields.QUATERNION, 1, "NKQ1Q2", 1)
+log_field_map["NKQ1Q3"]  = MappedField(Fields.QUATERNION, 2, "NKQ1Q3", 1)
+log_field_map["NKQ1Q4"]  = MappedField(Fields.QUATERNION, 3, "NKQ1Q4", 1)

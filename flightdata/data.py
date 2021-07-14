@@ -52,7 +52,7 @@ class Flight(object):
                 Flight
         """
         _field_request = ['ARSP', 'BARO', 'GPS', 'RCIN', 'RCOU', 'IMU',
-                          'BAT', 'BAT2', 'MODE', 'NKF1', 'NKF2', 'XKF1', 'XKF2', 'RPM', 'MAG', 'XKQ', 'NKQ']
+                          'BAT', 'BAT2', 'MODE', 'NKF1', 'NKF2', 'XKF1', 'XKF2', 'RPM', 'MAG', 'XKQ1', 'NKQ1']
         _parser = Ardupilot(log_path, types=_field_request,
                             zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
