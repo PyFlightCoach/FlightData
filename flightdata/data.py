@@ -30,7 +30,7 @@ class Flight(object):
 
     def to_csv(self, filename):
         self.data.to_csv(filename)
-    
+
     @staticmethod
     def from_csv(filename):
         data = pd.read_csv(filename)
@@ -52,15 +52,17 @@ class Flight(object):
                 Flight
         """
         _field_request = ['ARSP', 'BARO', 'GPS', 'RCIN', 'RCOU', 'IMU',
-                        'BAT', 'BAT2', 'MODE', 'NKF1', 'NKF2', 'XKF1', 'XKF2', 'RPM', 'MAG']
-        _parser = Ardupilot(log_path, types=_field_request, zero_time_base=True)
+                          'BAT', 'BAT2', 'MODE', 'NKF1', 'NKF2', 'XKF1', 'XKF2', 'RPM', 'MAG', 'XKQ', 'NKQ']
+        _parser = Ardupilot(log_path, types=_field_request,
+                            zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
 
-        ardupilot_io_info = get_ardupilot_mapping(_parser.parms['AHRS_EKF_TYPE'])
+        ardupilot_io_info = get_ardupilot_mapping(
+            _parser.parms['AHRS_EKF_TYPE'])
 
         # expand the dataframe to include all the columns listed in the io_info instance
         input_data = fulldf.get(list(set(fulldf.columns.to_list())
-                                    & set(ardupilot_io_info.io_names)))
+                                     & set(ardupilot_io_info.io_names)))
 
         # Generate a reordered io instance to match the columns in the dataframe
         _fewer_io_info = ardupilot_io_info.subset(input_data.columns.to_list())
@@ -71,17 +73,18 @@ class Flight(object):
         # add the missing tool columns
         missing_cols = pd.DataFrame(
             columns=list(set(Fields.all_names()) -
-                        set(_data.columns.to_list())) + [Fields.TIME.names[0]]
+                         set(_data.columns.to_list())) + [Fields.TIME.names[0]]
         )
         output_data = _data.merge(
             missing_cols, on=Fields.TIME.names[0], how='left')
 
-        #find the time 3 seconds after the magnetometer has initialised
+        # find the time 3 seconds after the magnetometer has initialised
         if skip_start:
-            first_good_time = output_data.loc[pd.isna(output_data['magnetometer_0']) == False].loc[output_data['magnetometer_0'] != 0].iloc[0].time_flight + 3
+            first_good_time = output_data.loc[pd.isna(
+                output_data['magnetometer_0']) == False].loc[output_data['magnetometer_0'] != 0].iloc[0].time_flight + 3
         else:
             first_good_time = output_data.iloc[0].time_flight
-        #TODO add a check for GPS Sat count here perhaps
+        # TODO add a check for GPS Sat count here perhaps
 
         # set the first time in the index to 0
         output_data.index = _data[Fields.TIME.names[0]].copy()
@@ -167,23 +170,3 @@ class Flight(object):
             zero_time_offset=self.zero_time
         )
 
-    def transform(self, transforms):
-        '''Return a new Flight class transformed by the dict of functions passed.
-        Each key represents an ID from CIDTypes, each value a function to transform that type.
-        the functions are vectorized
-        '''
-        df = pd.DataFrame(columns=Fields.all_names())
-        for field in Fields.all():
-            if field.length == 1:
-                tempdf = pd.DataFrame(transforms[field.cid_type](
-                    self.read_field_tuples(field)[0])).transpose()
-            else:
-                tempdf = pd.DataFrame(np.vectorize(transforms[field.cid_type])(
-                    *self.read_field_tuples(field))).transpose()
-            tempdf.columns = field.names
-            df[field.names] = tempdf
-
-        return Flight(
-            data=df.set_index(Fields.TIME.names[0]),
-            parameters=self.parameters,
-            zero_time_offset=self.zero_time)

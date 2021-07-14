@@ -30,11 +30,10 @@ class CIDTypes():
 
 
 class Field(object):
-    def __init__(self, name: str, unit: ureg.Unit, length: int, cid_type: int = 3, description: str = '', names: List[str] = []):
+    def __init__(self, name: str, unit: ureg.Unit, length: int, description: str = '', names: List[str] = []):
         self.name = name
         self.unit = unit
         self.length = length
-        self.cid_type = cid_type
         self.description = description
         self.names = Field._make_names(self.name, names, length)
         _field_list.append(self)
@@ -53,41 +52,26 @@ class Field(object):
 class Fields(object):
     """This class defines the fields. Do not instantiate.
     """
-    TIME = Field('time', ureg.second, 2, CIDTypes.NA,
-                 names=['flight', 'actual'])
-    TXCONTROLS = Field('tx_controls', ureg.second, 8, CIDTypes.NA,
-                       description='PWM Values coming from the TX')
-    SERVOS = Field('servos', ureg.second, 8, CIDTypes.NA,
-                   description='PWN Values going to the Servos')
-    FLIGHTMODE = Field('mode', 1, 3, CIDTypes.NA,
-                       description='The active flight mode ID')
-    POSITION = Field('position', ureg.meter, 3, CIDTypes.CARTESIAN,
-                     description='position of plane (n, e, d)', names=['x', 'y', 'z'])
-    GLOBALPOSITION = Field('global_position', ureg.degree,
-                           2, CIDTypes.GPS, names=['latitude', 'longitude'])
-    GPSSATCOUNT = Field('gps_sat_count', 1, 1, CIDTypes.NA,
-                        description='number of satellites')
-    SENSORALTITUDE = Field('altitude', ureg.meters, 2,
-                           CIDTypes.ZONLY, names=['gps', 'baro'])
-    ATTITUDE = Field('attitude', ureg.radian, 3, CIDTypes.EULER,
-                     description='euler angles, order = yaw, pitch, roll', names=['roll', 'pitch', 'yaw'])
-    AXISRATE = Field('axis_rate', ureg.radian / ureg.second, 3, CIDTypes.BODY,
-                     description='rotational velocities', names=['roll', 'pitch', 'yaw'])
-    BATTERY = Field('battery', ureg.volt, 2, CIDTypes.NA,
-                    description='battery voltages')
-    CURRENT = Field('current', ureg.amp, 4, CIDTypes.NA,
-                    description='motor currents')
-    AIRSPEED = Field('airspeed', ureg.meter / ureg.second,
-                     2, CIDTypes.NA, description='sensor airspeed')
+    TIME = Field('time', ureg.second, 2,names=['flight', 'actual'])
+    TXCONTROLS = Field('tx_controls', ureg.second, 8, description='PWM Values coming from the TX')
+    SERVOS = Field('servos', ureg.second, 8, description='PWN Values going to the Servos')
+    FLIGHTMODE = Field('mode', 1, 3, description='The active flight mode ID')
+    POSITION = Field('position', ureg.meter, 3, description='position of plane (n, e, d)', names=['x', 'y', 'z'])
+    GLOBALPOSITION = Field('global_position', ureg.degree, 2, names=['latitude', 'longitude'])
+    GPSSATCOUNT = Field('gps_sat_count', 1, 1, description='number of satellites')
+    SENSORALTITUDE = Field('altitude', ureg.meters, 2, names=['gps', 'baro'])
+    ATTITUDE = Field('attitude', ureg.radian, 3, description='euler angles, order = yaw, pitch, roll', names=['roll', 'pitch', 'yaw'])
+    QUATERNION = Field('quaternion', 1.0, 4)
+    AXISRATE = Field('axis_rate', ureg.radian / ureg.second, 3, description='rotational velocities', names=['roll', 'pitch', 'yaw'])
+    BATTERY = Field('battery', ureg.volt, 2, description='battery voltages')
+    CURRENT = Field('current', ureg.amp, 4, description='motor currents')
+    AIRSPEED = Field('airspeed', ureg.meter / ureg.second,2, description='sensor airspeed')
     ACCELERATION = Field('acceleration', ureg.meter / ureg.second / ureg.second,
-                         3, CIDTypes.CARTESIAN, description='accelerations (earth frame)', names=['x', 'y', 'z'])
-    VELOCITY = Field('velocity', ureg.meter / ureg.second, 3, CIDTypes.CARTESIAN,
-                     description='velocity data (earth frame)', names=['x', 'y', 'z'])
-    WIND = Field('wind', ureg.meter / ureg.second, 2, CIDTypes.XY,
-                 description='wind in earth frame', names=['x', 'y'])
-    RPM = Field('rpm', 1 / ureg.minute, 2, CIDTypes.NA,
-                description='motor rpm')
-    MAGNETOMETER = Field('magnetometer', 1, 3, CIDTypes.CARTESIAN, description='mag field strength n, e, d')
+                         3, description='accelerations (earth frame)', names=['x', 'y', 'z'])
+    VELOCITY = Field('velocity', ureg.meter / ureg.second, 3, description='velocity data (earth frame)', names=['x', 'y', 'z'])
+    WIND = Field('wind', ureg.meter / ureg.second, 2, description='wind in earth frame', names=['x', 'y'])
+    RPM = Field('rpm', 1 / ureg.minute, 2, description='motor rpm')
+    MAGNETOMETER = Field('magnetometer', 1, 3, description='mag field strength n, e, d')
     
     @staticmethod
     def all():

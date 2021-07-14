@@ -22,11 +22,6 @@ class TestFlightData(unittest.TestCase):
         vals1 = self.flight.read_field_tuples(Fields.GPSSATCOUNT)
         self.assertEqual(len(vals1), 1)
 
-    def test_transform(self):
-        funcdict = {i: lambda *x: x for i in range(0, 7)}
-        flightcopy = self.flight.transform(funcdict)
-        self.assertAlmostEqual(flightcopy.duration, 601, 0)
-
     @unittest.skip("reading log from bin takes a bit longer")
     def test_to_from_csv(self):
         flight = Flight.from_log('test/ekfv3_test.BIN')
