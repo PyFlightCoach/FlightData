@@ -113,7 +113,10 @@ class Flight(object):
         return self.data.columns.to_list()
 
     def read_fields(self, fields):
-        return self.data[Fields.some_names(fields)]
+        try:
+            return self.data[Fields.some_names(fields)]
+        except KeyError:
+            return pd.DataFrame()
 
     def read_numpy(self, fields):
         return self.read_fields(fields).to_numpy().T
