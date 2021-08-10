@@ -19,6 +19,7 @@ from ardupilot_log_reader.reader import Ardupilot
 
 from flightdata.fields import Fields, CIDTypes
 from flightdata.mapping import get_ardupilot_mapping
+from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
 
 
 class Flight(object):
@@ -27,6 +28,7 @@ class Flight(object):
         self.parameters = parameters
         self.zero_time = self.data.index[0] + zero_time_offset
         self.data.index = self.data.index - self.data.index[0]
+        self._origin=None
 
     def to_csv(self, filename):
         self.data.to_csv(filename)
@@ -36,7 +38,6 @@ class Flight(object):
         data = pd.read_csv(filename)
         data.index = data[Fields.TIME.names[0]].copy()
         data.index.name = 'time_index'
-
         return Flight(data)
 
     @staticmethod
@@ -57,15 +58,21 @@ class Flight(object):
                             zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
 
-        ardupilot_io_info = get_ardupilot_mapping(
-            _parser.parms['AHRS_EKF_TYPE'])
+        return Flight.convert_df(
+            fulldf,
+            get_ardupilot_mapping(_parser.parms['AHRS_EKF_TYPE']),
+            skip_start,
+            _parser.parms
+        )
 
+    @staticmethod
+    def convert_df(fulldf, ioinfo, skip_start, parms):
         # expand the dataframe to include all the columns listed in the io_info instance
         input_data = fulldf.get(list(set(fulldf.columns.to_list())
-                                     & set(ardupilot_io_info.io_names)))
+                                     & set(ioinfo.io_names)))
 
         # Generate a reordered io instance to match the columns in the dataframe
-        _fewer_io_info = ardupilot_io_info.subset(input_data.columns.to_list())
+        _fewer_io_info = ioinfo.subset(input_data.columns.to_list())
 
         _data = input_data * _fewer_io_info.factors_to_base  # do the unit conversion
         _data.columns = _fewer_io_info.base_names  # rename the columns
@@ -84,13 +91,24 @@ class Flight(object):
                 output_data['magnetometer_0']) == False].loc[output_data['magnetometer_0'] != 0].iloc[0].time_flight + 3
         else:
             first_good_time = output_data.iloc[0].time_flight
-        # TODO add a check for GPS Sat count here perhaps
-
+        
         # set the first time in the index to 0
         output_data.index = _data[Fields.TIME.names[0]].copy()
         output_data.index.name = 'time_index'
 
-        return Flight(output_data.loc[first_good_time:], _parser.parms)
+        return Flight(output_data.loc[first_good_time:], parms)
+
+    @staticmethod
+    def from_fc_json(fc_json):
+        df = pd.DataFrame.from_dict(fc_json['data'])
+        df['timestamp'] = df['time'] * 1E-6
+ 
+        flight= Flight.convert_df(df, fc_json_2_1_io_info, False, {})
+        flight._origin = {
+                'latitude': fc_json['parameters']['originLat'],
+                'longitude': fc_json['parameters']['originLng']
+            }
+        return flight
 
     @property
     def duration(self):
@@ -133,14 +151,17 @@ class Flight(object):
         Returns:
             dict: dictionary containing home position lat and long
         """
-        gpsdata = self.read_fields([Fields.GLOBALPOSITION, Fields.GPSSATCOUNT])
-        gpsdata = gpsdata.loc[pd.isna(gpsdata.iloc[:, 0]) == False]
-        firstgps = gpsdata.loc[gpsdata.iloc[:, 2] > 5].iloc[0]
-        # more than 5 satellites
-        return {
-            'latitude': firstgps.global_position_latitude,
-            'longitude': firstgps.global_position_longitude
-        }
+        if self._origin is None:        
+            gpsdata = self.read_fields([Fields.GLOBALPOSITION, Fields.GPSSATCOUNT])
+            gpsdata = gpsdata.loc[pd.isna(gpsdata.iloc[:, 0]) == False]
+            firstgps = gpsdata.loc[gpsdata.iloc[:, 2] > 5].iloc[0]
+            self._origin = {
+                'latitude': firstgps.global_position_latitude,
+                'longitude': firstgps.global_position_longitude
+            }
+        
+        return self._origin
+        
 
     def subset(self, start_time: float, end_time: float):
         """generate a subset between the specified times
@@ -172,4 +193,3 @@ class Flight(object):
             parameters=self.parameters,
             zero_time_offset=self.zero_time
         )
-
