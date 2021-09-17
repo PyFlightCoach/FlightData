@@ -20,6 +20,8 @@ from ardupilot_log_reader.reader import Ardupilot
 from flightdata.fields import Fields, CIDTypes
 from flightdata.mapping import get_ardupilot_mapping
 from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
+from geometry import GPSPosition, Points
+from geometry.gps_positions import GPSPositions
 
 
 class Flight(object):
@@ -28,7 +30,7 @@ class Flight(object):
         self.parameters = parameters
         self.zero_time = self.data.index[0] + zero_time_offset
         self.data.index = self.data.index - self.data.index[0]
-        self._origin=None
+        self._origin = None
 
     def to_csv(self, filename):
         self.data.to_csv(filename)
@@ -91,7 +93,7 @@ class Flight(object):
                 output_data['magnetometer_0']) == False].loc[output_data['magnetometer_0'] != 0].iloc[0].time_flight + 3
         else:
             first_good_time = output_data.iloc[0].time_flight
-        
+
         # set the first time in the index to 0
         output_data.index = _data[Fields.TIME.names[0]].copy()
         output_data.index.name = 'time_index'
@@ -102,12 +104,17 @@ class Flight(object):
     def from_fc_json(fc_json):
         df = pd.DataFrame.from_dict(fc_json['data'])
         df['timestamp'] = df['time'] * 1E-6
- 
-        flight= Flight.convert_df(df, fc_json_2_1_io_info, False, {})
-        flight._origin = {
-                'latitude': fc_json['parameters']['originLat'],
-                'longitude': fc_json['parameters']['originLng']
-            }
+
+        flight = Flight.convert_df(df, fc_json_2_1_io_info, False, {})
+
+        ekfpos = Points.from_pandas(flight.read_fields(Fields.POSITION))
+        origin = GPSPositions.full(GPSPosition(
+            fc_json['parameters']['originLat'], fc_json['parameters']['originLng']), ekfpos.count)
+
+        gps_positions = origin.offset(ekfpos)
+
+        flight.data.loc[:, Fields.GLOBALPOSITION.names] = gps_positions.data
+
         return flight
 
     @property
@@ -151,17 +158,23 @@ class Flight(object):
         Returns:
             dict: dictionary containing home position lat and long
         """
-        if self._origin is None:        
-            gpsdata = self.read_fields([Fields.GLOBALPOSITION, Fields.GPSSATCOUNT])
-            gpsdata = gpsdata.loc[pd.isna(gpsdata.iloc[:, 0]) == False]
-            firstgps = gpsdata.loc[gpsdata.iloc[:, 2] > 5].iloc[0]
+        if self._origin is None:
+            gpsdata = self.read_fields(
+                [Fields.GLOBALPOSITION, Fields.GPSSATCOUNT])
+            
+            try:
+                gpsdata = gpsdata.loc[pd.isna(gpsdata.iloc[:, 0]) == False]
+                firstgps = gpsdata.loc[gpsdata.iloc[:, 2] > 5].iloc[0]
+            except IndexError:
+                firstgps = gpsdata.iloc[0]
+
+            
             self._origin = {
                 'latitude': firstgps.global_position_latitude,
                 'longitude': firstgps.global_position_longitude
             }
-        
+
         return self._origin
-        
 
     def subset(self, start_time: float, end_time: float):
         """generate a subset between the specified times
@@ -193,3 +206,11 @@ class Flight(object):
             parameters=self.parameters,
             zero_time_offset=self.zero_time
         )
+
+    def unique_identifier(self) -> str:
+        """return a unique string to identify this flight, that is very unlikely to be the same as a different flight
+
+        Returns:
+            str: flight identifier
+        """
+        return "{}_{:.8f}_{:.10f}_{:.10f}".format(len(self.data), self.duration, *list(self.origin().values()))

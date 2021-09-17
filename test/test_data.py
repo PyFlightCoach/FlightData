@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from io import open
 from json import load
+from geometry import GPSPosition, Points
 
 class TestFlightData(unittest.TestCase):
     def setUp(self):
@@ -49,4 +50,22 @@ class TestFlightData(unittest.TestCase):
         flight = Flight.from_fc_json(fc_json)
         self.assertEqual(len(flight.read_fields(Fields.POSITION)), 11205)
         self.assertAlmostEqual(flight.duration, 448.1591)
-        
+        self.assertIsInstance(flight.origin(), dict)
+        gp = flight.read_fields(Fields.GLOBALPOSITION)
+
+        self.assertFalse(gp[pd.isna(gp)==False].empty)
+        pos = Points.from_pandas(flight.read_fields(Fields.POSITION))
+        _origin = GPSPosition(fc_json['parameters']['originLat'], fc_json['parameters']['originLng']).offset(pos[0])
+        self.assertEqual(_origin, GPSPosition(**flight.origin()))
+
+    def test_unique_identifier(self):
+        with open("test/fc_json.json", "r") as f:
+            fc_json = load(f)
+        flight1 = Flight.from_fc_json(fc_json)
+        self.assertIsInstance(flight1.unique_identifier(),str)   
+        flight1.to_csv('temp.csv')
+        flight2 = Flight.from_csv('temp.csv')
+        self.assertIsInstance(flight2.unique_identifier(),str)
+        print(flight2.unique_identifier())
+        self.assertEqual(flight1.unique_identifier(),flight2.unique_identifier())
+
