@@ -34,6 +34,7 @@ class Flight(object):
 
     def to_csv(self, filename):
         self.data.to_csv(filename)
+        return filename
 
     @staticmethod
     def from_csv(filename):
