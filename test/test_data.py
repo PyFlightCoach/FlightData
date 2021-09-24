@@ -32,8 +32,8 @@ class TestFlightData(unittest.TestCase):
         flight.to_csv('temp.csv')
         flight2 = Flight.from_csv('temp.csv')
         os.remove('temp.csv')
-        self.assertEqual(flight2.duration, flight.duration)
-        self.assertEqual(flight2.zero_time, flight.zero_time)
+        self.assertAlmostEqual(flight2.duration, flight.duration)
+        self.assertAlmostEqual(flight2.zero_time, flight.zero_time)
    
     def test_missing_arsp(self):
         flight = Flight.from_log('test/00000150.BIN')
@@ -68,4 +68,15 @@ class TestFlightData(unittest.TestCase):
         self.assertIsInstance(flight2.unique_identifier(),str)
         print(flight2.unique_identifier())
         self.assertEqual(flight1.unique_identifier(),flight2.unique_identifier())
+
+    def test_frequency(self):
+        with open("test/test_inputs/manual_F3A_P21_21_09_24_00000052.json", "r") as f:
+            fc_json = load(f)
+        flight1 = Flight.from_fc_json(fc_json)
+
+        flight2 = Flight.from_log('test/test_inputs/test_log_00000052.BIN')
+        freq1 = flight1.duration / len(flight1.data)
+        freq2 = flight2.duration / len(flight2.data)
+        self.assertAlmostEqual(freq1, freq2, 5)
+
 
