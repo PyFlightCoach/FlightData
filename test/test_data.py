@@ -68,6 +68,15 @@ class TestFlightData(unittest.TestCase):
         self.assertIsInstance(flight2.unique_identifier(),str)
         print(flight2.unique_identifier())
         self.assertEqual(flight1.unique_identifier(),flight2.unique_identifier())
+        os.remove('temp.csv')
+
+    def test_unique_identifier2(self):
+        with open("test/test_inputs/manual_F3A_P21_21_09_24_00000052.json", "r") as f:
+            flight1 = Flight.from_fc_json(load(f))
+        flight2 = Flight.from_log('test/test_inputs/test_log_00000052.BIN')
+        f2d = flight2.data.loc[flight2.data.position_z < -10]
+        np.testing.assert_array_equal(flight1.data.loc[:, Fields.GLOBALPOSITION.names], f2d.loc[:, Fields.GLOBALPOSITION.names])
+
 
     def test_frequency(self):
         with open("test/test_inputs/manual_F3A_P21_21_09_24_00000052.json", "r") as f:

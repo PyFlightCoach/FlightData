@@ -30,6 +30,7 @@ class Flight(object):
         self.parameters = parameters
         self.zero_time = self.data.index[0] + zero_time_offset
         self.data.index = self.data.index - self.data.index[0]
+        self.data.index = np.round(self.data.index,3)
         self._origin = None
 
     def to_csv(self, filename):
@@ -213,4 +214,6 @@ class Flight(object):
         Returns:
             str: flight identifier
         """
-        return "{}_{:.8f}_{:.10f}_{:.10f}".format(len(self.data), self.duration, *list(self.origin().values()))
+
+        _sflight = Flight(self.data.loc[self.data.position_z < -10])
+        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_sflight.data), _sflight.duration, *list(_sflight.origin().values()))
