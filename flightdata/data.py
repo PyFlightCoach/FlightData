@@ -45,31 +45,26 @@ class Flight(object):
         return Flight(data)
 
     @staticmethod
-    def from_log(log_path, skip_start=True):
+    def from_log(log_path):
         """Constructor from an ardupilot bin file.
             fields are renamed and units converted to the tool fields defined in ./fields.py
             The input fields, read from the log are specified in ./mapping 
 
             Args:
                 log_path (str): [description]
-
-            Returns:
-                Flight
         """
         _field_request = ['XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 'XKF2', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'IMU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
-        _parser = Ardupilot(log_path, types=_field_request,
-                            zero_time_base=True)
+        _parser = Ardupilot(log_path, types=_field_request,zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
 
         return Flight.convert_df(
             fulldf,
             get_ardupilot_mapping(_parser.parms['AHRS_EKF_TYPE']),
-            skip_start,
             _parser.parms
         )
 
     @staticmethod
-    def convert_df(fulldf, ioinfo, skip_start, parms):
+    def convert_df(fulldf, ioinfo, parms):
         # expand the dataframe to include all the columns listed in the io_info instance
         input_data = fulldf.get(list(set(fulldf.columns.to_list())
                                      & set(ioinfo.io_names)))
@@ -82,40 +77,22 @@ class Flight(object):
 
         # add the missing tool columns
         missing_cols = pd.DataFrame(
-            columns=list(set(Fields.all_names()) -
-                         set(_data.columns.to_list())) + [Fields.TIME.names[0]]
+            columns=list(set(Fields.all_names()) - set(_data.columns.to_list())) + [Fields.TIME.names[0]]
         )
-        output_data = _data.merge(
-            missing_cols, on=Fields.TIME.names[0], how='left')
-
-        # find the time 3 seconds after the magnetometer has initialised
-        if skip_start:
-            first_good_time = output_data.loc[pd.isna(
-                output_data['magnetometer_0']) == False].loc[output_data['magnetometer_0'] != 0].iloc[0].time_flight + 3
-        else:
-            first_good_time = output_data.iloc[0].time_flight
+        output_data = _data.merge(missing_cols, on=Fields.TIME.names[0], how='left')
 
         # set the first time in the index to 0
         output_data.index = _data[Fields.TIME.names[0]].copy()
         output_data.index.name = 'time_index'
 
-        return Flight(output_data.loc[first_good_time:], parms)
+        return Flight(output_data, parms)
 
     @staticmethod
     def from_fc_json(fc_json):
         df = pd.DataFrame.from_dict(fc_json['data'])
         df['timestamp'] = df['time'] * 1E-6
-
-        flight = Flight.convert_df(df, fc_json_2_1_io_info, False, {})
-
-        ekfpos = Points.from_pandas(flight.read_fields(Fields.POSITION))
-        origin = GPSPositions.full(GPSPosition(
-            fc_json['parameters']['originLat'], fc_json['parameters']['originLng']), ekfpos.count)
-
-        gps_positions = origin.offset(ekfpos)
-
-        flight.data.loc[:, Fields.GLOBALPOSITION.names] = gps_positions.data
-
+        flight = Flight.convert_df(df, fc_json_2_1_io_info, fc_json['parameters'])
+        flight._origin = GPSPosition(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
         return flight
 
     @property
@@ -153,28 +130,17 @@ class Flight(object):
     def read_field_tuples(self, fields):
         return tuple(self.read_numpy(fields))
 
-    def origin(self) -> Dict[str, float]:
-        """the latitude and longitude of the home position
+    @property
+    def origin(self) -> GPSPosition:
+        """the latitude and longitude of the origin (first pos in log)
 
         Returns:
-            dict: dictionary containing home position lat and long
+            dict: origin GPSPosition
         """
         if self._origin is None:
-            gpsdata = self.read_fields(
-                [Fields.GLOBALPOSITION, Fields.GPSSATCOUNT])
-            
-            try:
-                gpsdata = gpsdata.loc[pd.isna(gpsdata.iloc[:, 0]) == False]
-                firstgps = gpsdata.loc[gpsdata.iloc[:, 2] > 5].iloc[0]
-            except IndexError:
-                firstgps = gpsdata.iloc[0]
+            allgps = self.read_fields(Fields.GLOBALPOSITION)
 
-            
-            self._origin = {
-                'latitude': firstgps.global_position_latitude,
-                'longitude': firstgps.global_position_longitude
-            }
-
+            self._origin = GPSPosition(*allgps.iloc[0])
         return self._origin
 
     def subset(self, start_time: float, end_time: float):
@@ -209,11 +175,10 @@ class Flight(object):
         )
 
     def unique_identifier(self) -> str:
-        """return a unique string to identify this flight, that is very unlikely to be the same as a different flight
+        """Return a string to identify this flight that is very unlikely to be the same as a different flight
 
         Returns:
             str: flight identifier
         """
-
-        _sflight = Flight(self.data.loc[self.data.position_z < -10])
-        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_sflight.data), _sflight.duration, *list(_sflight.origin().values()))
+        _ftemp = Flight(self.data.loc[self.data.position_z < -10])
+        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.to_list())
