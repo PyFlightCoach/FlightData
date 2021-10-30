@@ -133,7 +133,7 @@ log_field_map["NKF1VD"] = MappedField(
 log_field_map["NKF2VWN"] = MappedField(
     Fields.WIND, 0, "NKF2VWN", ureg.meter / ureg.second)
 log_field_map["NKF2VWE"] = MappedField(
-    Fields.WIND, 1, "XKF2VWE", ureg.meter / ureg.second)
+    Fields.WIND, 1, "NKF2VWE", ureg.meter / ureg.second)
 
 log_field_map["RPMrpm1"] = MappedField(
     Fields.RPM, 0, "RPMrpm1", 14 / ureg.minute)
