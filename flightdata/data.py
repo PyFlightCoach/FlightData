@@ -20,7 +20,7 @@ from ardupilot_log_reader.reader import Ardupilot
 from flightdata.fields import Fields, CIDTypes
 from flightdata.mapping import get_ardupilot_mapping
 from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
-from geometry import GPSPosition, Points
+from geometry import GPSPosition, Points, Point
 from geometry.gps_positions import GPSPositions
 
 
@@ -143,6 +143,7 @@ class Flight(object):
             self._origin = GPSPosition(*allgps.iloc[0])
         return self._origin
 
+
     def subset(self, start_time: float, end_time: float):
         """generate a subset between the specified times
 
@@ -182,3 +183,15 @@ class Flight(object):
         """
         _ftemp = Flight(self.data.loc[self.data.position_z < -10])
         return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.to_list())
+
+    def describe(self):
+        info = dict(
+            duration = self.duration,
+            origin_gps = self.origin.to_dict(),
+            last_gps_ = GPSPosition(*self.read_fields(Fields.GLOBALPOSITION).iloc[-1]).to_dict(),
+            average_gps = GPSPosition(*self.read_fields(Fields.GLOBALPOSITION).mean()).to_dict(),
+            bb_max = Points.from_pandas(self.read_fields(Fields.POSITION)).max().to_dict(),
+            bb_min = Points.from_pandas(self.read_fields(Fields.POSITION)).min().to_dict(),
+        )
+
+        return pd.json_normalize(info, sep='_')
