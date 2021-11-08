@@ -90,7 +90,8 @@ class Flight(object):
     @staticmethod
     def from_fc_json(fc_json):
         df = pd.DataFrame.from_dict(fc_json['data'])
-        df['timestamp'] = df['time'] * 1E-6
+        df.insert(0, "timestamp", df['time'] * 1E-6)
+        
         flight = Flight.convert_df(df, fc_json_2_1_io_info, fc_json['parameters'])
         flight._origin = GPSPosition(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
         return flight
