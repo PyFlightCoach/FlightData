@@ -83,4 +83,10 @@ class TestFlightData(unittest.TestCase):
         self.assertAlmostEqual(freq1, freq2, 5)
 
 
-    
+    def test_baro(self):
+        flight = Flight.from_log('test/ekfv3_test.BIN')
+        atm = flight.read_fields(Fields.ATMOSPHERE)
+        self.assertLess(atm.iloc[0,0],  120000)
+        self.assertGreater(atm.iloc[0,0],  90000)
+        self.assertLess(atm.iloc[0,1], 30)
+        self.assertGreater(atm.iloc[0,1], 0)

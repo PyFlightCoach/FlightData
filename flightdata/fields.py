@@ -18,7 +18,7 @@ ureg = UnitRegistry()
 
 _field_list = []
 
-
+# TODO rewrite all this, allow multiple units per field. better to look more like /flightdata/mapping/ardupilot_ekfv3.py
 class CIDTypes():
     CARTESIAN = 0
     EULER = 1
@@ -49,6 +49,7 @@ class Field(object):
         return _out_names
 
 
+
 class Fields(object):
     """This class defines the fields. Do not instantiate.
     """
@@ -66,12 +67,13 @@ class Fields(object):
     BATTERY = Field('battery', ureg.volt, 2, description='battery voltages')
     CURRENT = Field('current', ureg.amp, 4, description='motor currents')
     AIRSPEED = Field('airspeed', ureg.meter / ureg.second,2, description='sensor airspeed')
-    ACCELERATION = Field('acceleration', ureg.meter / ureg.second / ureg.second,
-                         3, description='accelerations (earth frame)', names=['x', 'y', 'z'])
+    ACCELERATION = Field('acceleration', ureg.meter / ureg.second / ureg.second, 3, description='accelerations (earth frame)', names=['x', 'y', 'z'])
     VELOCITY = Field('velocity', ureg.meter / ureg.second, 3, description='velocity data (earth frame)', names=['x', 'y', 'z'])
     WIND = Field('wind', ureg.meter / ureg.second, 2, description='wind in earth frame', names=['x', 'y'])
     RPM = Field('rpm', 1 / ureg.minute, 2, description='motor rpm')
     MAGNETOMETER = Field('magnetometer', 1, 3, description='mag field strength n, e, d')
+    PRESSURE = Field('pressure', ureg.pascal, 1) 
+    TEMPERATURE = Field('temperature', ureg.kelvin, 1) 
     
     @staticmethod
     def all():
@@ -101,7 +103,6 @@ class Fields(object):
         return outdict
 
 
-# TODO This needs an alternate source field if required info is not there
 class MappedField(object):
     def __init__(self, field, position, name, unit):
         super().__init__()
