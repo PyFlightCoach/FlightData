@@ -90,3 +90,11 @@ class TestFlightData(unittest.TestCase):
         self.assertGreater(atm.iloc[0,0],  90000)
         self.assertLess(atm.iloc[0,1], 30)
         self.assertGreater(atm.iloc[0,1], 0)
+
+
+    def test_ekfv2(self):
+        flight = Flight.from_log("test/xkfv2_log.BIN")
+        qs = flight.read_fields(Fields.QUATERNION)
+        
+
+        self.assertFalse(qs.isnull().values.all())

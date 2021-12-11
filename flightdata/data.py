@@ -196,3 +196,6 @@ class Flight(object):
         )
 
         return pd.json_normalize(info, sep='_')
+
+    def has_pitot(self):
+        return not np.all(self.read_fields(Fields.AIRSPEED).iloc[:,0] == 0)
