@@ -20,7 +20,7 @@ from ardupilot_log_reader.reader import Ardupilot
 from flightdata.fields import Fields, CIDTypes
 from flightdata.mapping import get_ardupilot_mapping
 from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
-from geometry import GPSPosition, Points, Point
+from geometry import GPSPosition, Points, Point, Quaternions
 from geometry.gps_positions import GPSPositions
 
 
@@ -144,6 +144,13 @@ class Flight(object):
             self._origin = GPSPosition(*allgps.iloc[0])
         return self._origin
 
+
+    def imu_ready_time(self):
+        qs = Quaternions.from_pandas(self.read_fields(Fields.QUATERNION))
+        if np.any(pd.isna(qs)):
+            qs = Quaternions.from_euler(Points.from_pandas(self.read_fields(Fields.ATTITUDE)))
+        df = qs.transform_point(Point(1, 0, 0)).to_pandas(index=self.data.index)
+        return df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[20].name
 
     def subset(self, start_time: float, end_time: float):
         """generate a subset between the specified times
