@@ -98,3 +98,10 @@ class TestFlightData(unittest.TestCase):
         
 
         self.assertFalse(qs.isnull().values.all())
+
+    def test_axis_rates(self):
+        flight=Flight.from_log("test/test_inputs/test_log_00000052.BIN")
+
+        axis_rates = flight.read_fields(Fields.AXISRATE)
+
+        self.assertFalse(axis_rates.isnull().values.all())
