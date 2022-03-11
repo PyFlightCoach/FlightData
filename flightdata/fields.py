@@ -96,11 +96,9 @@ class Fields(object):
         else:
             return fields.names
 
-    def to_dict(self):
-        outdict = {}
-        for field in _field_list:
-            outdict[field.name] = field.names
-        return outdict
+    @staticmethod
+    def to_dict():
+        return {field.name: field.names for field in _field_list}
 
 
 class MappedField(object):

@@ -23,6 +23,7 @@ from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
 from geometry import GPSPosition, Points, Point, Quaternions
 from geometry.gps_positions import GPSPositions
 
+fdict = Fields.to_dict()
 
 class Flight(object):
     def __init__(self, data, parameters: List = None, zero_time_offset: float = 0):
@@ -30,8 +31,26 @@ class Flight(object):
         self.parameters = parameters
         self.zero_time = self.data.index[0] + zero_time_offset
         self.data.index = self.data.index - self.data.index[0]
-        self.data.index = np.round(self.data.index,3)
+        #self.data.index = np.round(self.data.index,3)
         self._origin = None
+
+    def flying_only(self):
+        vs = abs(Points.from_pandas(self.read_fields(Fields.VELOCITY)))
+        above_ground = self.data.loc[(self.data.position_z <= 5.0) & (vs > 10)]
+        return self[above_ground.index[0]:above_ground.index[-1]]
+
+
+    def __getattr__(self, name):
+        if name in Fields.all_names:
+            return self.data[name]
+        if name.upper() in fdict.keys():
+            return self.read_fields(fdict[name.upper()])
+
+    def __getitem__(self, sli):
+        if isinstance(sli, int) or isinstance(sli, float):
+            return self.data.iloc[self.data.index.get_loc(sli, method="nearest")]
+        else:
+            return Flight(self.data.loc[sli], self.parameters, self.zero_time)
 
     def to_csv(self, filename):
         self.data.to_csv(filename)

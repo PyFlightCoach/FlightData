@@ -105,3 +105,10 @@ class TestFlightData(unittest.TestCase):
         axis_rates = flight.read_fields(Fields.AXISRATE)
 
         self.assertFalse(axis_rates.isnull().values.all())
+
+
+    def test_flying_only(self):
+        flt = self.flight.flying_only()
+        assert isinstance(flt, Flight)
+        assert flt.duration < self.flight.duration
+        assert flt[0].position_z < 5
