@@ -20,8 +20,8 @@ from ardupilot_log_reader.reader import Ardupilot
 from flightdata.fields import Fields, CIDTypes
 from flightdata.mapping import get_ardupilot_mapping
 from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
-from geometry import GPSPosition, Points, Point, Quaternions
-from geometry.gps_positions import GPSPositions
+from geometry import GPS, Point, Quaternion
+from geometry.gps import GPS
 
 fdict = Fields.to_dict()
 
@@ -35,7 +35,7 @@ class Flight(object):
         self._origin = None
 
     def flying_only(self):
-        vs = abs(Points.from_pandas(self.read_fields(Fields.VELOCITY)))
+        vs = abs(Point(self.read_fields(Fields.VELOCITY)))
         above_ground = self.data.loc[(self.data.position_z <= 5.0) & (vs > 10)]
         return self[above_ground.index[0]:above_ground.index[-1]]
 
@@ -112,7 +112,7 @@ class Flight(object):
         df.insert(0, "timestamp", df['time'] * 1E-6)
         
         flight = Flight.convert_df(df, fc_json_2_1_io_info, fc_json['parameters'])
-        flight._origin = GPSPosition(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
+        flight._origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
         return flight
 
     @property
@@ -151,16 +151,16 @@ class Flight(object):
         return tuple(self.read_numpy(fields))
 
     @property
-    def origin(self) -> GPSPosition:
+    def origin(self) -> GPS:
         """the latitude and longitude of the origin (first pos in log)
 
         Returns:
-            dict: origin GPSPosition
+            dict: origin GPS
         """
         if self._origin is None:
             allgps = self.read_fields(Fields.GLOBALPOSITION)
 
-            self._origin = GPSPosition(*allgps.iloc[0])
+            self._origin = GPS(*allgps.iloc[0])
         return self._origin
 
 
@@ -215,8 +215,8 @@ class Flight(object):
         info = dict(
             duration = self.duration,
             origin_gps = self.origin.to_dict(),
-            last_gps_ = GPSPosition(*self.read_fields(Fields.GLOBALPOSITION).iloc[-1]).to_dict(),
-            average_gps = GPSPosition(*self.read_fields(Fields.GLOBALPOSITION).mean()).to_dict(),
+            last_gps_ = GPS(*self.read_fields(Fields.GLOBALPOSITION).iloc[-1]).to_dict(),
+            average_gps = GPS(*self.read_fields(Fields.GLOBALPOSITION).mean()).to_dict(),
             bb_max = Points.from_pandas(self.read_fields(Fields.POSITION)).max().to_dict(),
             bb_min = Points.from_pandas(self.read_fields(Fields.POSITION)).min().to_dict(),
         )
