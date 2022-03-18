@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from io import open
 from json import load
-from geometry import GPS, Points
+from geometry import GPS, Point
 
 class TestFlightData(unittest.TestCase):
     def setUp(self):
@@ -49,12 +49,12 @@ class TestFlightData(unittest.TestCase):
             fc_json = load(f)
         flight = Flight.from_fc_json(fc_json)
         self.assertEqual(len(flight.read_fields(Fields.POSITION)), 11205)
-        self.assertAlmostEqual(flight.duration, 448.159)
+        self.assertAlmostEqual(flight.duration, 448.1591)
         self.assertIsInstance(flight.origin, GPS)
         gp = flight.read_fields(Fields.GLOBALPOSITION)
 
         self.assertFalse(gp[pd.isna(gp)==False].empty)
-        pos = Points.from_pandas(flight.read_fields(Fields.POSITION))
+        pos = Point(flight.read_fields(Fields.POSITION))
         _origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
         self.assertEqual(_origin, flight.origin)
         
