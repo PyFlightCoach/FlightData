@@ -36,7 +36,7 @@ class Flight(object):
 
     def flying_only(self):
         vs = abs(Point(self.read_fields(Fields.VELOCITY)))
-        above_ground = self.data.loc[(self.data.position_z <= 5.0) & (vs > 10)]
+        above_ground = self.data.loc[(self.data.position_z <= -5.0) & (vs > 10)]
         return self[above_ground.index[0]:above_ground.index[-1]]
 
 
@@ -165,9 +165,9 @@ class Flight(object):
 
 
     def imu_ready_time(self):
-        qs = Quaternions.from_pandas(self.read_fields(Fields.QUATERNION))
+        qs = Quaternion(self.read_fields(Fields.QUATERNION))
         if np.any(pd.isna(qs)):
-            qs = Quaternions.from_euler(Points.from_pandas(self.read_fields(Fields.ATTITUDE)))
+            qs = Quaternion.from_euler(Point(self.read_fields(Fields.ATTITUDE)))
         df = qs.transform_point(Point(1, 0, 0)).to_pandas(index=self.data.index)
         return df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[20].name
 

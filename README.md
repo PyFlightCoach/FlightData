@@ -36,9 +36,6 @@ ATT       TimeUS,DesRoll,Roll,DesPitch,Pitch,DesYaw,Yaw,ErrRP,ErrYaw
 MAG       TimeUS,MagX,MagY,MagZ,OfsX,OfsY,OfsZ,MOfsX,MOfsY,MOfsZ,Health
 MODE      TimeUS,Mode,ModeNum
 RFND      TimeUS,Dist1,Dist2,Dist3,Dist4
-
-// messages for more advanced boards
-
 IMU2        TimeUS,GyrX,GyrY,GyrZ,AccX,AccY,AccZ,ErrG,ErrA,Temp,GyHlt, AcHlt 
 IMU3        TimeUS,GyrX,GyrY,GyrZ,AccX,AccY,AccZ,ErrG,ErrA,Temp,GyHlt,AcHlt 
 AHR2        TimeUS,Roll,Pitch,Yaw,Alt,Lat,Lng 

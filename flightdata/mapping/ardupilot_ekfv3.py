@@ -79,7 +79,6 @@ mapped_field_args = [
     (Fields.QUATERNION, 1, "XKQ1Q2", 1),
     (Fields.QUATERNION, 2, "XKQ1Q3", 1),
     (Fields.QUATERNION, 3, "XKQ1Q4", 1),
-    (Fields.QUATERNION, 3, "XKQ1Q4", 1),
     (Fields.PRESSURE, 0, "BAROPress", ureg.Pa),
     (Fields.TEMPERATURE, 0, "BAROTemp", ureg.celsius),
 ]

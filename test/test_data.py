@@ -111,4 +111,4 @@ class TestFlightData(unittest.TestCase):
         flt = self.flight.flying_only()
         assert isinstance(flt, Flight)
         assert flt.duration < self.flight.duration
-        assert flt[0].position_z < 5
+        assert flt[0].position_z < -5
