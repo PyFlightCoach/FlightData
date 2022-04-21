@@ -186,14 +186,14 @@ class Flight(object):
         if start_time == 0 and end_time == -1:
             new_data = self.data
         elif start_time == 0:
-            end = self.data.index.get_loc(end_time, method='nearest')
+            end = self.data.index.get_indexer([end_time], method='nearest')[0]
             new_data = self.data.iloc[:end]
         elif end_time == -1:
-            start = self.data.index.get_loc(start_time, method='nearest')
+            start = self.data.index.get_indexer([start_time], method='nearest')[0]
             new_data = self.data.iloc[start:]
         else:
-            start = self.data.index.get_loc(start_time, method='nearest')
-            end = self.data.index.get_loc(end_time, method='nearest')
+            start = self.data.index.get_indexer([start_time], method='nearest')[0]
+            end = self.data.index.get_indexer([end_time], method='nearest')[0]
             new_data = self.data.iloc[start:end]
 
         return Flight(
@@ -217,8 +217,8 @@ class Flight(object):
             origin_gps = self.origin.to_dict(),
             last_gps_ = GPS(*self.read_fields(Fields.GLOBALPOSITION).iloc[-1]).to_dict(),
             average_gps = GPS(*self.read_fields(Fields.GLOBALPOSITION).mean()).to_dict(),
-            bb_max = Points.from_pandas(self.read_fields(Fields.POSITION)).max().to_dict(),
-            bb_min = Points.from_pandas(self.read_fields(Fields.POSITION)).min().to_dict(),
+            bb_max = Point(self.read_fields(Fields.POSITION)).max().to_dict(),
+            bb_min = Point(self.read_fields(Fields.POSITION)).min().to_dict(),
         )
 
         return pd.json_normalize(info, sep='_')
