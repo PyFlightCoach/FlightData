@@ -55,7 +55,7 @@ class Fields(object):
     """
     TIME = Field('time', ureg.second, 2,names=['flight', 'actual'])
     TXCONTROLS = Field('tx_controls', ureg.second, 8, description='PWM Values coming from the TX')
-    SERVOS = Field('servos', ureg.second, 8, description='PWN Values going to the Servos')
+    SERVOS = Field('servos', ureg.second, 14, description='PWN Values going to the Servos')
     FLIGHTMODE = Field('mode', 1, 3, description='The active flight mode ID')
     POSITION = Field('position', ureg.meter, 3, description='position of plane (n, e, d)', names=['x', 'y', 'z'])
     GLOBALPOSITION = Field('global_position', ureg.degree, 2, names=['latitude', 'longitude'])
