@@ -34,9 +34,9 @@ class Flight(object):
         #self.data.index = np.round(self.data.index,3)
         self._origin = None
 
-    def flying_only(self):
+    def flying_only(self, minalt=5, minv=10):
         vs = abs(Point(self.read_fields(Fields.VELOCITY)))
-        above_ground = self.data.loc[(self.data.position_z <= -5.0) & (vs > 10)]
+        above_ground = self.data.loc[(self.data.position_z <= -minalt) & (vs > minv)]
         return self[above_ground.index[0]:above_ground.index[-1]]
 
 
