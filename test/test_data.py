@@ -45,16 +45,14 @@ class TestFlightData(unittest.TestCase):
         self.assertFalse(quats[pd.isna(quats.quaternion_0)==False].empty)
 
     def test_from_fc_json(self):
-        with open("test/fc_json.json", "r") as f:
+        with open("test/test_inputs/manual_F3A_P23_22_08_23_00000055_1.json", "r") as f:
             fc_json = load(f)
         flight = Flight.from_fc_json(fc_json)
-        self.assertEqual(len(flight.read_fields(Fields.POSITION)), 11205)
-        self.assertAlmostEqual(flight.duration, 448.1591)
-        self.assertIsInstance(flight.origin, GPS)
-        gp = flight.read_fields(Fields.GLOBALPOSITION)
+        assert isinstance(flight, Flight)
+        assert flight.duration > 200
+        assert flight.flying_only().duration == flight.duration
+        assert flight.read_fields(Fields.POSITION).position_z.max() < -10
 
-        self.assertFalse(gp[pd.isna(gp)==False].empty)
-        pos = Point(flight.read_fields(Fields.POSITION))
         _origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
         self.assertEqual(_origin, flight.origin)
         
