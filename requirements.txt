@@ -3,4 +3,4 @@ pandas
 pint
 pymavlink
 ardupilot_log_reader
-geometry
+pfc-geometry

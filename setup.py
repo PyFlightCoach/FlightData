@@ -13,12 +13,4 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 from setuptools import setup
 
-setup(
-    name='flightdata',
-    version='0.0.1',
-    description='module for storage of and access to flight log data',
-    author='Thomas David',
-    author_email='thomasdavid0@gmai.com',
-    packages=['flightdata'],  # same as name
-    install_requires=['numpy', 'pandas', 'ardupilot_log_reader', 'pint'],
-)
+setup()
