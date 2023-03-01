@@ -17,9 +17,9 @@ from enum import Enum
 
 from ardupilot_log_reader.reader import Ardupilot
 
-from flightdata.fields import Fields, CIDTypes
-from flightdata.mapping import get_ardupilot_mapping
-from flightdata.mapping.fc_json_2_1 import fc_json_2_1_io_info
+from .fields import Fields, CIDTypes
+from .field_mapping import get_ardupilot_mapping
+from .field_mapping.fc_json_2_1 import fc_json_2_1_io_info
 from geometry import GPS, Point, Quaternion
 from geometry.gps import GPS
 
