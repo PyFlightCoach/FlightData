@@ -39,7 +39,6 @@ class Flight(object):
         above_ground = self.data.loc[(self.data.position_z <= -minalt) & (vs > minv)]
         return self[above_ground.index[0]:above_ground.index[-1]]
 
-
     def __getattr__(self, name):
         if name in Fields.all_names:
             return self.data[name]
@@ -48,7 +47,7 @@ class Flight(object):
 
     def __getitem__(self, sli):
         if isinstance(sli, int) or isinstance(sli, float):
-            return self.data.iloc[self.data.index.get_loc(sli, method="nearest")]
+            return self.data.iloc[self.data.index.get_loc(sli)]
         else:
             return Flight(self.data.loc[sli], self.parameters, self.zero_time)
 
@@ -78,7 +77,7 @@ class Flight(object):
             _field_request += additional_fields
         _parser = Ardupilot(log_path, types=_field_request,zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
-
+        
         return Flight.convert_df(
             fulldf,
             get_ardupilot_mapping(_parser.parms['AHRS_EKF_TYPE']),
@@ -212,7 +211,7 @@ class Flight(object):
             str: flight identifier
         """
         _ftemp = Flight(self.data.loc[self.data.position_z < -10])
-        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.to_list())
+        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.data[0])
 
     def describe(self):
         info = dict(
