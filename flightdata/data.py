@@ -50,6 +50,13 @@ class Flight(object):
         else:
             return Flight(self.data.loc[sli], self.parameters, self.zero_time)
 
+    def slice_raw_t(self, sli):
+        inds = self.data.reset_index().set_index("time_flight")["time_index"].loc[sli].to_numpy()#set_index("t", drop=False).columns
+
+        return Flight(self.data.loc[inds], self.parameters, self.zero_time)
+        
+
+
     def to_csv(self, filename):
         self.data.to_csv(filename)
         return filename
@@ -103,9 +110,7 @@ class Flight(object):
         )
         output_data = _data.merge(missing_cols, on=Fields.TIME.names[0], how='left')
 
-        # set the first time in the index to 0
         output_data = output_data.set_index(Fields.TIME.names[0], drop=False)
-        #output_data.index = _data[Fields.TIME.names[0]].copy()
         output_data.index.name = 'time_index'
 
         return Flight(output_data, parms)
