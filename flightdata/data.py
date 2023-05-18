@@ -159,16 +159,20 @@ class Flight(object):
             dict: origin GPS
         """
         if self._origin is None:
-            allgps = self.read_fields(Fields.GLOBALPOSITION)
-
-            self._origin = GPS(*allgps.iloc[0])
+            self._origin = GPS(*self.read_fields(Fields.GLOBALPOSITION).loc[self.gps_ready_time()])
         return self._origin
 
+    def gps_ready_time(self):
+        gps = self.read_fields(Fields.GLOBALPOSITION)
+        gps = gps.loc[~(gps==0).all(axis=1)].dropna()
+        return gps.iloc[20].name
 
     def imu_ready_time(self):
         qs = Quaternion.from_euler(Point(self.read_fields(Fields.ATTITUDE)))
         df = qs.transform_point(PX(1)).to_pandas(index=self.data.index)
-        return df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[20].name
+        att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[20].name
+
+        return max(self.gps_ready_time(), att_ready)
 
     def subset(self, start_time: float, end_time: float):
         """generate a subset between the specified times
