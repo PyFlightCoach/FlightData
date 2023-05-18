@@ -74,7 +74,7 @@ class Flight(object):
         _field_request = ['XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 'XKF2', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'IMU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
         if additional_fields:
             _field_request += additional_fields
-        _parser = Ardupilot(log_path, types=_field_request,zero_time_base=True)
+        _parser = Ardupilot(log_path, types=_field_request)#,zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
         
         return Flight.convert_df(
@@ -86,8 +86,10 @@ class Flight(object):
     @staticmethod
     def convert_df(fulldf, ioinfo, parms):
         # expand the dataframe to include all the columns listed in the io_info instance
-        input_data = fulldf.get(list(set(fulldf.columns.to_list())
-                                     & set(ioinfo.io_names)))
+        input_data = fulldf.get(
+            list(
+                set(fulldf.columns.to_list()) & set(ioinfo.io_names)
+        ))
 
         # Generate a reordered io instance to match the columns in the dataframe
         _fewer_io_info = ioinfo.subset(input_data.columns.to_list())
@@ -102,7 +104,8 @@ class Flight(object):
         output_data = _data.merge(missing_cols, on=Fields.TIME.names[0], how='left')
 
         # set the first time in the index to 0
-        output_data.index = _data[Fields.TIME.names[0]].copy()
+        output_data = output_data.set_index(Fields.TIME.names[0], drop=False)
+        #output_data.index = _data[Fields.TIME.names[0]].copy()
         output_data.index.name = 'time_index'
 
         return Flight(output_data, parms)

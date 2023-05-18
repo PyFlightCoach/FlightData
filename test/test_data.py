@@ -110,3 +110,9 @@ class TestFlightData(unittest.TestCase):
         assert isinstance(flt, Flight)
         assert flt.duration < self.flight.duration
         assert flt[0].position_z < -5
+
+
+
+def test_timestamp():
+    fl = Flight.from_log("test/test_inputs/00000129.BIN")
+    assert fl.data.time_flight.iloc[0] > 1e6
