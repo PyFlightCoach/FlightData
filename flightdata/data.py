@@ -20,8 +20,7 @@ from ardupilot_log_reader.reader import Ardupilot
 from .fields import Fields, CIDTypes
 from .field_mapping import get_ardupilot_mapping
 from .field_mapping.fc_json_2_1 import fc_json_2_1_io_info
-from geometry import GPS, Point, Quaternion
-from geometry.gps import GPS
+from geometry import GPS, Point, Quaternion, PX
 
 fdict = Fields.to_dict()
 
@@ -167,10 +166,8 @@ class Flight(object):
 
 
     def imu_ready_time(self):
-        qs = Quaternion(self.read_fields(Fields.QUATERNION))
-        if np.any(pd.isna(qs)):
-            qs = Quaternion.from_euler(Point(self.read_fields(Fields.ATTITUDE)))
-        df = qs.transform_point(Point(1, 0, 0)).to_pandas(index=self.data.index)
+        qs = Quaternion.from_euler(Point(self.read_fields(Fields.ATTITUDE)))
+        df = qs.transform_point(PX(1)).to_pandas(index=self.data.index)
         return df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[20].name
 
     def subset(self, start_time: float, end_time: float):
