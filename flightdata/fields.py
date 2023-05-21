@@ -13,6 +13,8 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 from pint import UnitRegistry, DimensionalityError
 from typing import Dict, List
+from itertools import chain
+
 ureg = UnitRegistry()
 
 
@@ -75,26 +77,12 @@ class Fields(object):
     PRESSURE = Field('pressure', ureg.pascal, 1) 
     TEMPERATURE = Field('temperature', ureg.kelvin, 1) 
     
-    @staticmethod
-    def all():
-        return _field_list
-
-    @staticmethod
-    def all_names():
-        _all_names = []
-        for field in _field_list:
-            _all_names += field.names
-        return _all_names
+    all = _field_list
+    all_names = list(chain(*[field.names for field in _field_list]))
 
     @staticmethod
     def some_names(fields):
-        if isinstance(fields, list):
-            _some_names = []
-            for field in fields:
-                _some_names += field.names
-            return _some_names
-        else:
-            return fields.names
+        return [field.names for field in fields] if isinstance(fields, list) else fields.names
 
     @staticmethod
     def to_dict():
@@ -104,69 +92,30 @@ class Fields(object):
 class MappedField(object):
     def __init__(self, field, position, name, unit):
         super().__init__()
-        self._field = field
-        self._position = position
-        self._name = name
-        self._unit = unit
-        self._base_factor = None
-
-    @property
-    def field(self):
-        return self._field
-
-    @property
-    def position(self):
-        return self._position
-
-    @property
-    def unit(self):
-        return self._unit
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def base_factor(self):
-        if not self._base_factor:
-            try:
-                self._base_factor = float(self.unit) / float(self.field.unit)
-            except DimensionalityError:
-                quantity = 1 * self.unit
-                self._base_factor = quantity.to(self.field.unit).magnitude
-        return self._base_factor
+        self.field = field
+        self.position = position
+        self.name = name
+        self.unit = unit
+        try:
+            self.base_factor = float(self.unit) / float(self.field.unit)
+        except DimensionalityError:
+            self.base_factor = (1 * self.unit).to(self.field.unit).magnitude
 
 
 class FieldIOInfo(object):
     def __init__(self, field_maps: Dict[str, MappedField]):
         self._field_maps = field_maps
 
-        self._io_names = []
-        self._base_names = []
-        self._factors_to_base = []
-        self._factors_to_field = []
+        self.io_names = []
+        self.base_names = []
+        self.factors_to_base = []
+        self.factors_to_field = []
 
         for key, value in self._field_maps.items():
-            self._io_names.append(key)
-            self._base_names.append(value.field.names[value.position])
-            self._factors_to_base.append(value.base_factor)
-            self._factors_to_field.append(1 / value.base_factor)
-
-    @property
-    def io_names(self):
-        return self._io_names
-
-    @property
-    def base_names(self):
-        return self._base_names
-
-    @property
-    def factors_to_base(self) -> List[float]:
-        return self._factors_to_base
-
-    @property
-    def factors_to_field(self) -> List[float]:
-        return self._factors_to_field
+            self.io_names.append(key)
+            self.base_names.append(value.field.names[value.position])
+            self.factors_to_base.append(value.base_factor)
+            self.factors_to_field.append(1 / value.base_factor)
 
     def subset(self, less_base_names):
         return FieldIOInfo({x: self._field_maps[x] for x in less_base_names if x in self._field_maps})

@@ -106,7 +106,7 @@ class Flight(object):
 
         # add the missing tool columns
         missing_cols = pd.DataFrame(
-            columns=list(set(Fields.all_names()) - set(_data.columns.to_list())) + [Fields.TIME.names[0]]
+            columns=list(set(Fields.all_names) - set(_data.columns.to_list())) + [Fields.TIME.names[0]]
         )
         output_data = _data.merge(missing_cols, on=Fields.TIME.names[0], how='left')
 
@@ -173,12 +173,12 @@ class Flight(object):
     def gps_ready_time(self):
         gps = self.read_fields(Fields.GLOBALPOSITION)
         gps = gps.loc[~(gps==0).all(axis=1)].dropna()
-        return gps.iloc[20].name
+        return gps.iloc[0].name
 
     def imu_ready_time(self):
         qs = Quaternion.from_euler(Point(self.read_fields(Fields.ATTITUDE)))
         df = qs.transform_point(PX(1)).to_pandas(index=self.data.index)
-        att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[20].name
+        att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[0].name
 
         return max(self.gps_ready_time(), att_ready)
 

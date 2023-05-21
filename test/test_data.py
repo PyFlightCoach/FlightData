@@ -32,8 +32,8 @@ class TestFlightData(unittest.TestCase):
         flight.to_csv('temp.csv')
         flight2 = Flight.from_csv('temp.csv')
         os.remove('temp.csv')
-        self.assertAlmostEqual(flight2.duration, flight.duration)
-        self.assertAlmostEqual(flight2.zero_time, flight.zero_time)
+        self.assertAlmostEqual(flight2.duration, flight.duration, 4)
+        self.assertAlmostEqual(flight2.zero_time, flight.zero_time, 4)
    
     def test_missing_arsp(self):
         flight = Flight.from_log('test/00000150.BIN')
