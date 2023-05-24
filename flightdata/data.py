@@ -21,6 +21,8 @@ from .fields import Fields, CIDTypes
 from .field_mapping import get_ardupilot_mapping
 from .field_mapping.fc_json_2_1 import fc_json_2_1_io_info
 from geometry import GPS, Point, Quaternion, PX
+from pathlib import Path
+
 
 fdict = Fields.to_dict()
 
@@ -69,7 +71,7 @@ class Flight(object):
         return Flight(data)
 
     @staticmethod
-    def from_log(log_path, additional_fields=None):
+    def from_log(log_path, *args):
         """Constructor from an ardupilot bin file.
             fields are renamed and units converted to the tool fields defined in ./fields.py
             The input fields, read from the log are specified in ./mapping 
@@ -78,10 +80,10 @@ class Flight(object):
                 log_path (str): [description]
         """
         
-        _field_request = ['XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 'XKF2', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'IMU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
-        if additional_fields:
-            _field_request += additional_fields
-        _parser = Ardupilot(log_path, types=_field_request)#,zero_time_base=True)
+        _field_request = ['POS', 'ATT', 'ACC', 'GYRO', 'IMU', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
+        if isinstance(log_path, Path):
+            log_path = str(log_path)
+        _parser = Ardupilot(log_path, types=_field_request+list(args))#,zero_time_base=True)
         fulldf = _parser.join_logs(_field_request)
         
         return Flight.convert_df(
