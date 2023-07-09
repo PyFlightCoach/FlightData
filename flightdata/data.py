@@ -53,12 +53,14 @@ class Flight(object):
             return Flight(self.data.loc[sli], self.parameters, self.zero_time)
 
     def slice_raw_t(self, sli):
-        inds = self.data.reset_index().set_index("time_flight")["time_index"].loc[sli].to_numpy()#set_index("t", drop=False).columns
-
-        return Flight(self.data.loc[inds], self.parameters, self.zero_time)
         
-
-
+        return Flight(
+            self.data.set_index("time_flight").loc[sli].set_index("time_index"), 
+            self.parameters, 
+            self.zero_time
+        )
+        
+    
     def to_csv(self, filename):
         self.data.to_csv(filename)
         return filename
@@ -183,37 +185,6 @@ class Flight(object):
         att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[0].name
 
         return max(self.gps_ready_time(), att_ready)
-
-    def subset(self, start_time: float, end_time: float):
-        """generate a subset between the specified times
-
-        Args:
-            start_time (float): the start of the subset, 0 for the start of the dataset
-            end_time (float): end of the subset, -1 for the end of the flight
-
-        Returns:
-            Flight: a new instance of Flight contianing a refernce to the subset. parameters referenced, 
-            index adjusted so 0 is the start of the subset.
-        """
-
-        if start_time == 0 and end_time == -1:
-            new_data = self.data
-        elif start_time == 0:
-            end = self.data.index.get_indexer([end_time], method='nearest')[0]
-            new_data = self.data.iloc[:end]
-        elif end_time == -1:
-            start = self.data.index.get_indexer([start_time], method='nearest')[0]
-            new_data = self.data.iloc[start:]
-        else:
-            start = self.data.index.get_indexer([start_time], method='nearest')[0]
-            end = self.data.index.get_indexer([end_time], method='nearest')[0]
-            new_data = self.data.iloc[start:end]
-
-        return Flight(
-            data=new_data,
-            parameters=self.parameters,
-            zero_time_offset=self.zero_time
-        )
 
     def unique_identifier(self) -> str:
         """Return a string to identify this flight that is very unlikely to be the same as a different flight

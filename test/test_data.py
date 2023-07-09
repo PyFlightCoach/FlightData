@@ -16,7 +16,7 @@ class TestFlightData(unittest.TestCase):
         self.assertAlmostEqual(self.flight.duration, 601, 0)
 
     def test_slice(self):
-        short_flight = self.flight.subset(100, 200)
+        short_flight = self.flight[100:200]
         self.assertAlmostEqual(short_flight.duration, 100, 0)
 
     def test_read_tuples(self):
@@ -111,6 +111,10 @@ class TestFlightData(unittest.TestCase):
         assert flt.duration < self.flight.duration
         assert flt[0].position_z < -5
 
+
+    def test_slice_raw_2(self):
+        sli = self.flight.slice_raw_t(slice(100, None, None))
+        assert isinstance(sli, Flight)
 
 
 def test_timestamp():
