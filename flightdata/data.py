@@ -55,7 +55,7 @@ class Flight(object):
     def slice_raw_t(self, sli):
         
         return Flight(
-            self.data.set_index("time_flight").loc[sli].set_index("time_index"), 
+            self.data.set_index("time_flight", drop=False).loc[sli].set_index("time_index"), 
             self.parameters, 
             self.zero_time
         )

@@ -112,10 +112,10 @@ class TestFlightData(unittest.TestCase):
         assert flt[0].position_z < -5
 
 
-    def test_slice_raw_2(self):
+    def test_slice_raw_t(self):
         sli = self.flight.slice_raw_t(slice(100, None, None))
         assert isinstance(sli, Flight)
-
+        assert "time_flight" in sli.data.columns
 
 def test_timestamp():
     fl = Flight.from_log("test/test_inputs/00000129.BIN")
