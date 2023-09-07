@@ -14,9 +14,6 @@ import numpy as np
 import pandas as pd
 from importlib.util import find_spec
 from enum import Enum
-
-from ardupilot_log_reader.reader import Ardupilot
-
 from .fields import Fields, CIDTypes
 from .field_mapping import get_ardupilot_mapping
 from .field_mapping.fc_json_2_1 import fc_json_2_1_io_info
@@ -81,7 +78,8 @@ class Flight(object):
             Args:
                 log_path (str): [description]
         """
-        
+        from ardupilot_log_reader.reader import Ardupilot
+
         _field_request = ['POS', 'ATT', 'ACC', 'GYRO', 'IMU', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
         if isinstance(log_path, Path):
             log_path = str(log_path)
