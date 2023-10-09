@@ -88,6 +88,7 @@ class Fields(object):
     def to_dict():
         return {field.name: field.names for field in _field_list}
 
+    
 
 class MappedField(object):
     def __init__(self, field, position, name, unit):

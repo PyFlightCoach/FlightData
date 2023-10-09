@@ -40,8 +40,8 @@ class Flight(object):
     def __getattr__(self, name):
         if name in Fields.all_names:
             return self.data[name]
-        if name.upper() in fdict.keys():
-            return self.read_fields(fdict[name.upper()])
+        if name in fdict.keys():
+            return self.data[fdict[name]]
 
     def __getitem__(self, sli):
         if isinstance(sli, int) or isinstance(sli, float):
