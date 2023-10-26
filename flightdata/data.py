@@ -80,7 +80,7 @@ class Flight(object):
         """
         from ardupilot_log_reader.reader import Ardupilot
 
-        _field_request = ['POS', 'ATT', 'ACC', 'GYRO', 'IMU', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
+        _field_request = ['XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 'XKF2', 'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
         if isinstance(log_path, Path):
             log_path = str(log_path)
         _parser = Ardupilot(log_path, types=_field_request+list(args))#,zero_time_base=True)
