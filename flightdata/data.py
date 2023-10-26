@@ -9,7 +9,7 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program. If not, see <http://www.gnu.org/licenses/>.
 """
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Self
 import numpy as np
 import pandas as pd
 from importlib.util import find_spec
@@ -24,13 +24,13 @@ from pathlib import Path
 fdict = Fields.to_dict()
 
 class Flight(object):
-    def __init__(self, data, parameters: List = None, zero_time_offset: float = 0):
+    def __init__(self, data: pd.DataFrame, parameters: list = None, zero_time_offset: float = 0, origin=None):
         self.data = data
         self.parameters = parameters
         self.zero_time = self.data.index[0] + zero_time_offset
         self.data.index = self.data.index - self.data.index[0]
         #self.data.index = np.round(self.data.index,3)
-        self._origin = None
+        self._origin = origin
 
     def flying_only(self, minalt=5, minv=10):
         vs = abs(Point(self.read_fields(Fields.VELOCITY)))
@@ -49,15 +49,47 @@ class Flight(object):
         else:
             return Flight(self.data.loc[sli], self.parameters, self.zero_time)
 
+    def __len__(self):
+        return len(self.data)
+
     def slice_raw_t(self, sli):
-        
         return Flight(
-            self.data.set_index("time_flight", drop=False).loc[sli].set_index("time_index"), 
+            self.data.reset_index().set_index('time_flight', drop=False).loc[sli].set_index("time_index"), 
             self.parameters, 
             self.zero_time
         )
-        
     
+    @staticmethod
+    def synchronise(fls: list[Self]) -> list[Self]:
+        start_t = max([fl.time_flight.iloc[0] for fl in fls])
+        end_t = min([fl.time_flight.iloc[-1] for fl in fls])
+        if end_t < start_t:
+            raise Exception('These flights do not overlap')
+        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_flight
+
+        flos = []
+        for fl in fls:
+            flos.append(Flight(
+                pd.merge_asof(
+                    otf, 
+                    fl.data.reset_index(), 
+                    on='time_flight'
+                ).set_index('time_index'),
+                fl.parameters,
+                fl.zero_time,
+                fl.origin
+            ))
+
+        return flos
+
+    def copy(self):
+        return Flight(
+            self.data.copy(),
+            self.parameters.copy() if self.parameters else None,
+            self.zero_time,
+            self.origin
+        )
+
     def to_csv(self, filename):
         self.data.to_csv(filename)
         return filename
