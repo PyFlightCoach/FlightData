@@ -61,6 +61,10 @@ class Flight(object):
     
     @staticmethod
     def synchronise(fls: list[Self]) -> list[Self]:
+        """Take a list of overlapping flights and return a list of flights with
+        identical time indexes. All Indexes will be equal to the portion of the first
+        flights index that overlaps all the other flights.
+        """
         start_t = max([fl.time_flight.iloc[0] for fl in fls])
         end_t = min([fl.time_flight.iloc[-1] for fl in fls])
         if end_t < start_t:
