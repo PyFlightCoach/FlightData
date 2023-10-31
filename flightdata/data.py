@@ -12,7 +12,7 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 from typing import Self
 import numpy as np
 import pandas as pd
-from .fields import fields, ureg
+from .fields import fields, Field
 from geometry import GPS, Point, Quaternion, PX
 from pathlib import Path
 
@@ -25,17 +25,15 @@ class Flight(object):
         self._origin = origin
 
     def flying_only(self, minalt=5, minv=10):
-        vs = abs(Point(self.read_fields(Fields.VELOCITY)))
-        above_ground = self.data.loc[(self.data.position_z <= -minalt) & (vs > minv)]
+        vs = abs(Point(self.velocity))
+        above_ground = self.data.loc[(self.gps_alt <= -minalt) & (vs > minv)]
         return self[above_ground.index[0]:above_ground.index[-1]]
 
     def __getattr__(self, name):
-        if name in fields.data:
-            return self.data[name]
-        elif name in fields.columns:
-            return self.data[name]
-        else:
-            raise AttributeError(f"Unknown column name: {name}")
+        cols = getattr(fields, name)
+        if isinstance(cols, Field):
+            cols = [cols]
+        return self.data.loc[:, [f.column for f in cols]]
 
     def __getitem__(self, sli):
         if isinstance(sli, int) or isinstance(sli, float):
@@ -53,33 +51,6 @@ class Flight(object):
             self.zero_time
         )
     
-    @staticmethod
-    def synchronise(fls: list[Self]) -> list[Self]:
-        """Take a list of overlapping flights and return a list of flights with
-        identical time indexes. All Indexes will be equal to the portion of the first
-        flights index that overlaps all the other flights.
-        """
-        start_t = max([fl.time_flight.iloc[0] for fl in fls])
-        end_t = min([fl.time_flight.iloc[-1] for fl in fls])
-        if end_t < start_t:
-            raise Exception('These flights do not overlap')
-        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_flight
-
-        flos = []
-        for fl in fls:
-            flos.append(Flight(
-                pd.merge_asof(
-                    otf, 
-                    fl.data.reset_index(), 
-                    on='time_flight'
-                ).set_index('time_index'),
-                fl.parameters,
-                fl.zero_time,
-                fl.origin
-            ))
-
-        return flos
-
     def copy(self):
         return Flight(
             self.data.copy(),
@@ -99,63 +70,202 @@ class Flight(object):
         return Flight(data)
 
     @staticmethod
-    def from_log(log_path, mapping=None):
+    def from_log(log_path):
         """Constructor from an ardupilot bin file.
             fields are renamed and units converted to the tool fields defined in ./fields.py
             The input fields, read from the log are specified in ./mapping 
-
-            Args:
-                log_path (str): [description]
+            # ref https://github.com/ArduPilot/ardupilot/blob/master/ArduPlane/Log.cpp
         """
         from ardupilot_log_reader.reader import Ardupilot
 
         if isinstance(log_path, Path):
             log_path = str(log_path)
-        _parser = Ardupilot(log_path, types=[
-            'XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 
-            'XKF2', 'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
+        parser = Ardupilot(log_path, types=[
+            'XKF1', 'XKF2', 'NKF1', 'NKF2', 
+            'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
             'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
-            'RPM', 'MAG', 'BAT', 'BAT2'])
+            'RPM', 'MAG', 'BAT', 'BAT2', 'VEL'])
 
-        df = pd.DataFrame(columns=fields.columns)
+        dfs = []
 
-        ekf = _parser.dfs['XKF1']
-        if 'XKF1C' in ekf.columns:
-            ekf = ekf.loc[ekf.C == 0]
+        if parser.parms['AHRS_EKF_TYPE'] == 2:
+            ekf1 = 'NKF1'
+            ekf2 = 'NKF2'
+        else:
+            ekf1 = 'XKF1'
+            ekf2 = 'XKF2'
 
+        if ekf1 in parser.dfs:
+            ekf1 = parser.dfs[ekf1]
+            ekf1 = ekf1.loc[ekf1.C==0]
+        else:
+            ekf1 = None
+
+        if ekf2 in parser.dfs:
+            ekf2 = parser.dfs[ekf2]
+            ekf2 = ekf2.loc[ekf2.C==0]
+        else:
+            ekf2 = None
+
+
+        if 'ATT' in parser.dfs:       
+            dfs.append(Flight.build_cols(
+                time_actual = parser.ATT.timestamp,
+                time_flight = parser.ATT.TimeUS / 1e9,
+                attitude_roll = np.radians(parser.ATT.Roll),
+                attitude_pitch = np.radians(parser.ATT.Pitch),
+                attitude_yaw = np.radians(parser.ATT.Yaw),
+            ))
+                
+        if 'POS' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.POS.timestamp,
+                gps_latitude = parser.POS.Lat,
+                gps_longitude = parser.POS.Lng,
+                gps_altitude = parser.POS.Alt
+            ))
         
+        if not ekf1 is None: 
+            dfs.append(Flight.build_cols(
+                time_actual = ekf1.timestamp,
+                position_x = ekf1.PN,
+                position_y = ekf1.PE,
+                position_z = ekf1.PD,
+                velocity_x = ekf1.VN,
+                velocity_y = ekf1.VE,
+                velocity_z = ekf1.VD,
+            ))
 
+        if not ekf2 is None:
+            dfs.append(Flight.build_cols(
+                time_actual = ekf2.timestamp,
+                wind_x = ekf2.VWN,
+                wind_y = ekf2.VWE,
+            ))
+        
+        if 'IMU' in parser.dfs:
 
-        pass
-    
-    def append_cols(self):
-        pass
+            if not ekf1 is None:  # get gyro biases
+                gyro_bias_x = np.radians(ekf1.GX) / 100
+                gyro_bias_y = np.radians(ekf1.GY) / 100
+                gyro_bias_z = np.radians(ekf1.GZ) / 100
+            else:
+                gyro_bias_x = 0
+                gyro_bias_y = 0
+                gyro_bias_z = 0
 
+            if not ekf2 is None:
+                acc_bias_x = ekf2.AX / 100
+                acc_bias_y = ekf2.AY / 100
+                acc_bias_z = ekf2.AZ / 100
+            else:
+                acc_bias_x = 0
+                acc_bias_y = 0
+                acc_bias_z = 0
+
+            dfs.append(Flight.build_cols(
+                time_actual = parser.IMU.timestamp,
+                acceleration_x = parser.IMU.AccX + acc_bias_x,
+                acceleration_y = parser.IMU.AccY + acc_bias_y,
+                acceleration_z = parser.IMU.AccZ + acc_bias_z,
+                axisrate_roll = parser.IMU.GyrX + gyro_bias_x,
+                axisrate_pitch = parser.IMU.GyrY + gyro_bias_y,
+                axisrate_yaw = parser.IMU.GyrZ + gyro_bias_z,
+            ))
+        
+        if 'MAG' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.MAG.timestamp,
+                magnetometer_x = parser.MAG.MagX,
+                magnetometer_y = parser.MAG.MagY,
+                magnetometer_z = parser.MAG.MagZ
+            ))
+        
+        if 'BARO' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.BARO.timestamp,
+                air_pressure = parser.BARO.Press,
+                air_temperature = parser.BARO.Temp,
+                air_altitude = parser.BARO.Alt,
+            ))
+
+        if 'RCIN' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.RCIN.timestamp,
+                **{f'rcin_{i}': parser.RCIN[f'C{i}'] for i in range(20) if f'C{i}' in parser.RCIN.columns}
+            ))
+        
+        if 'RCOU' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.RCOU.timestamp,
+                **{f'rcout_{i}': parser.RCOU[f'C{i}'] for i in range(20) if f'C{i}' in parser.RCOU.columns}
+            ))
+
+        if 'MODE' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.MODE.timestamp,
+                flightmode_a = parser.MODE.Mode,
+                flightmode_b = parser.MODE.ModeNum,
+                flightmode_c = parser.MODE.Rsn,
+            ))
+        
+        if 'BAT' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.BAT.timestamp,
+                **{'motor_voltage{i}': parser.BAT[f'Volt{i}'] for i in range(8) if f'Volt{i}' in parser.BAT.columns},
+                **{'motor_current{i}': parser.BAT[f'Curr{i}'] for i in range(8) if f'Curr{i}' in parser.BAT.columns},
+            ))
+
+        if 'RPM' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.RPM.timestamp,
+                **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(8) if f'rpm{i}' in parser.RPM.columns},
+            ))
+
+        dfout = dfs[0]
+
+        for df in dfs[1:]:
+            dfout = pd.merge_asof(dfout, df, on='time_actual')
+        
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms)
 
     @staticmethod
-    def convert_df(fulldf, ioinfo, parms):
-        # expand the dataframe to include all the columns listed in the io_info instance
-        input_data = fulldf.get(
-            list(
-                set(fulldf.columns.to_list()) & set(ioinfo.io_names)
-        ))
+    def synchronise(fls: list[Self]) -> list[Self]:
+        """Take a list of overlapping flights and return a list of flights with
+        identical time indexes. All Indexes will be equal to the portion of the first
+        flights index that overlaps all the other flights.
+        """
+        start_t = max([fl.time_actual.iloc[0] for fl in fls])
+        end_t = min([fl.time_actual.iloc[-1] for fl in fls])
+        if end_t < start_t:
+            raise Exception('These flights do not overlap')
+        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_flight
 
-        # Generate a reordered io instance to match the columns in the dataframe
-        _fewer_io_info = ioinfo.subset(input_data.columns.to_list())
+        flos = []
+        for fl in fls:
+            flos.append(Flight(
+                pd.merge_asof(
+                    otf, 
+                    fl.data.reset_index(), 
+                    on='time_flight'
+                ).set_index('time_index'),
+                fl.parameters,
+                fl.zero_time,
+                fl.origin
+            ))
 
-        _data = input_data * _fewer_io_info.factors_to_base  # do the unit conversion
-        _data.columns = _fewer_io_info.base_names  # rename the columns
+        return flos
+    
 
-        # add the missing tool columns
-        missing_cols = pd.DataFrame(
-            columns=list(set(Fields.all_names) - set(_data.columns.to_list())) + [Fields.TIME.names[0]]
-        )
-        output_data = _data.merge(missing_cols, on=Fields.TIME.names[0], how='left')
+    @staticmethod
+    def build_cols(**kwargs):
+        df = pd.DataFrame(columns=list(fields.data.keys()))
+        for k, v in kwargs.items():
+            df[k] = v
+        return df.dropna(axis=1, how='all')
 
-        output_data = output_data.set_index(Fields.TIME.names[0], drop=False)
-        output_data.index.name = 'time_index'
-
-        return Flight(output_data, parms)
+    def append_cols(self):
+        pass
 
     @staticmethod
     def from_fc_json(fc_json):

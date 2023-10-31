@@ -34,43 +34,37 @@ class Fields:
             data = {f.column: f for f in data}
         self.data = data
         self.groups = {}
-        for k, v in data.items():
+        for v in data.values():
             if not v.field in self.groups:
-                self.groups[v.field] = {}
-            self.groups[v.field][v.name] = v
-        
+                self.groups[v.field] = []
+            self.groups[v.field].append(v)
         
     def __getattr__(self, name):
-        if name in self.data:
+        if name in self.groups:
+            return self.groups[name]
+        elif name in self.data:
             return self.data[name]
-        if '_' in name:
-            vs = name.split('_')
-            return getattr(getattr(self, vs[0]), vs[1])
         else:
             raise AttributeError(f'Field {name} not found')
 
 
-    
-fields = Fields(list(
+fields = Fields([
         Field('time_flight', ureg.second, 'time since the start of the flight'),
         Field('time_actual', ureg.second, 'time since epoch'),
         *[Field(f'rcin_{i}', ureg.second) for i in range(8)],
         *[Field(f'rcout_{i}', ureg.second) for i in range(14)],
-        Field('flightmode', 1),
+        Field('flightmode_a', 1),
+        Field('flightmode_b', 1),
+        Field('flightmode_c', 1),
         Field('position_x', ureg.meter, 'position in the north direction'),
         Field('position_y', ureg.meter, 'position in the east direction'),
         Field('position_z', ureg.meter, 'position in the down direction'),
         Field('gps_latitude', ureg.degree, 'latitude'),
         Field('gps_longitude', ureg.degree, 'longitude'),
-        Field('altitude_gps', ureg.meter, 'altitude from gps'),
-        Field('altitude_baro', ureg.meter, 'altitude from baro'),
+        Field('gps_altitude', ureg.meter, 'altitude'),
         Field('attitude_roll', ureg.radian, 'roll angle'),
         Field('attitude_pitch', ureg.radian, 'pitch angle'),
         Field('attitude_yaw', ureg.radian, 'yaw angle'),
-        Field('quaternion_w', 1),
-        Field('quaternion_x', 1),
-        Field('quaternion_y', 1),
-        Field('quaternion_z', 1),
         Field('axisrate_roll', ureg.radian / ureg.second, 'roll rate'),
         Field('axisrate_pitch', ureg.radian / ureg.second, 'pitch rate'),
         Field('axisrate_yaw', ureg.radian / ureg.second, 'yaw rate'),
@@ -80,6 +74,7 @@ fields = Fields(list(
         Field('air_speed', ureg.meter / ureg.second, 'airspeed'),
         Field('air_pressure', ureg.pascal, 'air pressure'),
         Field('air_temperature', ureg.kelvin, 'air temperature'),
+        Field('air_altitude', ureg.meter, 'altitude from baro'),
         Field('acceleration_x', ureg.meter / ureg.second / ureg.second, 'Body X Acceleration'),
         Field('acceleration_y', ureg.meter / ureg.second / ureg.second, 'Body Y Acceleration'),
         Field('acceleration_z', ureg.meter / ureg.second / ureg.second, 'Body Z Acceleration'),
@@ -91,5 +86,5 @@ fields = Fields(list(
         Field('magnetometer_x', 1, 'Body magnetic field strength X'),
         Field('magnetometer_y', 1, 'Body magnetic field strength Y'),
         Field('magnetometer_z', 1, 'Body magnetic field strength Z'),
-))
+])
 
