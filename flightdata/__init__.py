@@ -1,2 +1,2 @@
-from .fields import Fields, CIDTypes
+from .fields import Fields
 from .data import Flight

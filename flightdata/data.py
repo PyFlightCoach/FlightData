@@ -9,27 +9,19 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program. If not, see <http://www.gnu.org/licenses/>.
 """
-from typing import List, Dict, Union, Self
+from typing import Self
 import numpy as np
 import pandas as pd
-from importlib.util import find_spec
-from enum import Enum
-from .fields import Fields, CIDTypes
-from .field_mapping import get_ardupilot_mapping
-from .field_mapping.fc_json_2_1 import fc_json_2_1_io_info
+from .fields import fields, ureg
 from geometry import GPS, Point, Quaternion, PX
 from pathlib import Path
 
 
-fdict = Fields.to_dict()
-
 class Flight(object):
-    def __init__(self, data: pd.DataFrame, parameters: list = None, zero_time_offset: float = 0, origin=None):
+    def __init__(self, data: pd.DataFrame, parameters: list = None, origin=None):
         self.data = data
         self.parameters = parameters
-        self.zero_time = self.data.index[0] + zero_time_offset
         self.data.index = self.data.index - self.data.index[0]
-        #self.data.index = np.round(self.data.index,3)
         self._origin = origin
 
     def flying_only(self, minalt=5, minv=10):
@@ -38,16 +30,18 @@ class Flight(object):
         return self[above_ground.index[0]:above_ground.index[-1]]
 
     def __getattr__(self, name):
-        if name in Fields.all_names:
+        if name in fields.data:
             return self.data[name]
-        if name in fdict.keys():
-            return self.data[fdict[name]]
+        elif name in fields.columns:
+            return self.data[name]
+        else:
+            raise AttributeError(f"Unknown column name: {name}")
 
     def __getitem__(self, sli):
         if isinstance(sli, int) or isinstance(sli, float):
             return self.data.iloc[self.data.index.get_loc(sli)]
         else:
-            return Flight(self.data.loc[sli], self.parameters, self.zero_time)
+            return Flight(self.data.loc[sli], self.parameters, self.origin)
 
     def __len__(self):
         return len(self.data)
@@ -90,7 +84,6 @@ class Flight(object):
         return Flight(
             self.data.copy(),
             self.parameters.copy() if self.parameters else None,
-            self.zero_time,
             self.origin
         )
 
@@ -101,12 +94,12 @@ class Flight(object):
     @staticmethod
     def from_csv(filename):
         data = pd.read_csv(filename)
-        data.index = data[Fields.TIME.names[0]].copy()
+        data.index = data['time_flight'].copy()
         data.index.name = 'time_index'
         return Flight(data)
 
     @staticmethod
-    def from_log(log_path, *args):
+    def from_log(log_path, mapping=None):
         """Constructor from an ardupilot bin file.
             fields are renamed and units converted to the tool fields defined in ./fields.py
             The input fields, read from the log are specified in ./mapping 
@@ -116,17 +109,28 @@ class Flight(object):
         """
         from ardupilot_log_reader.reader import Ardupilot
 
-        _field_request = ['XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 'XKF2', 'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 'RPM', 'MAG', 'BAT', 'BAT2']
         if isinstance(log_path, Path):
             log_path = str(log_path)
-        _parser = Ardupilot(log_path, types=_field_request+list(args))#,zero_time_base=True)
-        fulldf = _parser.join_logs(_field_request)
+        _parser = Ardupilot(log_path, types=[
+            'XKF1', 'XKQ1', 'NKF1', 'NKQ1', 'NKF2', 
+            'XKF2', 'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
+            'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
+            'RPM', 'MAG', 'BAT', 'BAT2'])
+
+        df = pd.DataFrame(columns=fields.columns)
+
+        ekf = _parser.dfs['XKF1']
+        if 'XKF1C' in ekf.columns:
+            ekf = ekf.loc[ekf.C == 0]
+
         
-        return Flight.convert_df(
-            fulldf,
-            get_ardupilot_mapping(_parser.parms['AHRS_EKF_TYPE']),
-            _parser.parms
-        )
+
+
+        pass
+    
+    def append_cols(self):
+        pass
+
 
     @staticmethod
     def convert_df(fulldf, ioinfo, parms):
