@@ -9,12 +9,14 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program. If not, see <http://www.gnu.org/licenses/>.
 """
-from typing import Self
+from typing import Self, Union, IO
 import numpy as np
 import pandas as pd
 from .fields import fields, Field
 from geometry import GPS, Point, Quaternion, PX
 from pathlib import Path
+from time import time
+from json import load
 
 
 class Flight(object):
@@ -22,18 +24,14 @@ class Flight(object):
         self.data = data
         self.parameters = parameters
         self.data.index = self.data.index - self.data.index[0]
-        self._origin = origin
-
-    def flying_only(self, minalt=5, minv=10):
-        vs = abs(Point(self.velocity))
-        above_ground = self.data.loc[(self.gps_alt <= -minalt) & (vs > minv)]
-        return self[above_ground.index[0]:above_ground.index[-1]]
+        self.origin = origin
 
     def __getattr__(self, name):
         cols = getattr(fields, name)
         if isinstance(cols, Field):
-            cols = [cols]
-        return self.data.loc[:, [f.column for f in cols]]
+            return self.data[cols.column]
+        else:
+            return self.data.loc[:, [f.column for f in cols]]
 
     def __getitem__(self, sli):
         if isinstance(sli, int) or isinstance(sli, float):
@@ -46,9 +44,11 @@ class Flight(object):
 
     def slice_raw_t(self, sli):
         return Flight(
-            self.data.reset_index().set_index('time_flight', drop=False).loc[sli].set_index("time_index"), 
+            self.data.reset_index(drop=True)
+                .set_index('time_actual', drop=False)
+                    .loc[sli].set_index("time_flight", drop=False), 
             self.parameters, 
-            self.zero_time
+            self.origin
         )
     
     def copy(self):
@@ -70,12 +70,77 @@ class Flight(object):
         return Flight(data)
 
     @staticmethod
-    def from_log(log_path):
-        """Constructor from an ardupilot bin file.
-            fields are renamed and units converted to the tool fields defined in ./fields.py
-            The input fields, read from the log are specified in ./mapping 
-            # ref https://github.com/ArduPilot/ardupilot/blob/master/ArduPlane/Log.cpp
+    def build_cols(**kwargs):
+        df = pd.DataFrame(columns=list(fields.data.keys()))
+        for k, v in kwargs.items():
+            df[k] = v
+        return df.dropna(axis=1, how='all')
+
+    def gps_ready_time(self):
+        gps = self.gps
+        gps = gps.loc[~(gps==0).all(axis=1)].dropna()
+        return gps.iloc[0].name
+    
+    def imu_ready_time(self):
+        qs = Quaternion.from_euler(Point(self.attitude))
+        df = qs.transform_point(PX(1)).to_pandas(index=self.data.index)
+        att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[0].name
+
+        return max(self.gps_ready_time(), att_ready)
+
+    @staticmethod
+    def synchronise(fls: list[Self]) -> list[Self]:
+        """Take a list of overlapping flights and return a list of flights with
+        identical time indexes. All Indexes will be equal to the portion of the first
+        flights index that overlaps all the other flights.
         """
+        start_t = max([fl.time_actual.iloc[0] for fl in fls])
+        end_t = min([fl.time_actual.iloc[-1] for fl in fls])
+        if end_t < start_t:
+            raise Exception('These flights do not overlap')
+        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_flight
+
+        flos = []
+        for fl in fls:
+            flos.append(Flight(
+                pd.merge_asof(
+                    otf, 
+                    fl.data.reset_index(), 
+                    on='time_flight'
+                ).set_index('time_index'),
+                fl.parameters,
+                fl.zero_time,
+                fl.origin
+            ))
+
+        return flos
+
+    @property
+    def duration(self):
+        return self.data.tail(1).index.item()
+
+
+    def flying_only(self, minalt=5, minv=10):
+        vs = abs(Point(self.velocity))
+        above_ground = self.data.loc[(self.gps_altitude >= minalt) & (vs > minv)]
+
+        return self[above_ground.index[0]:above_ground.index[-1]]
+
+
+    def unique_identifier(self) -> str:
+        """Return a string to identify this flight that is very unlikely to be the same as a different flight
+
+        Returns:
+            str: flight identifier
+        """
+        _ftemp = Flight(self.data.loc[self.data.position_z < -10])
+        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.data[0])
+
+
+
+    @staticmethod
+    def from_log(log_path):
+        """Constructor from an ardupilot bin file."""
         from ardupilot_log_reader.reader import Ardupilot
 
         if isinstance(log_path, Path):
@@ -84,7 +149,7 @@ class Flight(object):
             'XKF1', 'XKF2', 'NKF1', 'NKF2', 
             'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
             'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
-            'RPM', 'MAG', 'BAT', 'BAT2', 'VEL'])
+            'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN'])
 
         dfs = []
 
@@ -111,7 +176,7 @@ class Flight(object):
         if 'ATT' in parser.dfs:       
             dfs.append(Flight.build_cols(
                 time_actual = parser.ATT.timestamp,
-                time_flight = parser.ATT.TimeUS / 1e9,
+                time_flight = parser.ATT.TimeUS / 1e6,
                 attitude_roll = np.radians(parser.ATT.Roll),
                 attitude_pitch = np.radians(parser.ATT.Pitch),
                 attitude_yaw = np.radians(parser.ATT.Yaw),
@@ -128,19 +193,20 @@ class Flight(object):
         if not ekf1 is None: 
             dfs.append(Flight.build_cols(
                 time_actual = ekf1.timestamp,
-                position_x = ekf1.PN,
-                position_y = ekf1.PE,
-                position_z = ekf1.PD,
-                velocity_x = ekf1.VN,
-                velocity_y = ekf1.VE,
-                velocity_z = ekf1.VD,
+                position_N = ekf1.PN,
+                position_E = ekf1.PE,
+                position_D = ekf1.PD,
+                velocity_N = ekf1.VN,
+                velocity_E = ekf1.VE,
+                velocity_D = ekf1.VD,
             ))
+
 
         if not ekf2 is None:
             dfs.append(Flight.build_cols(
                 time_actual = ekf2.timestamp,
-                wind_x = ekf2.VWN,
-                wind_y = ekf2.VWE,
+                wind_N = ekf2.VWN,
+                wind_E = ekf2.VWE,
             ))
         
         if 'IMU' in parser.dfs:
@@ -222,138 +288,45 @@ class Flight(object):
                 **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(8) if f'rpm{i}' in parser.RPM.columns},
             ))
 
+        if 'ORGN' in parser.dfs:
+            origin = GPS(parser.ORGN.Lat[0], parser.ORGN.Lng[0])
+        else:
+            origin = None
+            #GPS(*self.read_fields(Fields.GLOBALPOSITION).loc[self.gps_ready_time()])
+
         dfout = dfs[0]
 
         for df in dfs[1:]:
             dfout = pd.merge_asof(dfout, df, on='time_actual')
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms)
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin)
 
     @staticmethod
-    def synchronise(fls: list[Self]) -> list[Self]:
-        """Take a list of overlapping flights and return a list of flights with
-        identical time indexes. All Indexes will be equal to the portion of the first
-        flights index that overlaps all the other flights.
-        """
-        start_t = max([fl.time_actual.iloc[0] for fl in fls])
-        end_t = min([fl.time_actual.iloc[-1] for fl in fls])
-        if end_t < start_t:
-            raise Exception('These flights do not overlap')
-        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_flight
-
-        flos = []
-        for fl in fls:
-            flos.append(Flight(
-                pd.merge_asof(
-                    otf, 
-                    fl.data.reset_index(), 
-                    on='time_flight'
-                ).set_index('time_index'),
-                fl.parameters,
-                fl.zero_time,
-                fl.origin
-            ))
-
-        return flos
-    
-
-    @staticmethod
-    def build_cols(**kwargs):
-        df = pd.DataFrame(columns=list(fields.data.keys()))
-        for k, v in kwargs.items():
-            df[k] = v
-        return df.dropna(axis=1, how='all')
-
-    def append_cols(self):
-        pass
-
-    @staticmethod
-    def from_fc_json(fc_json):
-        df = pd.DataFrame.from_dict(fc_json['data'])
-        df.insert(0, "timestamp", df['time'] * 1E-6)
+    def from_fc_json(fc_json: Union[str, dict, IO]):
         
-        flight = Flight.convert_df(df, fc_json_2_1_io_info, fc_json['parameters'])
-        flight._origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
-        return flight
-
-    @property
-    def duration(self):
-        return self.data.tail(1).index.item()
-
-    def read_row_by_id(self, names, index):
-        return list(map(self.data.iloc[index].to_dict().get, names))
-
-    def read_closest(self, names, time):
-        """Get the row closest to the requested time.
-
-        :param names: list of columns to return
-        :param time: desired time in microseconds
-        :return: dict[column names, values]
-        """
-        return self.read_row_by_id(names, self.data.index.get_loc(time, method='nearest'))
-
-    @property
-    def column_names(self):
-        return self.data.columns.to_list()
-
-    def read_fields(self, fields):
-        try:
-            return self.data[Fields.some_names(fields)]
-        except KeyError:
-            return pd.DataFrame()
-
-    def read_numpy(self, fields):
-        return self.read_fields(fields).to_numpy().T
-
-    def read_tuples(self, fields):
-        return tuple(self.read_numpy(fields))
-
-    def read_field_tuples(self, fields):
-        return tuple(self.read_numpy(fields))
-
-    @property
-    def origin(self) -> GPS:
-        """the latitude and longitude of the origin (first pos in log)
-
-        Returns:
-            dict: origin GPS
-        """
-        if self._origin is None:
-            self._origin = GPS(*self.read_fields(Fields.GLOBALPOSITION).loc[self.gps_ready_time()])
-        return self._origin
-
-    def gps_ready_time(self):
-        gps = self.read_fields(Fields.GLOBALPOSITION)
-        gps = gps.loc[~(gps==0).all(axis=1)].dropna()
-        return gps.iloc[0].name
-
-    def imu_ready_time(self):
-        qs = Quaternion.from_euler(Point(self.read_fields(Fields.ATTITUDE)))
-        df = qs.transform_point(PX(1)).to_pandas(index=self.data.index)
-        att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[0].name
-
-        return max(self.gps_ready_time(), att_ready)
-
-    def unique_identifier(self) -> str:
-        """Return a string to identify this flight that is very unlikely to be the same as a different flight
-
-        Returns:
-            str: flight identifier
-        """
-        _ftemp = Flight(self.data.loc[self.data.position_z < -10])
-        return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.data[0])
-
-    def describe(self):
-        info = dict(
-            duration = self.duration,
-            origin_gps = self.origin.to_dict(),
-            last_gps_ = GPS(*self.read_fields(Fields.GLOBALPOSITION).iloc[-1]).to_dict(),
-            average_gps = GPS(*self.read_fields(Fields.GLOBALPOSITION).mean()).to_dict(),
-            bb_max = Point(self.read_fields(Fields.POSITION)).max().to_dict(),
-            bb_min = Point(self.read_fields(Fields.POSITION)).min().to_dict(),
+        if isinstance(fc_json, str):
+            with open(fc_json, "r") as f:
+                fc_json = load(f)
+        elif isinstance(fc_json, IO):
+            fc_json = load(f)
+        
+        df = pd.DataFrame.from_dict(fc_json['data'], dtype=float)
+                
+        df = Flight.build_cols(
+            time_actual = df['time']/1e6 + int(time()),
+            time_flight = df['time']/1e6,
+            attitude_roll = np.radians(df['r']),
+            attitude_pitch = np.radians(df['p']),
+            attitude_yaw = np.radians(df['yw']),
+            gps_latitude = df['N'],
+            gps_longitude = df['E'],
+            gps_altitude = df['D'],
+            velocity_N = df['VN'],
+            velocity_E = df['VE'],
+            velocity_D = df['VD'],
+            wind_N = df['wN'] if 'wN' in df.columns else None,
+            wind_E = df['wE'] if 'wE' in df.columns else None,
         )
-
-        return pd.json_normalize(info, sep='_')
-
-    def has_pitot(self):
-        return not np.all(self.read_fields(Fields.AIRSPEED).iloc[:,0] == 0)
+        
+        origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
+        return Flight(df.set_index('time_flight', drop=False), None, origin)

@@ -1,27 +1,11 @@
-"""
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-You should have received a copy of the GNU General Public License along with
-this program. If not, see <http://www.gnu.org/licenses/>.
-"""
 
-
-from pint import UnitRegistry, DimensionalityError
 from typing import Union, Self
 from itertools import chain
 
-ureg = UnitRegistry()
-
 
 class Field:
-    def __init__(self, column: str, unit: ureg.Unit, description: str = ''):
+    def __init__(self, column: str, description: str = ''):
         self.column = column
-        self.unit = unit
         self.description = description
         _sp = column.split('_')
         self.field = _sp[0]
@@ -49,42 +33,42 @@ class Fields:
 
 
 fields = Fields([
-        Field('time_flight', ureg.second, 'time since the start of the flight'),
-        Field('time_actual', ureg.second, 'time since epoch'),
-        *[Field(f'rcin_{i}', ureg.second) for i in range(8)],
-        *[Field(f'rcout_{i}', ureg.second) for i in range(14)],
-        Field('flightmode_a', 1),
-        Field('flightmode_b', 1),
-        Field('flightmode_c', 1),
-        Field('position_x', ureg.meter, 'position in the north direction'),
-        Field('position_y', ureg.meter, 'position in the east direction'),
-        Field('position_z', ureg.meter, 'position in the down direction'),
-        Field('gps_latitude', ureg.degree, 'latitude'),
-        Field('gps_longitude', ureg.degree, 'longitude'),
-        Field('gps_altitude', ureg.meter, 'altitude'),
-        Field('attitude_roll', ureg.radian, 'roll angle'),
-        Field('attitude_pitch', ureg.radian, 'pitch angle'),
-        Field('attitude_yaw', ureg.radian, 'yaw angle'),
-        Field('axisrate_roll', ureg.radian / ureg.second, 'roll rate'),
-        Field('axisrate_pitch', ureg.radian / ureg.second, 'pitch rate'),
-        Field('axisrate_yaw', ureg.radian / ureg.second, 'yaw rate'),
-        *[Field(f'motor_voltage{i}', ureg.volt) for i in range(8)],
-        *[Field(f'motor_current{i}', ureg.amp) for i in range(8)],
-        *[Field(f'motor_rpm{i}', 1 / ureg.minute) for i in range(8)],
-        Field('air_speed', ureg.meter / ureg.second, 'airspeed'),
-        Field('air_pressure', ureg.pascal, 'air pressure'),
-        Field('air_temperature', ureg.kelvin, 'air temperature'),
-        Field('air_altitude', ureg.meter, 'altitude from baro'),
-        Field('acceleration_x', ureg.meter / ureg.second / ureg.second, 'Body X Acceleration'),
-        Field('acceleration_y', ureg.meter / ureg.second / ureg.second, 'Body Y Acceleration'),
-        Field('acceleration_z', ureg.meter / ureg.second / ureg.second, 'Body Z Acceleration'),
-        Field('velocity_x', ureg.meter / ureg.second, 'Body X Velocity'),
-        Field('velocity_y', ureg.meter / ureg.second, 'Body Y Velocity'),
-        Field('velocity_z', ureg.meter / ureg.second, 'Body Z Velocity'),
-        Field('wind_x', ureg.meter / ureg.second, 'Wind N'),
-        Field('wind_y', ureg.meter / ureg.second, 'Wind E'),
-        Field('magnetometer_x', 1, 'Body magnetic field strength X'),
-        Field('magnetometer_y', 1, 'Body magnetic field strength Y'),
-        Field('magnetometer_z', 1, 'Body magnetic field strength Z'),
+        Field('time_flight', 'time since the start of the flight, seconds'),
+        Field('time_actual', 'time since epoch, seconds'),
+        *[Field(f'rcin_{i}', 'ms') for i in range(8)],
+        *[Field(f'rcout_{i}', 'ms') for i in range(14)],
+        Field('flightmode_a'),
+        Field('flightmode_b'),
+        Field('flightmode_c'),
+        Field('position_N', 'distance from origin in the north direction, meters'),
+        Field('position_E', 'distance from origin in the east direction, meters'),
+        Field('position_D', 'distance from origin in the down direction, meters'),
+        Field('gps_latitude', 'latitude, degrees'),
+        Field('gps_longitude', 'longitude, degrees'),
+        Field('gps_altitude', 'altitude, meters'),
+        Field('attitude_roll', 'roll angle, radians'),
+        Field('attitude_pitch', 'pitch angle, radians'),
+        Field('attitude_yaw', 'yaw angle, radians'),
+        Field('axisrate_roll', 'roll rate, radians / second'),
+        Field('axisrate_pitch', 'pitch rate, radians / second'),
+        Field('axisrate_yaw', 'yaw rate, radians / second'),
+        *[Field(f'motor_voltage{i}', 'volts') for i in range(8)],
+        *[Field(f'motor_current{i}', 'amps') for i in range(8)],
+        *[Field(f'motor_rpm{i}', 'rpm') for i in range(8)],
+        Field('air_speed', 'airspeed, m/s'),
+        Field('air_pressure', 'air pressure, Pa'),
+        Field('air_temperature', 'air temperature, k'),
+        Field('air_altitude', 'altitude from baro, m'),
+        Field('acceleration_N', 'Body N Acceleration, m/s/s'),
+        Field('acceleration_E', 'Body E Acceleration, m/s/s'),
+        Field('acceleration_D', 'Body D Acceleration, m/s/s'),
+        Field('velocity_N', 'World N Velocity, m/s'),
+        Field('velocity_E', 'World E Velocity, m/s'),
+        Field('velocity_D', 'World D Velocity, m/s'),
+        Field('wind_N', 'Wind N, m/s'),
+        Field('wind_E', 'Wind E, m/s'),
+        Field('magnetometer_x', 'Body magnetic field strength X'),
+        Field('magnetometer_y', 'Body magnetic field strength Y'),
+        Field('magnetometer_z', 'Body magnetic field strength Z'),
 ])
 
