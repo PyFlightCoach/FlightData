@@ -27,12 +27,11 @@ class Flight(object):
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
         'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN']
     
-    def __init__(self, data: pd.DataFrame, parameters: list = None, origin=None):
+    def __init__(self, data: pd.DataFrame, parameters: list = None):
         self.data = data
         self.parameters = parameters
         self.data.index = self.data.index - self.data.index[0]
-        self.origin = origin
-
+        
     def __getattr__(self, name):
         cols = getattr(fields, name)
         if isinstance(cols, Field):
@@ -44,7 +43,7 @@ class Flight(object):
         if isinstance(sli, int) or isinstance(sli, float):
             return self.data.iloc[self.data.index.get_loc(sli)]
         else:
-            return Flight(self.data.loc[sli], self.parameters, self.origin)
+            return Flight(self.data.loc[sli], self.parameters)
 
     def __len__(self):
         return len(self.data)
@@ -54,15 +53,13 @@ class Flight(object):
             self.data.reset_index(drop=True)
                 .set_index('time_actual', drop=False)
                     .loc[sli].set_index("time_flight", drop=False), 
-            self.parameters, 
-            self.origin
+            self.parameters
         )
     
     def copy(self):
         return Flight(
             self.data.copy(),
-            self.parameters.copy() if self.parameters else None,
-            self.origin
+            self.parameters.copy() if self.parameters else None
         )
 
     def to_csv(self, filename):
@@ -101,9 +98,7 @@ class Flight(object):
                     fl.data.reset_index(), 
                     on='time_flight'
                 ).set_index('time_index'),
-                fl.parameters,
-                fl.zero_time,
-                fl.origin
+                fl.parameters
             ))
 
         return flos
@@ -112,13 +107,11 @@ class Flight(object):
     def duration(self):
         return self.data.tail(1).index.item()
 
-
     def flying_only(self, minalt=5, minv=10):
         vs = abs(Point(self.velocity))
         above_ground = self.data.loc[(self.gps_altitude >= minalt) & (vs > minv)]
 
         return self[above_ground.index[0]:above_ground.index[-1]]
-
 
     def unique_identifier(self) -> str:
         """Return a string to identify this flight that is very unlikely to be the same as a different flight
@@ -128,8 +121,6 @@ class Flight(object):
         """
         _ftemp = Flight(self.data.loc[self.data.position_z < -10])
         return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.data[0])
-
-
 
     @staticmethod
     def from_log(log:Union[Ardupilot, str]):
@@ -278,12 +269,6 @@ class Flight(object):
                 **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(8) if f'rpm{i}' in parser.RPM.columns},
             ))
 
-        if 'ORGN' in parser.dfs:
-            origin = GPS(parser.ORGN.Lat[0], parser.ORGN.Lng[0])
-        else:
-            origin = None
-            #GPS(*self.read_fields(Fields.GLOBALPOSITION).loc[self.gps_ready_time()])
-
         dfout = dfs[0]
 
         for df in dfs[1:]:
@@ -318,5 +303,4 @@ class Flight(object):
             wind_E = df['wE'] if 'wE' in df.columns else None,
         )
         
-        origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'])
-        return Flight(df.set_index('time_flight', drop=False), None, origin)
+        return Flight(df.set_index('time_flight', drop=False), None)
