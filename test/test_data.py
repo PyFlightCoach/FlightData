@@ -4,11 +4,18 @@ from io import open
 from json import load
 from pytest import fixture, approx, mark
 import numpy as np
+import pandas as pd
+from ardupilot_log_reader import Ardupilot
+
+@fixture(scope='session')
+def parser():
+    return Ardupilot('test/test_inputs/00000137.BIN',
+                     types=Flight.ardupilot_types)
 
 
 @fixture(scope='session')
-def fl():
-    return Flight.from_log('test/test_inputs/00000137.BIN')
+def fl(parser):
+    return Flight.from_log(parser)
 
 @fixture(scope='session')
 def fcj():
@@ -27,7 +34,7 @@ def test_to_from_csv(fl):
     fl.to_csv('temp.csv')
     flight2 = Flight.from_csv('temp.csv')
     os.remove('temp.csv')
-    assert flight2.duration == fl.duration
+    pd.testing.assert_frame_equal(fl.data, flight2.data)
     
 
 def test_from_fc_json(fcj):
@@ -77,3 +84,7 @@ def test_slice_raw_t(fl: Flight):
     assert isinstance(sli, Flight)
     assert "time_flight" in sli.data.columns
 
+def test_acceleration(fl: Flight):
+    acc = fl.acceleration_x
+
+    pass

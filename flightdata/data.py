@@ -17,9 +17,16 @@ from geometry import GPS, Point, Quaternion, PX
 from pathlib import Path
 from time import time
 from json import load
+from ardupilot_log_reader.reader import Ardupilot
 
 
 class Flight(object):
+    ardupilot_types = [
+        'XKF1', 'XKF2', 'NKF1', 'NKF2', 
+        'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
+        'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
+        'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN']
+    
     def __init__(self, data: pd.DataFrame, parameters: list = None, origin=None):
         self.data = data
         self.parameters = parameters
@@ -59,14 +66,12 @@ class Flight(object):
         )
 
     def to_csv(self, filename):
-        self.data.to_csv(filename)
+        self.data.to_csv(filename, index=False)
         return filename
 
     @staticmethod
     def from_csv(filename):
-        data = pd.read_csv(filename)
-        data.index = data['time_flight'].copy()
-        data.index.name = 'time_index'
+        data = pd.read_csv(filename).set_index('time_flight', drop=False)
         return Flight(data)
 
     @staticmethod
@@ -139,19 +144,15 @@ class Flight(object):
 
 
     @staticmethod
-    def from_log(log_path):
+    def from_log(log:Union[Ardupilot, str]):
         """Constructor from an ardupilot bin file."""
-        from ardupilot_log_reader.reader import Ardupilot
 
-        if isinstance(log_path, Path):
-            log_path = str(log_path)
-        parser = Ardupilot(log_path, types=[
-            'XKF1', 'XKF2', 'NKF1', 'NKF2', 
-            'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
-            'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
-            'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN'])
-
-        dfs = []
+        if isinstance(log, Path):
+            log = str(log)
+        if isinstance(log, str):
+            parser = Ardupilot(log, types=Flight.ardupilot_types)
+        else:
+            parser = log
 
         if parser.parms['AHRS_EKF_TYPE'] == 2:
             ekf1 = 'NKF1'
@@ -162,16 +163,19 @@ class Flight(object):
 
         if ekf1 in parser.dfs:
             ekf1 = parser.dfs[ekf1]
-            ekf1 = ekf1.loc[ekf1.C==0]
+            if 'C' in ekf1.columns:
+                ekf1 = ekf1.loc[ekf1.C==0]
         else:
             ekf1 = None
 
         if ekf2 in parser.dfs:
             ekf2 = parser.dfs[ekf2]
-            ekf2 = ekf2.loc[ekf2.C==0]
+            if 'C' in ekf2.columns:
+                ekf2 = ekf2.loc[ekf2.C==0]
         else:
             ekf2 = None
 
+        dfs = []
 
         if 'ATT' in parser.dfs:       
             dfs.append(Flight.build_cols(
@@ -210,33 +214,30 @@ class Flight(object):
             ))
         
         if 'IMU' in parser.dfs:
-
-            if not ekf1 is None:  # get gyro biases
-                gyro_bias_x = np.radians(ekf1.GX) / 100
-                gyro_bias_y = np.radians(ekf1.GY) / 100
-                gyro_bias_z = np.radians(ekf1.GZ) / 100
-            else:
-                gyro_bias_x = 0
-                gyro_bias_y = 0
-                gyro_bias_z = 0
+            imu = parser.IMU
+            if 'I' in imu:
+                imu = imu.loc[imu.I==0, :]
+            
+            if not ekf1 is None:
+                imu = pd.merge_asof(imu, ekf1, on='timestamp', direction='nearest')
+                imu['GyrX'] = imu.GyrX + np.radians(imu.GX) / 100
+                imu['GyrY'] = imu.GyrY + np.radians(imu.GY) / 100
+                imu['GyrZ'] = imu.GyrZ + np.radians(imu.GZ) / 100
 
             if not ekf2 is None:
-                acc_bias_x = ekf2.AX / 100
-                acc_bias_y = ekf2.AY / 100
-                acc_bias_z = ekf2.AZ / 100
-            else:
-                acc_bias_x = 0
-                acc_bias_y = 0
-                acc_bias_z = 0
+                imu = pd.merge_asof(imu, ekf2, on='timestamp', direction='nearest')
+                imu['AccX'] = imu.AccX + imu.AX / 100
+                imu['AccY'] = imu.AccY + imu.AY / 100
+                imu['AccZ'] = imu.AccZ + imu.AZ / 100
 
             dfs.append(Flight.build_cols(
-                time_actual = parser.IMU.timestamp,
-                acceleration_x = parser.IMU.AccX + acc_bias_x,
-                acceleration_y = parser.IMU.AccY + acc_bias_y,
-                acceleration_z = parser.IMU.AccZ + acc_bias_z,
-                axisrate_roll = parser.IMU.GyrX + gyro_bias_x,
-                axisrate_pitch = parser.IMU.GyrY + gyro_bias_y,
-                axisrate_yaw = parser.IMU.GyrZ + gyro_bias_z,
+                time_actual = imu.timestamp,
+                acceleration_x = imu.AccX,
+                acceleration_y = imu.AccY,
+                acceleration_z = imu.AccZ,
+                axisrate_roll = imu.GyrX,
+                axisrate_pitch = imu.GyrY,
+                axisrate_yaw = imu.GyrZ,
             ))
         
         if 'MAG' in parser.dfs:
@@ -297,7 +298,7 @@ class Flight(object):
         dfout = dfs[0]
 
         for df in dfs[1:]:
-            dfout = pd.merge_asof(dfout, df, on='time_actual')
+            dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
         return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin)
 
