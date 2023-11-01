@@ -80,19 +80,7 @@ class Flight(object):
         for k, v in kwargs.items():
             df[k] = v
         return df.dropna(axis=1, how='all')
-
-    def gps_ready_time(self):
-        gps = self.gps
-        gps = gps.loc[~(gps==0).all(axis=1)].dropna()
-        return gps.iloc[0].name
     
-    def imu_ready_time(self):
-        qs = Quaternion.from_euler(Point(self.attitude))
-        df = qs.transform_point(PX(1)).to_pandas(index=self.data.index)
-        att_ready = df.loc[(df.x!=1.0) | (df.y!=0.0) | (df.z!=0.0)].iloc[0].name
-
-        return max(self.gps_ready_time(), att_ready)
-
     @staticmethod
     def synchronise(fls: list[Self]) -> list[Self]:
         """Take a list of overlapping flights and return a list of flights with
@@ -177,13 +165,14 @@ class Flight(object):
 
         dfs = []
 
-        if 'ATT' in parser.dfs:       
+        if 'ATT' in parser.dfs:
+            att=parser.ATT.iloc[1:, :]
             dfs.append(Flight.build_cols(
-                time_actual = parser.ATT.timestamp,
-                time_flight = parser.ATT.TimeUS / 1e6,
-                attitude_roll = np.radians(parser.ATT.Roll),
-                attitude_pitch = np.radians(parser.ATT.Pitch),
-                attitude_yaw = np.radians(parser.ATT.Yaw),
+                time_actual = att.timestamp,
+                time_flight = att.TimeUS / 1e6,
+                attitude_roll = np.radians(att.Roll),
+                attitude_pitch = np.radians(att.Pitch),
+                attitude_yaw = np.radians(att.Yaw),
             ))
                 
         if 'POS' in parser.dfs:

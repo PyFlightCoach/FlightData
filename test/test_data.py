@@ -14,8 +14,10 @@ def parser():
 
 
 @fixture(scope='session')
-def fl(parser):
-    return Flight.from_log(parser)
+def fl():
+    return Flight.from_csv('test/test_inputs/00000137.csv')
+
+
 
 @fixture(scope='session')
 def fcj():
@@ -88,3 +90,4 @@ def test_acceleration(fl: Flight):
     acc = fl.acceleration_x
 
     pass
+
