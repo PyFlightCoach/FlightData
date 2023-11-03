@@ -31,6 +31,7 @@ class Flight(object):
         self.data = data
         self.parameters = parameters
         self.data.index = self.data.index - self.data.index[0]
+        self.data.index.name = 'time_index'
         
     def __getattr__(self, name):
         cols = getattr(fields, name)
@@ -88,7 +89,7 @@ class Flight(object):
         end_t = min([fl.time_actual.iloc[-1] for fl in fls])
         if end_t < start_t:
             raise Exception('These flights do not overlap')
-        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_flight
+        otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_actual
 
         flos = []
         for fl in fls:
@@ -96,8 +97,8 @@ class Flight(object):
                 pd.merge_asof(
                     otf, 
                     fl.data.reset_index(), 
-                    on='time_flight'
-                ).set_index('time_index'),
+                    on='time_actual'
+                ).set_index('time_index', drop=False),
                 fl.parameters
             ))
 
@@ -274,7 +275,7 @@ class Flight(object):
         for df in dfs[1:]:
             dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin)
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms)
 
     @staticmethod
     def from_fc_json(fc_json: Union[str, dict, IO]):
