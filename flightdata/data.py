@@ -14,9 +14,10 @@ import numpy as np
 import pandas as pd
 from .fields import fields, Field
 from geometry import GPS, Point, Quaternion, PX
+from geometry.testing import assert_almost_equal
 from pathlib import Path
 from time import time
-from json import load
+from json import load, dump
 from ardupilot_log_reader.reader import Ardupilot
 
 
@@ -27,19 +28,33 @@ class Flight(object):
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
         'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN']
     
-    def __init__(self, data: pd.DataFrame, parameters: list = None):
+    def __init__(self, data: pd.DataFrame, parameters: list = None, origin: GPS = None, primary_pos_source='gps'):
         self.data = data
         self.parameters = parameters
         self.data.index = self.data.index - self.data.index[0]
         self.data.index.name = 'time_index'
+        self.origin = origin
+        self.primary_pos_source = primary_pos_source
         
     def __getattr__(self, name):
         cols = getattr(fields, name)
+        try:
+            if isinstance(cols, Field):
+                return self.data[cols.column]
+            else:
+                return self.data.loc[:, [f.column for f in cols]]
+        except KeyError:
+            if isinstance(cols, Field):
+                cols = [cols]
+            return pd.DataFrame(data=np.empty((len(self), len(cols))),columns=[f.column for f in cols])
+        
+    def contains(self, name: Union[str, list[str]]):
+        cols = getattr(fields, name)
         if isinstance(cols, Field):
-            return self.data[cols.column]
+            return name in self.data.columns
         else:
-            return self.data.loc[:, [f.column for f in cols]]
-
+            return [f.column in self.data.columns for f in cols]
+                
     def __getitem__(self, sli):
         if isinstance(sli, int) or isinstance(sli, float):
             return self.data.iloc[self.data.index.get_loc(sli)]
@@ -60,17 +75,37 @@ class Flight(object):
     def copy(self):
         return Flight(
             self.data.copy(),
-            self.parameters.copy() if self.parameters else None
+            self.parameters.copy() if self.parameters else None,
+            self.origin.copy(),
+            self.primary_pos_source
         )
 
-    def to_csv(self, filename):
-        self.data.to_csv(filename, index=False)
-        return filename
+    def to_dict(self):
+        return {
+            'data': self.data.to_dict('list'),
+            'parameters': self.parameters,
+            'origin': self.origin.to_dict(),
+            'primary_pos_source': self.primary_pos_source
+        }
+    
+    @staticmethod
+    def from_dict(data: dict):
+        return Flight(
+            data=pd.DataFrame.from_dict(data['data']).set_index('time_flight', drop=False),
+            parameters=data['parameters'],
+            origin=GPS.from_dict(data['origin']),
+            primary_pos_source=data['primary_pos_source']
+        )
+    
+    def to_json(self, file: str) -> str:
+        with open(file, 'w') as f:
+            dump(self.to_dict(), f)
+        return file
 
     @staticmethod
-    def from_csv(filename):
-        data = pd.read_csv(filename).set_index('time_flight', drop=False)
-        return Flight(data)
+    def from_json(file: str) -> Self:
+        with open(file, 'r') as f:
+            return Flight.from_dict(load(f))
 
     @staticmethod
     def build_cols(**kwargs):
@@ -123,6 +158,14 @@ class Flight(object):
         _ftemp = Flight(self.data.loc[self.data.position_z < -10])
         return "{}_{:.8f}_{:.6f}_{:.6f}".format(len(_ftemp.data), _ftemp.duration, *self.origin.data[0])
 
+    def __eq__(self, other):
+        try:
+            pd.testing.assert_frame_equal(self.data, other.data)
+            assert_almost_equal(self.origin, other.origin)
+            return True
+        except:
+            return False
+        
     @staticmethod
     def from_log(log:Union[Ardupilot, str]):
         """Constructor from an ardupilot bin file."""
@@ -166,7 +209,7 @@ class Flight(object):
                 attitude_pitch = np.radians(att.Pitch),
                 attitude_yaw = np.radians(att.Yaw),
             ))
-                
+        ppsorce = 'gps'
         if 'POS' in parser.dfs:
             dfs.append(Flight.build_cols(
                 time_actual = parser.POS.timestamp,
@@ -174,6 +217,9 @@ class Flight(object):
                 gps_longitude = parser.POS.Lng,
                 gps_altitude = parser.POS.Alt
             ))
+        else:
+            ppsorce = 'position'
+            
         
         if not ekf1 is None: 
             dfs.append(Flight.build_cols(
@@ -270,12 +316,15 @@ class Flight(object):
                 **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(8) if f'rpm{i}' in parser.RPM.columns},
             ))
 
+        
+        origin = GPS(parser.ORGN.iloc[:,-3:]) if 'ORGN' in parser.dfs else None
+
         dfout = dfs[0]
 
         for df in dfs[1:]:
             dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms)
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)
 
     @staticmethod
     def from_fc_json(fc_json: Union[str, dict, IO]):
@@ -294,14 +343,15 @@ class Flight(object):
             attitude_roll = np.radians(df['r']),
             attitude_pitch = np.radians(df['p']),
             attitude_yaw = np.radians(df['yw']),
-            gps_latitude = df['N'],
-            gps_longitude = df['E'],
-            gps_altitude = df['D'],
+            position_N = df['N'],
+            position_E = df['E'],
+            position_D = df['D'],
             velocity_N = df['VN'],
             velocity_E = df['VE'],
             velocity_D = df['VD'],
             wind_N = df['wN'] if 'wN' in df.columns else None,
             wind_E = df['wE'] if 'wE' in df.columns else None,
         )
-        
-        return Flight(df.set_index('time_flight', drop=False), None)
+        origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'], fc_json['parameters']['originAlt'])
+
+        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')
