@@ -1,6 +1,4 @@
-This repo is designed for the storage of and access to flight log data. Interface has been changed at version 0.2.0 and downstream packages will need updating.
-
-TODO: Check the accel and gyro biases added to acceleration and gyro make sense
+This repo is designed for handling flight log data flight log data.
 
 TODO: check it works for older ardupilot firmware versions
 
