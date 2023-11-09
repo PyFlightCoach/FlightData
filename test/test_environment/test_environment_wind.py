@@ -1,4 +1,4 @@
-from flightanalysis.environment.wind import WindModelBuilder, WindModel
+from flightdata import WindModelBuilder, WindModel
 import pytest
 import numpy as np 
 import pandas as pd

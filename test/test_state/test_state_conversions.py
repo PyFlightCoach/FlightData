@@ -1,11 +1,8 @@
 import numpy as np
-from flightanalysis.state import State
+from flightdata import State, Environment, Flow
 
 from pytest import approx, fixture
-from flightanalysis import State
 from geometry import Transformation, Point, P0, Euler, PY
-from flightanalysis.environment import Environment
-from flightanalysis.model.flow import Flow
 from .conftest import state
 
 

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_list_like
 import geometry as g
-from flightdata import Table, Constructs, SVar, Time, Box, Flow, Environment
+from flightdata import Table, Constructs, SVar, Time, Origin, Flow, Environment
 
 
 class State(Table):
@@ -48,7 +48,7 @@ class State(Table):
         if rotation_only:
             return self.transform.rotate(pin)
         else:
-            return self.transform_point(pin)
+            return self.transform.point(pin)
 
     def world_to_body(self, pin: g.Point, rotation_only=False) -> g.Point:
         if rotation_only:
@@ -89,27 +89,27 @@ class State(Table):
 
 
     @staticmethod
-    def from_flight(flight, box: Union[Box, str] = None) -> State:
+    def from_flight(flight, origin: Union[Origin, str] = None) -> State:
         """Read position and attitude directly from the log(after transforming to flightline)"""
 
-        if isinstance(box, str):
-            extension = Path(box).split()[1]
+        if isinstance(origin, str):
+            extension = Path(origin).split()[1]
             if extension == "f3a":
-                box = Box.from_f3a_zone(box)
+                origin = Origin.from_f3a_zone(origin)
             elif extension == "json":
-                box = Box.from_json(box)
-        elif box is None:
-            box = Box.from_initial(flight)
+                origin = Origin.from_json(origin)
+        elif origin is None:
+            origin = Origin.from_initial(flight)
 
         time = Time.from_t(np.array(flight.data.time_flight))
 
-        rotation = g.Euler(np.pi, 0, box.heading + np.pi/2)
+        rotation = g.Euler(np.pi, 0, origin.heading + np.pi/2)
         
         if all(flight.contains('gps')) and flight.primary_pos_source == 'gps':
-            pos = rotation.transform_point(g.GPS(flight.gps) - box.pilot_position)
+            pos = rotation.transform_point(g.GPS(flight.gps) - origin.pilot_position)
         else: 
             pos = rotation.transform_point(
-                flight.origin.offset(g.Point(flight.position)) - box.pilot_position
+                flight.origin.offset(g.Point(flight.position)) - origin.pilot_position
             )
         
         att = rotation * g.Euler(flight.attitude) 
@@ -450,7 +450,7 @@ class State(Table):
     def move(self: State, transform: g.Transformation) -> State:
         return State.copy_labels(self, State.from_constructs(
             time=self.time,
-            pos=transform.g.Point(self.pos),
+            pos=transform.point(self.pos),
             att=transform.rotate(self.att),
             vel=self.vel,
             rvel=self.rvel,

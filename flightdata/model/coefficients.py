@@ -1,4 +1,4 @@
-from flightanalysis.base.table import Table, SVar, Constructs, SVar
+from flightdata import Table, SVar, Constructs, SVar
 from geometry import Point, P0
 
 

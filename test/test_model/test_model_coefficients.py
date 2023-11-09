@@ -1,12 +1,8 @@
 from pytest import approx, fixture
-from flightanalysis.environment import Environment
-from flightanalysis.environment.wind import WindModelBuilder
-from flightanalysis.model.flow import Flow
+from flightdata import Environment, WindModelBuilder, Flow, cold_draft, Coefficients, State
 from pytest import approx
 import numpy as np
-from flightanalysis.model.constants import cold_draft
-from flightanalysis.model.coefficients import Coefficients
-from flightanalysis.state import State
+
 
 
 @fixture

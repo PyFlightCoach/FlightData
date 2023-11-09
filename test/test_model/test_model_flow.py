@@ -1,5 +1,5 @@
 from pytest import approx, fixture
-from flightanalysis import *
+from flightdata import *
 from pytest import approx
 import numpy as np
 from geometry import *

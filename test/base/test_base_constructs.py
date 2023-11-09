@@ -1,7 +1,6 @@
 import pytest
 
-from flightanalysis.base.constructs import Constructs, SVar
-from flightanalysis.state import State
+from flightdata import Constructs, SVar, State
 import numpy as np
 
 

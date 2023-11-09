@@ -16,7 +16,7 @@ from json import load, dump
 from flightdata.flight import Flight
 from typing import Self
 
-class Box(object):
+class Origin(object):
     '''This class defines an aerobatic box in the world, it uses the pilot position and the direction 
     in which the pilot is facing (normal to the main aerobatic manoeuvering plane)'''
 
@@ -33,7 +33,7 @@ class Box(object):
 
     @staticmethod
     def from_dict(data: dict) -> Self:
-        return Box(
+        return Origin(
             data['name'], 
             g.GPS(**data['pilot_position']), 
             data['heading']
@@ -46,7 +46,7 @@ class Box(object):
         else:
             with open(file, 'r') as f:
                 data = load(f)
-        return Box.from_dict(data)
+        return Origin.from_dict(data)
 
     def to_json(self, file):
         with open(file, 'w') as f:
@@ -54,10 +54,10 @@ class Box(object):
         return file
 
     def __str__(self):
-        return "Box:{}".format(self.to_dict())
+        return "Origin:{}".format(self.to_dict())
 
     def __repr__(self):
-        return f'Box(heading={np.degrees(self.heading)},pos={self.pilot_position})'
+        return f'Origin(heading={np.degrees(self.heading)},pos={self.pilot_position})'
 
     @staticmethod
     def from_initial(flight: Flight):
@@ -68,12 +68,12 @@ class Box(object):
         position = g.GPS(flight.gps_latitude[0], flight.gps_longitude[0], flight.gps_altitude[0])
         heading = g.Euler(flight.attitude)[0].transform_point(g.PX())
 
-        return Box('origin', position, np.arctan2(heading.y, heading.x)[0])
+        return Origin('origin', position, np.arctan2(heading.y, heading.x)[0])
 
     @staticmethod
     def from_points(name, pilot: g.GPS, centre: g.GPS):
         direction = centre - pilot
-        return Box(
+        return Origin(
             name,
             pilot,
             np.arctan2(direction.y[0], direction.x[0])
@@ -105,7 +105,7 @@ class Box(object):
         else:
             with open(file_path, "r") as f:
                 lines = f.read().splitlines()
-        return Box.from_points(
+        return Origin.from_points(
             lines[1],
             g.GPS(float(lines[2]), float(lines[3]), 0),
             g.GPS(float(lines[4]), float(lines[5]), 0)
@@ -113,7 +113,7 @@ class Box(object):
 
     @staticmethod
     def from_fcjson_parmameters(data: dict):
-        return Box.from_points(
+        return Origin.from_points(
             "FCJ_box",
             g.GPS(float(data['pilotLat']), float(data['pilotLng']), 0),
             g.GPS(float(data['centerLat']), float(data['centerLng']), 0)

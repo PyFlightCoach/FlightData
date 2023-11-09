@@ -1,6 +1,4 @@
-from flightanalysis.state.state import State
-from flightanalysis.flightline import Box
-from flightanalysis.base.table import Time
+from flightdata import State, Origin, Time
 from geometry import Point, Quaternion, Transformation, PX
 from flightdata import Flight, Fields
 import numpy as np
@@ -8,7 +6,7 @@ import pandas as pd
 from pytest import approx, fixture
 from json import dumps, loads, load
 
-from ..conftest import flight, box
+from ..conftest import flight, origin
 
 
 @fixture(scope='session')

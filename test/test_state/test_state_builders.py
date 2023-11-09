@@ -1,11 +1,10 @@
-from flightanalysis import State, Box, Time
-from flightdata import Flight
+from flightdata import Flight, State, Origin, Time
 from pytest import approx, mark
 from geometry import Transformation, PX, PY, P0, Point
 from geometry.testing import assert_almost_equal
 import numpy as np
 import pandas as pd
-from ..conftest import box, flight
+from ..conftest import origin, flight
 from .conftest import state
 from time import sleep, time
 from json import load
@@ -46,10 +45,10 @@ def test_from_flight(flight, state):
     assert not np.any(np.isnan(state.pos.data))
     assert state.z.mean() > 0
 
-def test_from_flight_pos(flight: Flight, state: State, box: Box):
+def test_from_flight_pos(flight: Flight, state: State, origin: Origin):
     fl2 = flight.copy()
     fl2.primary_pos_source = 'position'
-    st2 = State.from_flight(fl2, box)
+    st2 = State.from_flight(fl2, origin)
     #pd.testing.assert_frame_equal(state.data, st2.data)
     assert all(st2.pos.z > 0)
 
@@ -57,8 +56,8 @@ def test_fc_json():
     with open('test/data/manual_F3A_P23.json', 'r') as f:
         fcj = load(f)
     fl = Flight.from_fc_json(fcj)
-    box = Box.from_fcjson_parmameters(fcj['parameters'])
-    st = State.from_flight(fl, box)
+    origin = Origin.from_fcjson_parmameters(fcj['parameters'])
+    st = State.from_flight(fl, origin)
     assert all(st.pos.z > 0)
 
 

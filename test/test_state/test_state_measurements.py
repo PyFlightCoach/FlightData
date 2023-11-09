@@ -1,8 +1,5 @@
-from flightanalysis.state.state import State
-
-from flightanalysis import State
-
-from ..conftest import flight, box
+from flightdata import State
+from ..conftest import flight, origin
 from .conftest import state
 from pytest import approx, fixture
 

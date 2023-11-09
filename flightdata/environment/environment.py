@@ -1,5 +1,5 @@
 
-from flightanalysis import Constructs, SVar, Table
+from flightdata import Constructs, SVar, Table
 from geometry import Point, Base, P0
 import numpy as np
 from .wind import WindModel, WindModelBuilder

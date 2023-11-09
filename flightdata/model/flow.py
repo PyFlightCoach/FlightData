@@ -1,5 +1,5 @@
 
-from flightanalysis import Table, Time, SVar, Constructs, SVar
+from flightdata import Table, Time, SVar, Constructs, SVar
 from geometry import Point, Base, PX, Euler
 import numpy as np
 

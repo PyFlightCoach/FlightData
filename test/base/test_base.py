@@ -1,5 +1,4 @@
-from flightanalysis.base.table import Table, Time
-from flightanalysis.base.constructs import Constructs, SVar
+from flightdata import Table, Time, Constructs, SVar
 import numpy as np
 import pandas as pd
 from geometry import Point, Quaternion, PZ
