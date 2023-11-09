@@ -13,7 +13,7 @@ from typing import Self, Union, IO
 import numpy as np
 import pandas as pd
 from .fields import fields, Field
-from geometry import GPS, Point, Quaternion, PX
+from geometry import GPS, Point
 from geometry.testing import assert_almost_equal
 from pathlib import Path
 from time import time
