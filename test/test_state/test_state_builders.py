@@ -4,8 +4,7 @@ from geometry import Transformation, PX, PY, P0, Point
 from geometry.testing import assert_almost_equal
 import numpy as np
 import pandas as pd
-from ..conftest import origin, flight
-from .conftest import state
+from ..conftest import origin, flight, state
 from time import sleep, time
 from json import load
 

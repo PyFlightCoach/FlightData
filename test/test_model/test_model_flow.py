@@ -3,15 +3,15 @@ from flightdata import *
 from pytest import approx
 import numpy as np
 from geometry import *
-
+from ..conftest import state
 
 @fixture
-def environments(flight, st):
+def environments(flight, state):
     wmodel = WindModelBuilder.uniform(1.0, 20.0)([np.pi, 1.0])
-    return Environment.build(flight, st, wmodel)
+    return Environment.build(flight, state, wmodel)
 
-def test_build(st, environments):
-    flows = Flow.build(st, environments)
+def test_build(state, environments):
+    flows = Flow.build(state, environments)
     assert np.mean(flows.alpha) == approx(0.0, abs=1)
 
 @fixture
@@ -37,9 +37,9 @@ def test_alpha_beta_0_wind(sl_wind_axis):
     assert np.degrees(flw.beta) == approx(np.full(len(flw), 10))
 
 
-def test_zero_wind_assumption(st):
-    env = Environment.from_constructs(st.time)
-    flow = Flow.build(st, env)
+def test_zero_wind_assumption(state):
+    env = Environment.from_constructs(state.time)
+    flow = Flow.build(state, env)
     ab = flow.data.loc[:, ["alpha", "beta"]]
     
     

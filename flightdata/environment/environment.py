@@ -31,17 +31,15 @@ class Environment(Table):
     ])
 
     @staticmethod
-    def build(flight, sec, wmodel: WindModel):
-        from flightdata import Fields
-
-        df = flight.read_fields(Fields.PRESSURE)
-        df = df.assign(temperature_0=291.15)
-        df = df.assign(rho=get_rho(df["pressure_0"], df["temperature_0"]))
-
+    def build(flight, state, wmodel: WindModel):
         return Environment.from_constructs(
-            time=sec.time,
-            atm=Air(df.to_numpy()),
-            wind=wmodel(sec.pos.z)
+            time=state.time,
+            atm=Air(
+                flight.air_pressure.to_numpy(), 
+                flight.air_temperature.to_numpy(), 
+                get_rho(flight.air_pressure, flight.air_temperature).to_numpy()
+            ),
+            wind=wmodel(state.pos.z)
         )
 
 

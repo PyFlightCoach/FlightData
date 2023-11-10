@@ -21,7 +21,8 @@ class Flow(Table):
 
         with np.errstate(invalid='ignore'):
             alpha =  np.arctan(airspeed.z / airspeed.x) 
-        
+        alpha[np.isnan(alpha)] = 0.0
+
         stab_airspeed = Euler(
             np.zeros(len(alpha)), 
             alpha, 
@@ -30,10 +31,12 @@ class Flow(Table):
     
         with np.errstate(invalid='ignore'):
             beta = np.arctan(stab_airspeed.y / stab_airspeed.x)
+        beta[np.isnan(beta)] = 0.0
 
         with np.errstate(invalid='warn'):
             q = 0.5 * env.rho * abs(airspeed)**2
-
+        q[np.isnan(q)] = 0.0
+        
         return Flow.from_constructs(
             body.time, 
             airspeed,

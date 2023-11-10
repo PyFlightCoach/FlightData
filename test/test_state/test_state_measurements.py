@@ -1,6 +1,5 @@
 from flightdata import State
-from ..conftest import flight, origin
-from .conftest import state
+from ..conftest import flight, origin, state
 from pytest import approx, fixture
 
 import numpy as np
