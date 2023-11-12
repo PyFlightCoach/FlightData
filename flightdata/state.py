@@ -468,14 +468,26 @@ class State(Table):
 
     def superimpose_angles(self: State, angles: g.Point, reference:str="body"): 
         assert reference in ["body", "world"]
-        return State.copy_labels(
-            self, 
-            State.from_constructs(
-                self.time,
-                self.pos,
-                self.att.rotate(angles) if reference=="world" else self.att.body_rotate(angles)
+
+        if reference == "body":
+            return State.copy_labels(
+                self, 
+                State.from_constructs(
+                    self.time,
+                    self.pos,
+                    self.att.rotate(angles) if reference=="world" else self.att.body_rotate(angles),
+                    vel = g.Quaternion.from_axis_angle(angles).inverse().transform_point(self.vel)
+                )
+            ) 
+        else:
+            return State.copy_labels(
+                self, 
+                State.from_constructs(
+                    self.time,
+                    self.pos,
+                    self.att.rotate(angles) if reference=="world" else self.att.body_rotate(angles),
+                )
             )
-        ) 
 
     def superimpose_rotation(self: State, axis: g.Point, angle: float, reference:str="body"):
         """Generate a new section, identical to self, but with a continous rotation integrated
