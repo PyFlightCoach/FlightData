@@ -52,6 +52,8 @@ fields = Fields([
         Field('axisrate_roll', 'roll rate, radians / second'),
         Field('axisrate_pitch', 'pitch rate, radians / second'),
         Field('axisrate_yaw', 'yaw rate, radians / second'),
+        *[Field(f'battery_voltage{i}', 'volts') for i in range(8)],
+        *[Field(f'battery_current{i}', 'amps') for i in range(8)],
         *[Field(f'motor_voltage{i}', 'volts') for i in range(8)],
         *[Field(f'motor_current{i}', 'amps') for i in range(8)],
         *[Field(f'motor_rpm{i}', 'rpm') for i in range(8)],

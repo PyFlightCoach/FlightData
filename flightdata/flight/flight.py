@@ -19,14 +19,14 @@ from pathlib import Path
 from time import time
 from json import load, dump
 from ardupilot_log_reader.reader import Ardupilot
-
+from flightdata.base.numpy_encoder import NumpyEncoder
 
 class Flight(object):
     ardupilot_types = [
         'XKF1', 'XKF2', 'NKF1', 'NKF2', 
         'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
-        'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN']
+        'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN', 'ESC']
     
     def __init__(self, data: pd.DataFrame, parameters: list = None, origin: GPS = None, primary_pos_source='gps'):
         self.data = data
@@ -42,7 +42,7 @@ class Flight(object):
             if isinstance(cols, Field):
                 return self.data[cols.column]
             else:
-                return self.data.loc[:, [f.column for f in cols]]
+                return self.data.loc[:, [f.column for f in cols if f.column in self.data.columns]]
         except KeyError:
             if isinstance(cols, Field):
                 cols = [cols]
@@ -99,7 +99,7 @@ class Flight(object):
     
     def to_json(self, file: str) -> str:
         with open(file, 'w') as f:
-            dump(self.to_dict(), f)
+            dump(self.to_dict(), f, cls=NumpyEncoder)
         return file
 
     @staticmethod
@@ -304,13 +304,33 @@ class Flight(object):
             ))
         
         if 'BAT' in parser.dfs:
-            dfs.append(Flight.build_cols(
-                time_actual = parser.BAT.timestamp,
-                **{'motor_voltage{i}': parser.BAT[f'Volt{i}'] for i in range(8) if f'Volt{i}' in parser.BAT.columns},
-                **{'motor_current{i}': parser.BAT[f'Curr{i}'] for i in range(8) if f'Curr{i}' in parser.BAT.columns},
-            ))
+            instances = parser.BAT.Instance.unique()
+            for i in instances:
+                _bat = parser.BAT.loc[parser.BAT.Instance==i, :]
 
-        if 'RPM' in parser.dfs:
+                dfs.append(Flight.build_cols(
+                    time_actual = _bat.timestamp,
+                    **{
+                        f'battery_voltage{i}': _bat.Volt,
+                        f'battery_current{i}': _bat.Curr,
+                    },
+
+                ))
+
+        if 'ESC' in parser.dfs:
+            instances = parser.ESC.Instance.unique()
+            for i in instances:
+                _esc = parser.ESC.loc[parser.ESC.Instance==i, :]
+                dfs.append(Flight.build_cols(
+                    time_actual = _esc.timestamp,
+                    **{
+                        f'motor_voltage{i}': _esc.Volt,
+                        f'motor_current{i}': _esc.Curr,
+                        f'motor_rpm{i}': _esc.RPM
+                    },
+                ))
+            
+        elif 'RPM' in parser.dfs:
             dfs.append(Flight.build_cols(
                 time_actual = parser.RPM.timestamp,
                 **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(8) if f'rpm{i}' in parser.RPM.columns},
