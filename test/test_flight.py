@@ -82,3 +82,15 @@ def test_slice_raw_t(fl: Flight):
 
 def test_origin(fl: Flight):
     assert isinstance(fl.origin, GPS)
+
+
+@fixture(scope='session')
+def vtol_hover():
+    return Flight.from_json('test/data/vtol_hover.json')
+
+def test_flightmode_split(vtol_hover: Flight):
+    smodes = vtol_hover.split_modes()
+    assert isinstance(smodes, dict)
+    assert isinstance(smodes['QHOVER'], list)
+    assert isinstance(smodes['QHOVER'][0], Flight)
+

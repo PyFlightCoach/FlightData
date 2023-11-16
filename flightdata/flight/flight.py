@@ -20,6 +20,8 @@ from time import time
 from json import load, dump
 from ardupilot_log_reader.reader import Ardupilot
 from flightdata.base.numpy_encoder import NumpyEncoder
+from .ardupilot import flightmodes 
+
 
 class Flight(object):
     ardupilot_types = [
@@ -138,6 +140,23 @@ class Flight(object):
             ))
 
         return flos
+
+    def split_modes(self):
+        """Split the flight into segments of the same flight mode.
+
+        Returns:
+            list[Flight]: list of flights
+        """
+        
+        
+        modechanges = (self.flightmode_a.diff().fillna(value=0) != 0).astype(int).cumsum()
+
+        flights = {flightmodes[m]: [] for m in self.flightmode_a.unique()}
+
+        for mode in modechanges.unique():
+            _fl = self.data.loc[modechanges == mode, :]
+            flights[flightmodes[_fl.flightmode_a.iloc[0]]].append(Flight(_fl, self.parameters, self.origin, self.primary_pos_source))
+        return flights
 
     @property
     def duration(self):
