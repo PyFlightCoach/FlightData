@@ -351,7 +351,7 @@ class Flight:
                 
                 dfs.append(Flight.build_cols(
                     time_actual = _subdf.timestamp,
-                    **{f'{k}{f"-{i}" if i > 0 else ""}': _subdf[v] for k, v in colmap.items()}
+                    **{f'{k}{f"_{i}" if i > 0 else ""}': _subdf[v] for k, v in colmap.items()}
                 ))
             return dfs
 

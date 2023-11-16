@@ -32,24 +32,33 @@ class Fields:
             self.groups[v.field].append(v)
         
     def __getattr__(self, name):
-        i=0
-        if '-' in name:
-            i = name.split('-')[1]
-            name = name.split('-')[0]
+        _f = name.split('_')
+        group = _f[0]
+        instance = 0
+        col = None
+        if len(_f) == 2:
+            if _f[1].isnumeric():
+                instance = _f[1]
+            else:
+                col = _f[1]
+        elif len(_f) == 3:
+            col = _f[1]
+            instance = _f[2]
         
-        if name in self.groups:
-            return [f.instance(i) for f in self.groups[name]]
-        elif name in self.data:
-            return self.data[name].instance(i)
-            
-        raise AttributeError(f'Field {name} not found')
+        try:
+            if not col:
+                return [f.instance(instance) for f in self.groups[group]]
+            else:
+                return self.data[f'{group}_{col}'].instance(instance)
+        except KeyError:
+            raise AttributeError(f'Field {name} not found')
 
 
 fields = Fields([
         Field('time_flight', 'time since the start of the flight, seconds'),
         Field('time_actual', 'time since epoch, seconds'),
-        *[Field(f'rcin_{i}', 'ms') for i in range(8)],
-        *[Field(f'rcout_{i}', 'ms') for i in range(14)],
+        *[Field(f'rcin_c{i}', 'ms') for i in range(8)],
+        *[Field(f'rcout_c{i}', 'ms') for i in range(14)],
         Field('flightmode_a'),
         Field('flightmode_b'),
         Field('flightmode_c'),
