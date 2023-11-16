@@ -23,7 +23,7 @@ from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes 
 
 
-class Flight(object):
+class Flight:
     ardupilot_types = [
         'XKF1', 'XKF2', 'NKF1', 'NKF2', 
         'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
@@ -203,19 +203,8 @@ class Flight(object):
             ekf1 = 'XKF1'
             ekf2 = 'XKF2'
 
-        if ekf1 in parser.dfs:
-            ekf1 = parser.dfs[ekf1]
-            if 'C' in ekf1.columns:
-                ekf1 = ekf1.loc[ekf1.C==0]
-        else:
-            ekf1 = None
-
-        if ekf2 in parser.dfs:
-            ekf2 = parser.dfs[ekf2]
-            if 'C' in ekf2.columns:
-                ekf2 = ekf2.loc[ekf2.C==0]
-        else:
-            ekf2 = None
+        ekf1 = parser.dfs[ekf1] if ekf1 in parser.dfs else  None
+        ekf2 = parser.dfs[ekf2] if ekf2 in parser.dfs else None
 
         dfs = []
 
@@ -228,8 +217,9 @@ class Flight(object):
                 attitude_pitch = np.radians(att.Pitch),
                 attitude_yaw = np.radians(att.Yaw),
             ))
-        ppsorce = 'gps'
+
         if 'POS' in parser.dfs:
+            ppsorce = 'gps'
             dfs.append(Flight.build_cols(
                 time_actual = parser.POS.timestamp,
                 gps_latitude = parser.POS.Lat,
@@ -239,25 +229,21 @@ class Flight(object):
         else:
             ppsorce = 'position'
             
-        
         if not ekf1 is None: 
-            dfs.append(Flight.build_cols(
-                time_actual = ekf1.timestamp,
-                position_N = ekf1.PN,
-                position_E = ekf1.PE,
-                position_D = ekf1.PD,
-                velocity_N = ekf1.VN,
-                velocity_E = ekf1.VE,
-                velocity_D = ekf1.VD,
-            ))
-
-
+            dfs = dfs + Flight.parse_instances(ekf1, dict(
+                position_N='PN',
+                position_E='PE',
+                position_D='PD',
+                velocity_N='VN',
+                velocity_E='VE',
+                velocity_D='VD',
+            ), 'C')
+            
         if not ekf2 is None:
-            dfs.append(Flight.build_cols(
-                time_actual = ekf2.timestamp,
-                wind_N = ekf2.VWN,
-                wind_E = ekf2.VWE,
-            ))
+            dfs = dfs + Flight.parse_instances(ekf2, {
+                'wind_N': 'VWN',
+                'wind_E': 'VWE',
+            }, 'C')
         
         if 'IMU' in parser.dfs:
             imu = parser.IMU
@@ -265,13 +251,13 @@ class Flight(object):
                 imu = imu.loc[imu.I==0, :]
             
             if not ekf1 is None:
-                imu = pd.merge_asof(imu, ekf1, on='timestamp', direction='nearest')
+                imu = pd.merge_asof(imu, ekf1.loc[ekf1.C==0], on='timestamp', direction='nearest')
                 imu['GyrX'] = imu.GyrX + np.radians(imu.GX) / 100
                 imu['GyrY'] = imu.GyrY + np.radians(imu.GY) / 100
                 imu['GyrZ'] = imu.GyrZ + np.radians(imu.GZ) / 100
 
             if not ekf2 is None:
-                imu = pd.merge_asof(imu, ekf2, on='timestamp', direction='nearest')
+                imu = pd.merge_asof(imu, ekf2.loc[ekf2.C==0], on='timestamp', direction='nearest')
                 imu['AccX'] = imu.AccX + imu.AX / 100
                 imu['AccY'] = imu.AccY + imu.AY / 100
                 imu['AccZ'] = imu.AccZ + imu.AZ / 100
@@ -295,12 +281,17 @@ class Flight(object):
             ))
         
         if 'BARO' in parser.dfs:
-            dfs.append(Flight.build_cols(
-                time_actual = parser.BARO.timestamp,
-                air_pressure = parser.BARO.Press,
-                air_temperature = parser.BARO.Temp,
-                air_altitude = parser.BARO.Alt,
+            dfs = dfs + Flight.parse_instances(parser.BARO, dict(
+                air_pressure= "Press",
+                air_temparature= "Temp",
+                air_altitude= "Alt"
             ))
+
+        if 'ARSP' in parser.dfs:
+            dfs = dfs + Flight.parse_instances(
+                parser.ARSP,
+                dict(air_speed= 'Airspeed')
+            )
 
         if 'RCIN' in parser.dfs:
             dfs.append(Flight.build_cols(
@@ -323,36 +314,21 @@ class Flight(object):
             ))
         
         if 'BAT' in parser.dfs:
-            instances = parser.BAT.Instance.unique()
-            for i in instances:
-                _bat = parser.BAT.loc[parser.BAT.Instance==i, :]
-
-                dfs.append(Flight.build_cols(
-                    time_actual = _bat.timestamp,
-                    **{
-                        f'battery_voltage{i}': _bat.Volt,
-                        f'battery_current{i}': _bat.Curr,
-                    },
-
-                ))
+            dfs = dfs + Flight.parse_instances(parser.BAT, dict(
+                battery_voltage = 'Volt',
+                battery_current = 'Curr',
+            ))
 
         if 'ESC' in parser.dfs:
-            instances = parser.ESC.Instance.unique()
-            for i in instances:
-                _esc = parser.ESC.loc[parser.ESC.Instance==i, :]
-                dfs.append(Flight.build_cols(
-                    time_actual = _esc.timestamp,
-                    **{
-                        f'motor_voltage{i}': _esc.Volt,
-                        f'motor_current{i}': _esc.Curr,
-                        f'motor_rpm{i}': _esc.RPM
-                    },
-                ))
-            
+            dfs = dfs + Flight.parse_instances(parser.ESC, dict(
+                motor_voltage= 'Volt',
+                motor_current= 'Curr',
+                motor_rpm= 'RPM'
+            ))
         elif 'RPM' in parser.dfs:
             dfs.append(Flight.build_cols(
                 time_actual = parser.RPM.timestamp,
-                **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(8) if f'rpm{i}' in parser.RPM.columns},
+                **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(2) if f'rpm{i}' in parser.RPM.columns},
             ))
 
         
@@ -364,6 +340,20 @@ class Flight(object):
             dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
         return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)
+
+    @staticmethod
+    def parse_instances(indf: pd.DataFrame, colmap:dict[str, str], instancecol='Instance'):
+            
+            instances = indf[instancecol].unique() if instancecol in indf.columns else [0]
+            dfs = []
+            for i in instances:
+                _subdf = indf.loc[indf[instancecol]==i, :] if instancecol in indf.columns else indf
+                
+                dfs.append(Flight.build_cols(
+                    time_actual = _subdf.timestamp,
+                    **{f'{k}{f"-{i}" if i > 0 else ""}': _subdf[v] for k, v in colmap.items()}
+                ))
+            return dfs
 
     @staticmethod
     def from_fc_json(fc_json: Union[str, dict, IO]):

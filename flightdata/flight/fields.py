@@ -1,16 +1,24 @@
 
 from typing import Union, Self
 from itertools import chain
-
+import string
+import re
 
 class Field:
-    def __init__(self, column: str, description: str = ''):
+    def __init__(self, column: str, description: str = '', i: int = 0):
         self.column = column
         self.description = description
         _sp = column.split('_')
         self.field = _sp[0]
         self.name = _sp[1]
+        self.i = i
 
+    def instance(self, i) -> Self:
+        return Field(self.column, self.description, i)
+
+    @property
+    def col(self) -> str:
+        return f'{self.column}-{self.i}' if self.i > 0 else self.column
 
 class Fields:
     def __init__(self, data: Union[list[Field], dict[str: Field]]):
@@ -24,12 +32,17 @@ class Fields:
             self.groups[v.field].append(v)
         
     def __getattr__(self, name):
+        i=0
+        if '-' in name:
+            i = name.split('-')[1]
+            name = name.split('-')[0]
+        
         if name in self.groups:
-            return self.groups[name]
+            return [f.instance(i) for f in self.groups[name]]
         elif name in self.data:
-            return self.data[name]
-        else:
-            raise AttributeError(f'Field {name} not found')
+            return self.data[name].instance(i)
+            
+        raise AttributeError(f'Field {name} not found')
 
 
 fields = Fields([
@@ -52,11 +65,11 @@ fields = Fields([
         Field('axisrate_roll', 'roll rate, radians / second'),
         Field('axisrate_pitch', 'pitch rate, radians / second'),
         Field('axisrate_yaw', 'yaw rate, radians / second'),
-        *[Field(f'battery_voltage{i}', 'volts') for i in range(8)],
-        *[Field(f'battery_current{i}', 'amps') for i in range(8)],
-        *[Field(f'motor_voltage{i}', 'volts') for i in range(8)],
-        *[Field(f'motor_current{i}', 'amps') for i in range(8)],
-        *[Field(f'motor_rpm{i}', 'rpm') for i in range(8)],
+        Field('battery_voltage', 'volts'),
+        Field('battery_current', 'amps'),
+        Field('motor_voltage', 'volts'),
+        Field('motor_current', 'amps'),
+        Field('motor_rpm', 'rpm'),
         Field('air_speed', 'airspeed, m/s'),
         Field('air_pressure', 'air pressure, Pa'),
         Field('air_temperature', 'air temperature, k'),
