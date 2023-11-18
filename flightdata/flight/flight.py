@@ -285,13 +285,11 @@ class Flight:
                 air_pressure= "Press",
                 air_temparature= "Temp",
                 air_altitude= "Alt"
-            ))
+            ), 'I')
 
         if 'ARSP' in parser.dfs:
-            dfs = dfs + Flight.parse_instances(
-                parser.ARSP,
-                dict(air_speed= 'Airspeed')
-            )
+            dfs = dfs + Flight.parse_instances(parser.ARSP,
+                dict(air_speed= 'Airspeed'), 'I')
 
         if 'RCIN' in parser.dfs:
             dfs.append(Flight.build_cols(
