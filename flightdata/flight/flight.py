@@ -28,7 +28,7 @@ class Flight:
         'XKF1', 'XKF2', 'NKF1', 'NKF2', 
         'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
-        'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN', 'ESC']
+        'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN', 'ESC', 'CURRENT']
     
     def __init__(self, data: pd.DataFrame, parameters: list = None, origin: GPS = None, primary_pos_source='gps'):
         self.data = data
@@ -304,17 +304,22 @@ class Flight:
             ))
 
         if 'MODE' in parser.dfs:
-            dfs.append(Flight.build_cols(
+            df = Flight.build_cols(
                 time_actual = parser.MODE.timestamp,
                 flightmode_a = parser.MODE.Mode,
                 flightmode_b = parser.MODE.ModeNum,
                 flightmode_c = parser.MODE.Rsn,
-            ))
+            )
+
+            #direction backward sets all the nans to the previous one, fillna backward sets the first bunch of nans to the subsequent
+            dfs.append(pd.merge_asof(dfs[0].loc[:,'time_actual'], df, on='time_actual', direction='backward').fillna(method='bfill'))
         
         if 'BAT' in parser.dfs:
             dfs = dfs + Flight.parse_instances(parser.BAT, dict(
                 battery_voltage = 'Volt',
                 battery_current = 'Curr',
+                battery_totalcurrent = 'CurrTot',
+                battery_totalenergy = 'EnrgTot',
             ))
 
         if 'ESC' in parser.dfs:
@@ -328,6 +333,7 @@ class Flight:
                 time_actual = parser.RPM.timestamp,
                 **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(2) if f'rpm{i}' in parser.RPM.columns},
             ))
+
 
         
         origin = GPS(parser.ORGN.iloc[:,-3:]) if 'ORGN' in parser.dfs else None

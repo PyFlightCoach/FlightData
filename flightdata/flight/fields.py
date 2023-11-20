@@ -76,6 +76,8 @@ fields = Fields([
         Field('axisrate_yaw', 'yaw rate, radians / second'),
         Field('battery_voltage', 'volts'),
         Field('battery_current', 'amps'),
+        Field('battery_totalcurrent', 'Ah'),
+        Field('battery_totalenergy', 'Wh'),
         Field('motor_voltage', 'volts'),
         Field('motor_current', 'amps'),
         Field('motor_rpm', 'rpm'),
