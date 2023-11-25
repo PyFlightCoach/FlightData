@@ -1,4 +1,4 @@
-from flightdata import Flight
+from flightdata import Flight, Origin
 import os
 from io import open
 from json import load, dumps, loads
@@ -81,7 +81,7 @@ def test_slice_raw_t(fl: Flight):
     assert "time_flight" in sli.data.columns
 
 def test_origin(fl: Flight):
-    assert isinstance(fl.origin, GPS)
+    assert isinstance(fl.origin, Origin)
 
 
 @fixture(scope='session')

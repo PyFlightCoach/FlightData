@@ -1,5 +1,5 @@
 
-from flightdata import Table, Time, SVar, Constructs, SVar
+from flightdata import Table, Time, SVar, Constructs, SVar, Flight, Origin
 from geometry import Point, Base, PX, Euler
 import numpy as np
 
@@ -13,6 +13,7 @@ class Flow(Table):
         SVar("aspd", Point, ["asx", "asy", "asz"], None),
         SVar("flow", Attack, ["alpha", "beta", "q"], None)
     ])
+
 
     @staticmethod
     def build(body, env):
@@ -43,8 +44,10 @@ class Flow(Table):
             Attack(alpha, beta, q)
         )
     
+
     def rotate(self, coefficients, dclda, dcydb):
         new_flow = Attack(-coefficients.cz / dclda, -coefficients.cy / dcydb, self.flow.q)
         return Flow.from_constructs(coefficients.time, flow=new_flow, aspd=self.aspd)
 
-        
+    
+    

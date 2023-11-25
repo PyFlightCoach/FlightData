@@ -18,7 +18,7 @@ class Field:
 
     @property
     def col(self) -> str:
-        return f'{self.column}-{self.i}' if self.i > 0 else self.column
+        return f'{self.column}_{self.i}' if self.i > 0 else self.column
 
 class Fields:
     def __init__(self, data: Union[list[Field], dict[str: Field]]):
@@ -38,12 +38,12 @@ class Fields:
         col = None
         if len(_f) == 2:
             if _f[1].isnumeric():
-                instance = _f[1]
+                instance = int(_f[1])
             else:
                 col = _f[1]
         elif len(_f) == 3:
             col = _f[1]
-            instance = _f[2]
+            instance = int(_f[2])
         
         try:
             if not col:

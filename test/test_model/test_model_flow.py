@@ -3,15 +3,15 @@ from flightdata import *
 from pytest import approx
 import numpy as np
 from geometry import *
-from ..conftest import state
+from ..conftest import state, flight, origin
 
 @fixture
-def environments(flight, state):
-    wmodel = WindModelBuilder.uniform(1.0, 20.0)([np.pi, 1.0])
-    return Environment.build(flight, state, wmodel)
+def environment(flight, origin):
 
-def test_build(state, environments):
-    flows = Flow.build(state, environments)
+    return Environment.from_flight(flight, origin)
+
+def test_build(state, environment):
+    flows = Flow.build(state, environment)
     assert np.mean(flows.alpha) == approx(0.0, abs=1)
 
 @fixture

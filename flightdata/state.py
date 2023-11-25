@@ -11,9 +11,9 @@ from flightdata import Table, Constructs, SVar, Time, Origin, Flow, Environment
 
 class State(Table):
     constructs = Table.constructs + Constructs([
-        SVar("pos", g.Point,       ["x", "y", "z"]           , lambda self: g.P0(len(self))       ), 
-        SVar("att", g.Quaternion,  ["rw", "rx", "ry", "rz"]  , lambda self : g.Q0(len(self))       ),
-        SVar("vel", g.Point,       ["u", "v", "w"]           , lambda st: g.P0() if len(st)==1 else st.att.inverse().transform_point(st.pos.diff(st.dt))  ),
+        SVar("pos", g.Point,       ["x", "y", "z"]           , lambda self: g.P0(len(self))), 
+        SVar("att", g.Quaternion,  ["rw", "rx", "ry", "rz"]  , lambda self : g.Q0(len(self))),
+        SVar("vel", g.Point,       ["u", "v", "w"]           , lambda st: g.P0() if len(st)==1 else st.att.inverse().transform_point(st.pos.diff(st.dt))),
         SVar("rvel", g.Point,       ["p", "q", "r"]           , lambda st: g.P0() if len(st)==1 else st.att.body_diff(st.dt)),
         SVar("acc", g.Point,       ["du", "dv", "dw"]        , lambda st : g.P0() if len(st)==1 else st.att.inverse().transform_point(st.att.transform_point(st.vel).diff(st.dt) + g.PZ(9.81, len(st)))),
         SVar("racc", g.Point,       ["dp", "dq", "dr"]        , lambda st: g.P0() if len(st)==1 else st.rvel.diff(st.dt)),
@@ -99,21 +99,19 @@ class State(Table):
             elif extension == "json":
                 origin = Origin.from_json(origin)
         elif origin is None:
-            origin = Origin.from_initial(flight)
+            origin = flight.origin
 
         time = Time.from_t(np.array(flight.data.time_flight))
 
-        rotation = g.Euler(np.pi, 0, origin.heading + np.pi/2)
-        
         if all(flight.contains('gps')) and flight.primary_pos_source == 'gps':
-            pos = rotation.transform_point(g.GPS(flight.gps) - origin.pilot_position)
+            pos = origin.rotation.transform_point(g.GPS(flight.gps) - origin.pos[0])
         else: 
-            pos = rotation.transform_point(
-                flight.origin.offset(g.Point(flight.position)) - origin.pilot_position
+            pos = origin.rotation.transform_point(
+                flight.origin.pos.offset(g.Point(flight.position)) - origin.pos[0]
             )
         
-        att = rotation * g.Euler(flight.attitude) 
-        vel =  att.inverse().transform_point(rotation.transform_point(g.Point(flight.velocity))) if all(flight.contains('velocity')) else None
+        att = origin.rotation * g.Euler(flight.attitude) 
+        vel =  att.inverse().transform_point(origin.rotation.transform_point(g.Point(flight.velocity))) if all(flight.contains('velocity')) else None
         rvel = g.Point(flight.axisrate) if all(flight.contains('axisrate')) else None
         acc = g.Point(flight.acceleration) if all(flight.contains('acceleration')) else None
           
@@ -470,13 +468,16 @@ class State(Table):
         assert reference in ["body", "world"]
 
         if reference == "body":
+            rot = g.Quaternion.from_axis_angle(angles).inverse()
             return State.copy_labels(
                 self, 
                 State.from_constructs(
                     self.time,
                     self.pos,
-                    self.att.rotate(angles) if reference=="world" else self.att.body_rotate(angles),
-                    vel = g.Quaternion.from_axis_angle(angles).inverse().transform_point(self.vel)
+                    self.att.body_rotate(angles),
+                    vel = rot.transform_point(self.vel),
+                    rvel = rot.transform_point(self.rvel),
+                    acc = rot.transform_point(self.acc),
                 )
             ) 
         else:
@@ -485,7 +486,7 @@ class State(Table):
                 State.from_constructs(
                     self.time,
                     self.pos,
-                    self.att.rotate(angles) if reference=="world" else self.att.body_rotate(angles),
+                    self.att.rotate(angles),
                 )
             )
 

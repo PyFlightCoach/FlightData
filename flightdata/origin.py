@@ -13,29 +13,34 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 import geometry as g
 import numpy as np
 from json import load, dump
-from flightdata.flight import Flight
 from typing import Self
 
 class Origin(object):
     '''This class defines an aerobatic box in the world, it uses the pilot position and the direction 
     in which the pilot is facing (normal to the main aerobatic manoeuvering plane)'''
 
-    def __init__(self, name, pilot_position: g.GPS, heading: float):
+    def __init__(self, name, pos: g.GPS, heading: float):
         self.name = name
-        self.pilot_position = pilot_position # position of pilot
+        self.pos = pos # position of pilot
         self.heading = heading  # direction pilot faces in radians from North (clockwise)
-        self.rotation = g.Euler(0, 0, -self.heading)
+        self.rotation = g.Euler(np.pi, 0, self.heading + np.pi/2)  # converts NED to x right, y heading direction, z up
+
+    @property
+    def pilot_position(self):
+        return self.pos
 
     def to_dict(self) -> dict:
-        temp = self.__dict__.copy()
-        temp["pilot_position"] = self.pilot_position.to_dict()
-        return temp
+        return dict(
+            name=self.name,
+            pos=self.pos.to_dict(),
+            heading=self.heading
+        )
 
     @staticmethod
     def from_dict(data: dict) -> Self:
         return Origin(
             data['name'], 
-            g.GPS(**data['pilot_position']), 
+            g.GPS(**data['pos']), 
             data['heading']
         )
 
@@ -53,6 +58,13 @@ class Origin(object):
             dump(self.to_dict(), f)
         return file
 
+    def copy(self):
+        return Origin(
+            self.name,
+            self.pos.copy(),
+            self.heading
+        )
+
     def __str__(self):
         return "Origin:{}".format(self.to_dict())
 
@@ -60,7 +72,7 @@ class Origin(object):
         return f'Origin(heading={np.degrees(self.heading)},pos={self.pilot_position})'
 
     @staticmethod
-    def from_initial(flight: Flight):
+    def from_initial(flight):
         '''Generate a box based on the initial position and heading of the model at the start of the log. 
         This is a convenient, but not very accurate way to setup the box. 
         '''

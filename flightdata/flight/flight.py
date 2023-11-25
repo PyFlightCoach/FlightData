@@ -21,7 +21,7 @@ from json import load, dump
 from ardupilot_log_reader.reader import Ardupilot
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes 
-
+from flightdata import Origin
 
 class Flight:
     ardupilot_types = [
@@ -30,7 +30,7 @@ class Flight:
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
         'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN', 'ESC', 'CURRENT']
     
-    def __init__(self, data: pd.DataFrame, parameters: list = None, origin: GPS = None, primary_pos_source='gps'):
+    def __init__(self, data: pd.DataFrame, parameters: list = None, origin: Origin = None, primary_pos_source='gps'):
         self.data = data
         self.parameters = parameters
         self.data.index = self.data.index - self.data.index[0]
@@ -42,13 +42,13 @@ class Flight:
         cols = getattr(fields, name)
         try:
             if isinstance(cols, Field):
-                return self.data[cols.column]
+                return self.data[cols.col]
             else:
-                return self.data.loc[:, [f.column for f in cols if f.column in self.data.columns]]
+                return self.data.loc[:, [f.col for f in cols if f.col in self.data.columns]]
         except KeyError:
             if isinstance(cols, Field):
                 cols = [cols]
-            return pd.DataFrame(data=np.empty((len(self), len(cols))),columns=[f.column for f in cols])
+            return pd.DataFrame(data=np.empty((len(self), len(cols))),columns=[f.col for f in cols])
         
     def contains(self, name: Union[str, list[str]]):
         cols = getattr(fields, name)
@@ -61,7 +61,7 @@ class Flight:
         if isinstance(sli, int) or isinstance(sli, float):
             return self.data.iloc[self.data.index.get_loc(sli)]
         else:
-            return Flight(self.data.loc[sli], self.parameters)
+            return Flight(self.data.loc[sli], self.parameters, self.origin, self.primary_pos_source)
 
     def __len__(self):
         return len(self.data)
@@ -71,7 +71,7 @@ class Flight:
             self.data.reset_index(drop=True)
                 .set_index('time_actual', drop=False)
                     .loc[sli].set_index("time_flight", drop=False), 
-            self.parameters
+            self.parameters, self.origin, self.primary_pos_source
         )
     
     def copy(self):
@@ -95,13 +95,13 @@ class Flight:
         return Flight(
             data=pd.DataFrame.from_dict(data['data']).set_index('time_flight', drop=False),
             parameters=data['parameters'],
-            origin=GPS.from_dict(data['origin']),
+            origin=Origin.from_dict(data['origin']),
             primary_pos_source=data['primary_pos_source']
         )
     
     def to_json(self, file: str) -> str:
         with open(file, 'w') as f:
-            dump(self.to_dict(), f, cls=NumpyEncoder)
+            dump(self.to_dict(), f, cls=NumpyEncoder, indent=2)
         return file
 
     @staticmethod
@@ -180,7 +180,8 @@ class Flight:
     def __eq__(self, other):
         try:
             pd.testing.assert_frame_equal(self.data, other.data)
-            assert_almost_equal(self.origin, other.origin)
+            assert_almost_equal(self.origin.pos, other.origin.pos)
+            assert self.origin.heading == other.origin.heading
             return True
         except:
             return False
@@ -283,7 +284,7 @@ class Flight:
         if 'BARO' in parser.dfs:
             dfs = dfs + Flight.parse_instances(parser.BARO, dict(
                 air_pressure= "Press",
-                air_temparature= "Temp",
+                air_temperature= "Temp",
                 air_altitude= "Alt"
             ), 'I')
 
@@ -294,13 +295,13 @@ class Flight:
         if 'RCIN' in parser.dfs:
             dfs.append(Flight.build_cols(
                 time_actual = parser.RCIN.timestamp,
-                **{f'rcin_{i}': parser.RCIN[f'C{i}'] for i in range(20) if f'C{i}' in parser.RCIN.columns}
+                **{f'rcin_c{i}': parser.RCIN[f'C{i}'] for i in range(20) if f'C{i}' in parser.RCIN.columns}
             ))
         
         if 'RCOU' in parser.dfs:
             dfs.append(Flight.build_cols(
                 time_actual = parser.RCOU.timestamp,
-                **{f'rcout_{i}': parser.RCOU[f'C{i}'] for i in range(20) if f'C{i}' in parser.RCOU.columns}
+                **{f'rcout_c{i}': parser.RCOU[f'C{i}'] for i in range(20) if f'C{i}' in parser.RCOU.columns}
             ))
 
         if 'MODE' in parser.dfs:
@@ -336,7 +337,7 @@ class Flight:
 
 
         
-        origin = GPS(parser.ORGN.iloc[:,-3:]) if 'ORGN' in parser.dfs else None
+        origin = Origin('ekf_origin', GPS(parser.ORGN.iloc[:,-3:]), 0)
 
         dfout = dfs[0]
 
@@ -385,6 +386,10 @@ class Flight:
             wind_N = df['wN'] if 'wN' in df.columns else None,
             wind_E = df['wE'] if 'wE' in df.columns else None,
         )
-        origin = GPS(fc_json['parameters']['originLat'], fc_json['parameters']['originLng'], fc_json['parameters']['originAlt'])
-
+        origin = Origin('fcj_origin',GPS(
+            fc_json['parameters']['originLat'], 
+            fc_json['parameters']['originLng'], 
+            fc_json['parameters']['originAlt']
+        ), 0)
+        
         return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')
