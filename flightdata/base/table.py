@@ -335,7 +335,7 @@ class Table:
                         max_fwd = get_len(i+1) - min_len if i < len(unique_labels)-1 else 0
 
                         if max_bck + max_fwd + get_len(i) < min_len:
-                            raise Exception(f'{row[1]} too short and cannot shorten adjacent labels further')
+                            raise Exception(f'{row.iloc[0]},{row.iloc[1]} too short and cannot shorten adjacent labels further')
                         else:
                             _extend = (min_len - get_len(i)) / 2
                             ebck = min(max_bck, int(np.floor(_extend)))

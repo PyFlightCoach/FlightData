@@ -95,3 +95,41 @@ def test_flightmode_split(vtol_hover: Flight):
     assert isinstance(smodes['QHOVER'][0], Flight)
     
 
+
+def _fft(col: pd.Series):
+    from scipy.fft import fft, fftfreq
+    ts = col.index
+    N = len(col)
+    T = (ts[-1] - ts[0]) / N
+
+    yf = fft(col.to_numpy())
+    xf = fftfreq(N, T)[:N//2]
+
+    return xf, 2.0/N * np.abs(yf[0:N//2])
+
+
+def test_butter_filter(fl: Flight):
+    filtered = fl.butter_filter(1,5)
+
+    x, y = _fft(fl.acceleration_x)
+    xf, yf = _fft(filtered.acceleration_x)
+
+    assert np.all(yf[xf>1]<0.025)
+
+def test_remove_time_flutter(fl: Flight):
+    flf = fl.remove_time_flutter()
+    assert np.gradient(np.gradient(flf.data.index)) == approx(0)
+
+
+    #import plotly.graph_objects as go
+
+    #fig = go.Figure()
+    #fig.add_trace(go.Scatter(x=fl.time_flight, y=fl.acceleration_x, name='original'))
+    #fig.add_trace(go.Scatter(x=filtered.time_flight, y=filtered.acceleration_x, name='filtered'))
+    #fig.show()    
+#
+#
+    #fig = go.Figure()
+    #fig.add_trace(go.Scatter(x=x, y=y, name='original'))
+    #fig.add_trace(go.Scatter(x=xf, y=yf, name='filtered'))
+    #fig.show()

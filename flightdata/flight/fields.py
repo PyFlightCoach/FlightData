@@ -54,6 +54,15 @@ class Fields:
             raise AttributeError(f'Field {name} not found')
 
 
+
+    def get_fields(self, names: list[str]) -> list[Field]:
+        _l = lambda v: [v] if isinstance(v, Field) else v
+        return list(chain(*[_l(getattr(self, n)) for n in names]))
+    
+    def get_cols(self, names: list[str]) -> list[str]:
+        return [f.col for f in self.get_fields(names)]
+
+
 fields = Fields([
         Field('time_flight', 'time since the start of the flight, seconds'),
         Field('time_actual', 'time since epoch, seconds'),

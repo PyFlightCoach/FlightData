@@ -20,8 +20,11 @@ from time import time
 from json import load, dump
 from ardupilot_log_reader.reader import Ardupilot
 from flightdata.base.numpy_encoder import NumpyEncoder
+from flightdata.flight.fields import Fields
 from .ardupilot import flightmodes 
 from flightdata import Origin
+from scipy.signal import butter, filtfilt
+
 
 class Flight:
     ardupilot_types = [
@@ -74,12 +77,12 @@ class Flight:
             self.parameters, self.origin, self.primary_pos_source
         )
     
-    def copy(self):
+    def copy(self, **kwargs):
         return Flight(
-            self.data.copy(),
-            self.parameters.copy() if self.parameters else None,
-            self.origin.copy(),
-            self.primary_pos_source
+            kwargs['data'] if 'data' in kwargs else self.data.copy() ,
+            kwargs['parameters'] if 'parameters' in kwargs else self.parameters.copy() if self.parameters else None,
+            kwargs['origin'] if 'origin' in kwargs else self.origin.copy(),
+            kwargs['primary_pos_source'] if 'primary_pos_source' in kwargs else self.primary_pos_source
         )
 
     def to_dict(self):
@@ -332,7 +335,7 @@ class Flight:
         elif 'RPM' in parser.dfs:
             dfs.append(Flight.build_cols(
                 time_actual = parser.RPM.timestamp,
-                **{'motor_rpm{i}': parser.RPM[f'rpm{i}'] for i in range(2) if f'rpm{i}' in parser.RPM.columns},
+                **{f'motor_rpm_{i}': parser.RPM[f'rpm{i}'] for i in range(2) if f'rpm{i}' in parser.RPM.columns},
             ))
 
 
@@ -344,7 +347,7 @@ class Flight:
         for df in dfs[1:]:
             dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce).remove_time_flutter()
 
     @staticmethod
     def parse_instances(indf: pd.DataFrame, colmap:dict[str, str], instancecol='Instance'):
@@ -392,4 +395,49 @@ class Flight:
             fc_json['parameters']['originAlt']
         ), 0)
         
-        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')
+        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position').remove_time_flutter()
+
+    def remove_time_flutter(self):
+        #I think the best option is just to take the average of the timestep.
+        #FC loop rate seems consistent but there is noise in the time that is recorded
+        #to write, probably because different things are being written at different rates
+        time_cols = fields.get_cols(['time'])
+        avcols = []
+        for col in time_cols:
+            _col = self.data.loc[:, col]
+            avcols.append(np.linspace(_col.iloc[0], _col.iloc[-1], len(_col)))
+
+        return self.copy(
+            data=pd.concat([
+                pd.DataFrame(np.array(avcols).T, columns=time_cols, index=self.data.index),
+                self.data.loc[:,[c for c in self.data.columns if c not in time_cols]],
+            ], axis=1).reset_index(drop=True).set_index('time_flight', drop=False)
+        )
+
+
+    def filter(self, b, a):
+        dont_filter = [c for c in fields.get_cols(['time', 'flightmode', 'rcin', 'rcout']) if c in self.data.columns]
+        unwrap_cols = [c for c in fields.get_cols(['attitude']) if c in self.data.columns]
+
+        filter_cols = [c for c in self.data.columns if c not in dont_filter + unwrap_cols]
+        
+        filtdf = filtfilt(b, a, self.data.loc[:, filter_cols], axis=0)
+        unwfiltdf = filtfilt(b, a, np.unwrap(self.data.loc[:, unwrap_cols], axis=0), axis=0)
+
+        return self.copy(
+            data=pd.concat([
+                self.data.loc[:,dont_filter],
+                pd.DataFrame(unwfiltdf, columns=unwrap_cols, index=self.data.index) % (2*np.pi),
+                pd.DataFrame(filtdf, columns=filter_cols, index=self.data.index),
+            ], axis=1)
+        )
+    
+    def butter_filter(self, cutoff, order=5):
+        
+        ts = self.time_flight.to_numpy()
+        N = len(self)
+        T = (ts[-1] - ts[0]) / N
+
+        fs = 1/T
+
+        return self.filter(*butter(order, cutoff, fs=fs, btype='low', analog=False))
