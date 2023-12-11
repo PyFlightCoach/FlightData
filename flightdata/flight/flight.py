@@ -347,7 +347,7 @@ class Flight:
         for df in dfs[1:]:
             dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce).remove_time_flutter()
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)#.remove_time_flutter()
 
     @staticmethod
     def parse_instances(indf: pd.DataFrame, colmap:dict[str, str], instancecol='Instance'):
@@ -395,7 +395,7 @@ class Flight:
             fc_json['parameters']['originAlt']
         ), 0)
         
-        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position').remove_time_flutter()
+        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')#.remove_time_flutter()
 
     def remove_time_flutter(self):
         #I think the best option is just to take the average of the timestep.
