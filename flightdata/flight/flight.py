@@ -316,7 +316,7 @@ class Flight:
             )
 
             #direction backward sets all the nans to the previous one, fillna backward sets the first bunch of nans to the subsequent
-            dfs.append(pd.merge_asof(dfs[0].loc[:,'time_actual'], df, on='time_actual', direction='backward').fillna(method='bfill'))
+            dfs.append(pd.merge_asof(dfs[0].loc[:,'time_actual'], df, on='time_actual', direction='backward').bfill())
         
         if 'BAT' in parser.dfs:
             dfs = dfs + Flight.parse_instances(parser.BAT, dict(
