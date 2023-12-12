@@ -60,7 +60,7 @@ class Flight:
         else:
             return [f.column in self.data.columns for f in cols]
                 
-    def __getitem__(self, sli):
+    def __getitem__(self, sli) -> Self:
         if isinstance(sli, int) or isinstance(sli, float):
             return self.data.iloc[self.data.index.get_loc(sli)]
         else:
@@ -364,7 +364,7 @@ class Flight:
             return dfs
 
     @staticmethod
-    def from_fc_json(fc_json: Union[str, dict, IO]):
+    def from_fc_json(fc_json: Union[str, dict, IO]) -> Self:
         
         if isinstance(fc_json, str):
             with open(fc_json, "r") as f:
