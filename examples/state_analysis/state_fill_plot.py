@@ -1,4 +1,4 @@
-from flightanalysis import State
+from flightdata import State
 from geometry import Transformation, P0, Euldeg, PX, Point
 from flightplotting import plotsec
 from flightplotting.traces import vectors

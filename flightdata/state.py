@@ -91,7 +91,7 @@ class State(Table):
     @staticmethod
     def from_flight(flight, origin: Union[Origin, str] = None) -> State:
         """Read position and attitude directly from the log(after transforming to flightline)"""
-        flight = flight.remove_time_flutter()
+        #flight = flight.remove_time_flutter()
         if isinstance(origin, str):
             extension = Path(origin).split()[1]
             if extension == "f3a":

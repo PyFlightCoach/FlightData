@@ -7,7 +7,6 @@ flf = flf.butter_filter(5,5)
 
 st = State.from_flight(fl)
 
-plotsec(st).show()
 stf = State.from_flight(flf)
 
 import plotly.express as px
@@ -22,15 +21,15 @@ px.line(df, x=df.index, y='dt').update_yaxes(range=[0,0.0005]).show()
 
 
 
-#import plotly.graph_objects as go
-#
-#fig=go.Figure()
-#
-#fig.add_trace(go.Scatter(x=fl.time_flight, y=np.gradient(fl.time_flight), name='original'))
-#fig.add_trace(go.Scatter(x=flf.time_flight, y=np.gradient(flf.time_flight), name='filtered'))
-#
-#fig.add_trace(go.Scatter(x=fl.time_flight, y=np.gradient(st.pos.z), name='posz', yaxis='y2'))
-#
-#fig.update_layout(yaxis2=dict(anchor='x', overlaying='y', side='right'))
-#
-#fig.show()
+import plotly.graph_objects as go
+
+fig=go.Figure()
+
+fig.add_trace(go.Scatter(x=fl.time_flight, y=np.gradient(fl.time_flight), name='original'))
+fig.add_trace(go.Scatter(x=flf.time_flight, y=np.gradient(flf.time_flight), name='filtered'))
+
+fig.add_trace(go.Scatter(x=fl.time_flight, y=np.gradient(st.pos.z), name='posz', yaxis='y2'))
+
+fig.update_layout(yaxis2=dict(anchor='x', overlaying='y', side='right'))
+
+fig.show()
