@@ -133,13 +133,12 @@ class Flight:
 
         flos = []
         for fl in fls:
-            flos.append(Flight(
-                pd.merge_asof(
+            flos.append(fl.copy(
+                data=pd.merge_asof(
                     otf, 
                     fl.data.reset_index(), 
                     on='time_actual'
-                ).set_index('time_index', drop=False),
-                fl.parameters
+                ).set_index('time_index', drop=False)
             ))
 
         return flos
