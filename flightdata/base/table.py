@@ -46,7 +46,7 @@ def make_time(tab):
     
 class Table:
     constructs = Constructs([
-         SVar("time", Time,        ["t", "dt"]               , make_time )
+        SVar("time", Time,        ["t", "dt"]               , make_time )
     ])
 
     def __init__(self, data: pd.DataFrame, fill=True, min_len=1):

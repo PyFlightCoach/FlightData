@@ -114,7 +114,7 @@ class State(Table):
         vel =  att.inverse().transform_point(origin.rotation.transform_point(g.Point(flight.velocity))) if all(flight.contains('velocity')) else None
         rvel = g.Point(flight.axisrate) if all(flight.contains('axisrate')) else None
         acc = g.Point(flight.acceleration) if all(flight.contains('acceleration')) else None
-          
+        
         return State.from_constructs(time, pos, att, vel, rvel, acc)
 
     @staticmethod
@@ -558,5 +558,19 @@ class State(Table):
 
     def arc_centre(self) -> g.Point:
         acc = g.Point.vector_rejection(self.zero_g_acc(), self.vel)
-
         return acc.unit() * abs(self.vel) ** 2 / abs(acc)
+        
+    def F_gravity(self, mass: g.Mass):
+        '''Returns the gravitational force in N'''
+        return mass.m * self.att.inverse().transform_point(g.PZ(-9.81))
+    
+    def F_inertia(self, mass: g.Mass):
+        '''Returns the inertial force in N'''
+        return mass.m * (self.zero_g_acc() + g.Point.cross(self.rvel, self.vel))
+    
+    def M_inertia(self, mass: g.Mass):
+        '''return the inertial moment in N'''
+        h = mass.angular_momentum(self.rvel)
+        return h.diff(self.dt) + g.Point.cross(self.rvel, h)
+    
+    
