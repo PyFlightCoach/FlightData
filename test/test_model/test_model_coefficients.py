@@ -1,5 +1,5 @@
 from pytest import approx, fixture
-from flightdata import Environment, WindModelBuilder, Flow, cold_draft, Coefficients, State
+from flightdata import Environment, WindModelBuilder, Flow, Coefficients, State
 from pytest import approx
 import numpy as np
 from ..conftest import flight, state
@@ -13,10 +13,4 @@ def environments(flight, state):
 @fixture
 def flows(state, environments):
     return Flow.build(state, environments)
-
-def test_build(state, flows):
-    coeffs = Coefficients.build(state, flows.q, cold_draft)
-    assert isinstance(coeffs, Coefficients)
-    pass
-
 

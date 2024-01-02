@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import numpy.typing as npt
 from geometry import Base,  Point, Quaternion, Transformation
-from typing import Union, Dict, Self
+from typing import Union, Self, Tuple
 from .constructs import SVar, Constructs
 from numbers import Number
 
@@ -118,7 +118,31 @@ class Table:
         inds = self.data.reset_index(names="t2").set_index("t").loc[sli].t2.to_numpy()#set_index("t", drop=False).columns
 
         return self.__class__(self.data.loc[inds])
-        
+
+    @classmethod
+    def stack(Cls, sections: list, overlap: int=1) -> Self:
+        """Stack a list of Tables on top of each other. 
+        The overlap is the number of rows to overlap between each section
+        """
+        # first build list of index offsets, to be added to each dataframe
+        if overlap > 0:
+            offsets = np.cumsum([0] + [sec.data.index[-overlap] for sec in sections[:-1]])
+            dfs = [section.data.iloc[:-overlap] for section in sections[:-1]] + [sections[-1].data]
+        elif overlap == 0:
+            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sections[:-1]])
+            dfs = [section.data for section in sections]
+        else:
+            raise AttributeError("Overlap must be >= 0")
+
+        for df, offset in zip(dfs, offsets):
+            df.index = np.array(df.index) - df.index[0] + offset
+        combo = pd.concat(dfs)
+        combo.index.name = "t"
+
+        combo["t"] = combo.index
+
+        return Cls(combo)
+
     def __iter__(self):
         for ind in list(self.data.index):
             yield self[ind]
@@ -169,6 +193,9 @@ class Table:
             ignore_index=True
         ).set_index("t", drop=False))
 
+    
+    
+    
     def label(self, **kwargs) -> Self:
         return self.__class__(self.data.assign(**kwargs))
 
@@ -239,18 +266,50 @@ class Table:
     def shift_label(self, offset: int, min_len=None, **kwargs) -> Self:
         '''Shift the end of a label forwards or backwards by offset rows
         Do not allow a label to be reduced to less than min_len'''
+        if min_len is None:
+            min_len=1
         ranges = self.label_ranges()
         i = self.get_label_id(**kwargs)
         labels: pd.DataFrame = self.labels.copy()
+        labcols = [labels.columns.get_loc(c) for c in kwargs.keys()]
         if offset > 0 and i < len(ranges):
-            offset = min(offset, self.get_label_len(**ranges.iloc[i+1, :2].to_dict()) - min_len) 
+            offset = min(offset, ranges.iloc[i+1, -1] - min_len) 
             if offset > 0:
-                labels.iloc[ranges.iloc[i+1].start:ranges.iloc[i+1].start+offset, :] = pd.Series(kwargs)
-        elif offset < 0 and i > 0:
-            offset = max(offset, -self.get_label_len(**kwargs) + min_len)
+                labels.iloc[ranges.iloc[i+1].start:ranges.iloc[i+1].start+offset, labcols] = pd.Series(kwargs)
+        elif offset < 0:
+            offset = max(offset, -ranges.iloc[i, -1] + min_len)
             if offset < 0:
-                labels.iloc[ranges.iloc[i].end-offset:ranges.iloc[i].end, :] = pd.Series(kwargs)
+                labels.iloc[ranges.iloc[i].end+offset:ranges.iloc[i].end+1, labcols] = ranges.iloc[i+1].loc[kwargs.keys()]
         return self.label(**labels.to_dict(orient='list'))
+    
+    @classmethod
+    def shift_multi(Cls, steps: int, tb1: Self, tb2: Self, min_len=2) -> Tuple(Self, Self):
+        '''Take datapoints off the start of tb2 and add to the end tb1'''
+        if (steps>0 and len(tb2)-min_len<steps) or (steps<0 and len(tb1)-2<min_len):
+            raise ValueError(f'Cannot Squash a Table to less than {min_len} datapoints')
+        dfj = Cls.stack([tb1, tb2], overlap=0).data
+        return Cls(dfj.iloc[:len(tb1)+steps, :]), \
+               Cls(dfj.iloc[len(tb1)+steps:, :])
+    
+    def shift_label_ratio(self, ratio: float, min_len=None, **kwargs) -> Self:
+        '''shift a label within its allowable bounds, with a ratio of
+        1 representing the maximum allowabe movement forwards or backwards
+        without squashing a label'''
+        ranges = self.label_ranges()
+        i = self.get_label_id(**kwargs)
+        if ratio > 0:
+            limit = ranges.iloc[i+1, -1] - 2
+        else:    
+            limit = ranges.iloc[i, -1] -2
+        
+        return self.shift_label(int(limit * ratio), min_len, **kwargs)
+    
+    def shift_labels_ratios(self, ratios: list[float], min_len: int) -> Self:
+        assert len(ratios) == len(self.unique_labels())-1
+        res = self
+        for lab, ratio in zip([r[1] for r in self.unique_labels()[:-1].iterrows()], ratios):
+            res = res.shift_label_ratio(ratio, min_len, **lab)
+        return res
     
     def get_label_id(self, **kwargs) -> Union[int, float]:
         dfo = self.unique_labels()
@@ -275,8 +334,10 @@ class Table:
         res = []
         for row in df.iterrows():
             res.append(list(self.label_range(t=t,**row[1].to_dict())))
-        return pd.concat([df, pd.DataFrame(res, columns=['start', 'end'])], axis=1)
-
+        df =  pd.concat([df, pd.DataFrame(res, columns=['start', 'end'])], axis=1)
+        df['length'] = df.end - df.start
+        return df
+        
     def single_labels(self) -> list[str]:
         return ['_'.join(r[1]) for r in self.data.loc[:, self.label_cols].iterrows()]
 

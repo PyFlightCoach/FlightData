@@ -118,29 +118,6 @@ class State(Table):
         return State.from_constructs(time, pos, att, vel, rvel, acc)
 
     @staticmethod
-    def stack(sections: list) -> Self:
-        """Stack a list of States on top of each other. last row of each is replaced with first row of the next, 
-            indexes are offset so they are sequential. 
-            TODO this should move into the parent class.
-        """
-        # first build list of index offsets, to be added to each dataframe
-        offsets = np.cumsum([0] + [sec.duration for sec in sections[:-1]])
-
-        # The sections to be stacked need their last row removed, as the first row of the next replaces it
-        dfs = [section.data.iloc[:-1] for section in sections[:-1]] + \
-            [sections[-1].data.copy()]
-
-        # offset the df indexes
-        for df, offset in zip(dfs, offsets):
-            df.index = np.array(df.index) - df.index[0] + offset
-        combo = pd.concat(dfs)
-        combo.index.name = "t"
-
-        combo["t"] = combo.index
-
-        return State(combo)
-
-    @staticmethod
     def align(
         flown: State, 
         template: State, 
@@ -171,6 +148,8 @@ class State(Table):
 
         return distance, State.copy_labels(template, flown, path, 2)
 
+    
+    
     def splitter_labels(self: State, mans: List[dict], better_names: List[str]=None) -> State:
             """label the manoeuvres in a State based on the flight coach splitter information
 
@@ -231,7 +210,7 @@ class State(Table):
 
     def get_element(self: State, element: Union[str, list, int]) -> Self:
         return self.get_subset(element, "element") 
-
+        
     def get_man_or_el(self: State, el: str) -> Self:
         if el in self.data.element.unique():
             return self.get_element([el])
@@ -558,7 +537,8 @@ class State(Table):
 
     def arc_centre(self) -> g.Point:
         acc = g.Point.vector_rejection(self.zero_g_acc(), self.vel)
-        return acc.unit() * abs(self.vel) ** 2 / abs(acc)
+        with np.errstate(invalid='ignore'):
+            return acc.unit() * abs(self.vel) ** 2 / abs(acc)
         
     def F_gravity(self, mass: g.Mass):
         '''Returns the gravitational force in N'''
