@@ -188,6 +188,7 @@ class State(Table):
 
             return State.stack(labelled)
 
+    
     def get_subset(self: State, mans: Union[list, slice], col="manoeuvre", min_len=1) -> Self:
         selectors = self.data.loc[:,col].unique()
         if isinstance(mans, slice):
@@ -247,6 +248,18 @@ class State(Table):
             rvel=self.rvel,
             acc=self.acc * factor,
             racc=self.racc,
+        ))
+
+    def mirror_zy(self: State) -> State:
+        att = g.Quaternion.from_euler((self.att.to_euler() * g.Point(-1,1,1) + g.Point(0, 0, np.pi)))
+        return State.copy_labels(self, State.from_constructs(
+            time=self.time,
+            pos=self.pos * g.Point(-1, 1, 1),
+            att=att,
+            vel=self.vel * g.Point(-1, 1, 1),
+            rvel=self.rvel * g.Point(-1, 1, 1),
+            acc=self.acc * g.Point(-1, 1, 1),
+            racc=self.racc * g.Point(-1, 1, 1),
         ))
 
     def to_track(self: State) -> State:
@@ -339,34 +352,35 @@ class State(Table):
 
         return fcd
 
-    def _create_json_mans(self: State, sdef) -> pd.DataFrame:
-        mans = pd.DataFrame(columns=["name", "id", "sp", "wd", "start", "stop", "sel", "background", "k"])
-
-        mans["name"] = ["tkoff"] + [man.info.short_name for man in sdef]
-        mans["k"] = [0] + [man.info.k for man in sdef]
-        mans["id"] = ["sp_{}".format(i) for i in range(len(sdef.data)+1)]
-
-        mans["sp"] = list(range(len(sdef.data) + 1))
+    def _create_json_mans(self: State, kfactors: list[int]) -> pd.DataFrame:
         
-        itsecs = [self.get_manoeuvre(m.info.short_name) for m in sdef] 
+        mans = pd.DataFrame(columns=["name", "id", "sp", "wd", "start", "stop", "sel", "background", "k"])
+        mnames = self.data.manoeuvre.unique()
+        mans["name"] = mnames
+        mans["k"] = kfactors
+        mans["id"] = ["sp_{}".format(i) for i in range(len(mnames))]
 
-        mans["wd"] = [0.0] + [100 * st.duration / self.duration for st in itsecs]
+        mans["sp"] = list(range(len(mnames)))
+        
+        itsecs = [self.get_manoeuvre(mn) for mn in mnames] 
+
+        mans["wd"] = [100 * st.duration / self.duration for st in itsecs]
         
         dat = self.data.reset_index(drop=True)
 
-        mans["start"] = [0] + [dat.loc[dat.manoeuvre==man.info.short_name].index[0] for man in sdef]
+        mans["start"] = [dat.loc[dat.manoeuvre==mn].index[0] for mn in mnames]
 
-        mans["stop"] = [mans["start"][1] + 1] + [dat.loc[dat.manoeuvre==man.info.short_name].index[-1] + 1 for man in sdef]
+        mans["stop"] = [dat.loc[dat.manoeuvre==mn].index[-1] + 1 for mn in mnames]
             
-        mans["sel"] = np.full(len(sdef.data) + 1, False)
+        mans["sel"] = np.full(len(mnames.data), False)
         mans.loc[1,"sel"] = True
-        mans["background"] = np.full(len(sdef.data) + 1, "")
+        mans["background"] = np.full(len(mnames), "")
 
         return mans
 
-    def create_fc_json(self: State, sdef, schedule_name: str, schedule_category: str="F3A"):
+    def create_fc_json(self: State, kfactors: list[int], schedule_name: str, schedule_category: str="F3A"):
         fcdata = self._create_json_data()
-        fcmans = self._create_json_mans(sdef)
+        fcmans = self._create_json_mans(kfactors)
         return {
             "version": "1.3",
             "comments": "DO NOT EDIT\n",
