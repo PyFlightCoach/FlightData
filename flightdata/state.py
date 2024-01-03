@@ -251,15 +251,12 @@ class State(Table):
         ))
 
     def mirror_zy(self: State) -> State:
-        att = g.Quaternion.from_euler((self.att.to_euler() * g.Point(-1,1,1) + g.Point(0, 0, np.pi)))
+        att = g.Quaternion.from_euler((self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1))
         return State.copy_labels(self, State.from_constructs(
             time=self.time,
             pos=self.pos * g.Point(-1, 1, 1),
-            att=att,
-            vel=self.vel * g.Point(-1, 1, 1),
-            rvel=self.rvel * g.Point(-1, 1, 1),
-            acc=self.acc * g.Point(-1, 1, 1),
-            racc=self.racc * g.Point(-1, 1, 1),
+            att=att,#g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
+            vel=self.vel
         ))
 
     def to_track(self: State) -> State:
