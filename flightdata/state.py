@@ -146,7 +146,7 @@ class State(Table):
             dist=euclidean
         )
 
-        return distance, State.copy_labels(template, flown, path, 2)
+        return distance, State.copy_labels(template, flown, path, 3)
 
     
     
