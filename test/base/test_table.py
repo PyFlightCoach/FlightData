@@ -1,7 +1,7 @@
-from flightdata import Table, Time, Constructs, SVar
+from flightdata import Table, Constructs, SVar
 import numpy as np
 import pandas as pd
-from geometry import Point, Quaternion, PZ
+from geometry import Time
 
 from pytest import approx, fixture
 

@@ -1,6 +1,6 @@
-from flightdata import Flight, State, Origin, Time
+from flightdata import Flight, State, Origin
 from pytest import approx, mark
-from geometry import Transformation, PX, PY, P0, Point
+from geometry import Transformation, PX, PY, P0, Time
 from geometry.testing import assert_almost_equal
 import numpy as np
 import pandas as pd

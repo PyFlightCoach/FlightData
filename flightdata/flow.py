@@ -1,6 +1,6 @@
 
-from flightdata import Table, Time, SVar, Constructs, SVar, Flight, Origin
-from geometry import Point, Base, PX, Euler
+from flightdata import Table, SVar, Constructs, SVar, Flight, Origin
+from geometry import Point, Base, PX, Euler, Time
 import numpy as np
 
 

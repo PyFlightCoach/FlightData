@@ -1,5 +1,5 @@
-from flightdata import State, Origin, Time
-from geometry import Point, Quaternion, Transformation, PX
+from flightdata import State, Origin
+from geometry import Point, Quaternion, Transformation, PX, Time
 from flightdata import Flight, Fields
 import numpy as np
 import pandas as pd

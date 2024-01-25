@@ -1,6 +1,6 @@
 
-from flightdata import Flight, Constructs, SVar, Table, Origin, Time
-from geometry import Point, Base, P0
+from flightdata import Flight, Constructs, SVar, Table, Origin
+from geometry import Point, Base, P0, Time
 import numpy as np
 from .wind import WindModel, WindModelBuilder
 

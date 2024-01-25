@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_list_like
 import geometry as g
-from flightdata import Table, Constructs, SVar, Time, Origin, Flow, Environment
+from flightdata import Table, Constructs, SVar, Origin, Flow, Environment
 
 
 class State(Table):
@@ -33,7 +33,7 @@ class State(Table):
         if transform is None:
             transform = g.Transformation()
         if not "time" in kwargs: 
-            kwargs["time"] = Time.from_t(np.linspace(0, State._construct_freq*len(transform), len(transform)))
+            kwargs["time"] = g.Time.from_t(np.linspace(0, State._construct_freq*len(transform), len(transform)))
         return State.from_constructs(pos=transform.p, att=transform.q, **kwargs)
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
@@ -56,7 +56,7 @@ class State(Table):
         else:
             return self.back_transform.g.Point(pin)
 
-    def fill(self, time: Time) -> State:
+    def fill(self, time: g.Time) -> State:
         '''Project forward through time assuming small angles and uniform circular motion'''
         st = self[-1]
         vel = st.vel.tile(len(time))   
@@ -73,7 +73,7 @@ class State(Table):
         """Extrapolate the input state assuming uniform circular motion and small angles
         """
         npoints = np.max([int(np.ceil(duration / self.dt[0])), min_len])
-        time = Time.from_t(np.linspace(0,duration, npoints))
+        time = g.Time.from_t(np.linspace(0,duration, npoints))
         return self.fill(time)
 
     @staticmethod
@@ -101,7 +101,7 @@ class State(Table):
         elif origin is None:
             origin = flight.origin
 
-        time = Time.from_t(np.array(flight.data.time_flight))
+        time = g.Time.from_t(np.array(flight.data.time_flight))
 
         if all(flight.contains('gps')) and flight.primary_pos_source == 'gps':
             pos = origin.rotation.transform_point(g.GPS(flight.gps) - origin.pos[0])

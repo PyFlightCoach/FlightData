@@ -2,42 +2,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import numpy.typing as npt
-from geometry import Base,  Point, Quaternion, Transformation
+from geometry import Base, Time
 from typing import Union, Self, Tuple
 from .constructs import SVar, Constructs
 from numbers import Number
-
 from time import time
-
-
-class Time(Base):
-    cols=["t", "dt"]
-    
-    @staticmethod
-    def from_t(t: np.ndarray) -> Self:
-        if isinstance(t, Number):
-            return Time(t, 1/30)
-        else:
-            dt = np.array([1/30]) if len(t) == 1 else np.gradient(t)
-            return Time(t, dt)
-
-    def scale(self, duration) -> Self:
-        old_duration = self.t[-1] - self.t[0]
-        sfac = duration / old_duration
-        return Time(
-            self.t[0] + (self.t - self.t[0]) * sfac,
-            self.dt * sfac
-        )
-
-    def reset_zero(self):
-        return Time(self.t - self.t[0], self.dt)
-
-    @staticmethod
-    def now():
-        return Time.from_t(time())
-
-    def extend(self):
-        return Time.concatenate([self, Time(self.t[-1] + self.dt[-1], self.dt[-1])])
 
 
 def make_time(tab):

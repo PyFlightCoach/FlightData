@@ -1,5 +1,5 @@
 '''Take a flow and a controls, return the aerodynamic forces and moments'''
-from flightdata import Time, Coefficients
+from flightdata import Coefficients
 from . import Model
 import numpy as np
 import geometry as g
