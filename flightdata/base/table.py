@@ -63,6 +63,8 @@ class Table:
     
     @classmethod
     def from_dict(Cls, data):
+        if ['data'] in data:
+            data = data['data']
         return Cls(pd.DataFrame.from_dict(data).set_index("t", drop=False))
 
     def __len__(self):
