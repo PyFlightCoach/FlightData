@@ -48,11 +48,11 @@ class Collection:
     def to_list(self) -> List[T]:
         return list(self.data.values())
     
-    def to_dicts(self) -> list[dict[str, Any]]:
-        return [v.to_dict() for v in self.data.values()]
+    def to_dicts(self, *args, **kwargs) -> list[dict[str, Any]]:
+        return [v.to_dict(*args, **kwargs) for v in self.data.values()]
 
-    def to_dict(self) -> dict[str, dict[str, Any]]:
-        return {k: v.to_dict() for k, v in self.data.items()}
+    def to_dict(self, *args, **kwargs) -> dict[str, dict[str, Any]]:
+        return {k: v.to_dict(*args, **kwargs) for k, v in self.data.items()}
 
     @classmethod
     def from_dicts(cls, vals: list[dict[str: Any]]) -> Self:
