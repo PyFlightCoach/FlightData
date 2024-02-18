@@ -424,9 +424,14 @@ class State(Table):
     def direction(self):
         """returns 1 for going right, -1 for going left"""
         return np.sign(self.att.transform_point(g.Point(1, 0, 0)).x)
-        
+    
+    def cross_direction(self):
+        """returns 1 for going out, -1 for coming in"""
+        return np.sign(self.att.transform_point(g.Point(1, 0, 0)).y)
+    
+
     def inverted(self):
-        return np.sign(self.att.transform_point(g.Point(0, 0, 1)).z) > 0
+        return self.att.transform_point(g.Point(0, 0, 1)).z > 0
 
     def upright(self):
         return not self.inverted()

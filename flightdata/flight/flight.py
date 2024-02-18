@@ -9,6 +9,7 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program. If not, see <http://www.gnu.org/licenses/>.
 """
+from __future__ import annotations
 from typing import Self, Union, IO
 import numpy as np
 import pandas as pd
@@ -29,7 +30,7 @@ from scipy.signal import butter, filtfilt
 class Flight:
     ardupilot_types = [
         'XKF1', 'XKF2', 'NKF1', 'NKF2', 
-        'POS', 'ATT', 'ACC', 'GYRO', 'IMU', 
+        'POS', 'ATT', 'RATE', 'ACC', 'GYRO', 'IMU', 
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
         'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN', 'ESC', 'CURRENT']
     
@@ -43,6 +44,10 @@ class Flight:
         
     def __getattr__(self, name):
         cols = getattr(fields, name)
+        if cols is None:
+            cols = [f for f in self.data.columns if f.startswith(name)]
+            if len(cols) > 0:
+                return self.data[cols]
         try:
             if isinstance(cols, Field):
                 return self.data[cols.col]
@@ -76,7 +81,15 @@ class Flight:
                     .loc[sli].set_index("time_flight", drop=False), 
             self.parameters, self.origin, self.primary_pos_source
         )
-    
+        
+    def slice_time_flight(self, sli):
+        return Flight(
+            self.data.reset_index(drop=True)
+                .set_index('time_flight', drop=False)
+                    .loc[sli], 
+            self.parameters, self.origin, self.primary_pos_source
+        )
+        
     def copy(self, **kwargs):
         return Flight(
             kwargs['data'] if 'data' in kwargs else self.data.copy() ,
@@ -189,13 +202,13 @@ class Flight:
             return False
         
     @staticmethod
-    def from_log(log:Union[Ardupilot, str]):
+    def from_log(log:Union[Ardupilot, str], extra_types: list[str] = None, **kwargs) -> Flight:
         """Constructor from an ardupilot bin file."""
-
-        if isinstance(log, Path):
-            log = str(log)
-        if isinstance(log, str):
-            parser = Ardupilot(log, types=Flight.ardupilot_types)
+        
+        extra_types = [] if extra_types is None else extra_types
+        
+        if isinstance(log, str) or isinstance(log, Path):
+            parser = Ardupilot(str(log), types=list(set(Flight.ardupilot_types + extra_types)))
         else:
             parser = log
 
@@ -219,6 +232,9 @@ class Flight:
                 attitude_roll = np.radians(att.Roll),
                 attitude_pitch = np.radians(att.Pitch),
                 attitude_yaw = np.radians(att.Yaw),
+                attdes_roll = np.radians(att.DesRoll),
+                attdes_pitch = np.radians(att.DesPitch),
+                attdes_yaw = np.radians(att.DesYaw),
             ))
 
         if 'POS' in parser.dfs:
@@ -247,6 +263,16 @@ class Flight:
                 'wind_N': 'VWN',
                 'wind_E': 'VWE',
             }, 'C')
+        if 'RATE' in parser.dfs:
+            dfs.append(Flight.build_cols(
+                time_actual = parser.rate.timestamp,
+                axisrate_roll = parser.rate.R,
+                axisrate_pitch = parser.rate.P,
+                axisrate_yaw = parser.rate.Y,
+                desrate_roll = parser.rate.RDes,
+                desrate_pitch = parser.rate.PDes,
+                desrate_yaw = parser.rate.YDes,
+            ))
         
         if 'IMU' in parser.dfs:
             imu = parser.IMU
@@ -254,16 +280,24 @@ class Flight:
                 imu = imu.loc[imu.I==0, :]
             
             if not ekf1 is None:
-                imu = pd.merge_asof(imu, ekf1.loc[ekf1.C==0], on='timestamp', direction='nearest')
-                imu['GyrX'] = imu.GyrX + np.radians(imu.GX) / 100
-                imu['GyrY'] = imu.GyrY + np.radians(imu.GY) / 100
-                imu['GyrZ'] = imu.GyrZ + np.radians(imu.GZ) / 100
+                if 'C' in ekf1.columns:
+                    imu = pd.merge_asof(imu, ekf1.loc[ekf1.C==0], on='timestamp', direction='nearest')
+                else:
+                    imu = pd.merge_asof(imu, ekf1, on='timestamp', direction='nearest')
+                if all([v in imu.columns for v in ['GX', 'GY', 'GZ']]):
+                    imu['GyrX'] = imu.GyrX + np.radians(imu.GX) / 100
+                    imu['GyrY'] = imu.GyrY + np.radians(imu.GY) / 100
+                    imu['GyrZ'] = imu.GyrZ + np.radians(imu.GZ) / 100
 
             if not ekf2 is None:
-                imu = pd.merge_asof(imu, ekf2.loc[ekf2.C==0], on='timestamp', direction='nearest')
-                imu['AccX'] = imu.AccX + imu.AX / 100
-                imu['AccY'] = imu.AccY + imu.AY / 100
-                imu['AccZ'] = imu.AccZ + imu.AZ / 100
+                if 'C' in ekf2.columns:
+                    imu = pd.merge_asof(imu, ekf2.loc[ekf2.C==0], on='timestamp', direction='nearest')
+                else:
+                    imu = pd.merge_asof(imu, ekf2, on='timestamp', direction='nearest')
+                if all([v in imu.columns for v in ['AX', 'AY', 'AZ']]):
+                    imu['AccX'] = imu.AccX + imu.AX / 100
+                    imu['AccY'] = imu.AccY + imu.AY / 100
+                    imu['AccZ'] = imu.AccZ + imu.AZ / 100
 
             dfs.append(Flight.build_cols(
                 time_actual = imu.timestamp,
@@ -337,16 +371,22 @@ class Flight:
                 **{f'motor_rpm_{i}': parser.RPM[f'rpm{i}'] for i in range(2) if f'rpm{i}' in parser.RPM.columns},
             ))
 
-
+        for k, v in kwargs.items():
+            if k in parser.dfs:
+                dfs = dfs + Flight.parse_instances(parser.dfs[k], v)
+        
+        dfout = dfs[0]
+        dt = dfout.time_actual.diff().max()
+        for df in dfs[1:]:
+            dtn = df.time_actual.diff().max()
+            dfout = pd.merge_asof(
+                dfout, df, on='time_actual', direction='nearest', 
+                tolerance=min(max(dt, df.time_actual.diff().max()), 0.1)
+            )
         
         origin = Origin('ekf_origin', GPS(parser.ORGN.iloc[:,-3:]), 0)
-
-        dfout = dfs[0]
-
-        for df in dfs[1:]:
-            dfout = pd.merge_asof(dfout, df, on='time_actual', direction='nearest')
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)#.remove_time_flutter()
+        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)
 
     @staticmethod
     def parse_instances(indf: pd.DataFrame, colmap:dict[str, str], instancecol='Instance'):

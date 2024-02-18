@@ -63,7 +63,7 @@ class Table:
     
     @classmethod
     def from_dict(Cls, data):
-        if ['data'] in data:
+        if 'data' in data:
             data = data['data']
         return Cls(pd.DataFrame.from_dict(data).set_index("t", drop=False))
 
@@ -163,10 +163,7 @@ class Table:
             axis=0, 
             ignore_index=True
         ).set_index("t", drop=False))
-
-    
-    
-    
+      
     def label(self, **kwargs) -> Self:
         return self.__class__(self.data.assign(**kwargs))
 
@@ -203,8 +200,12 @@ class Table:
             return 0
 
     def unique_labels(self, cols = None) -> pd.DataFrame:
+        '''TODO Fix This'''
         if cols is None:
             cols = self.label_cols
+        df = self.data.loc[:,cols]
+        rows = df.loc[np.sum(df[cols].shift() != df[cols], axis=1) > 0]
+        
         return self.data.loc[:, cols].reset_index(drop=True).drop_duplicates().reset_index(drop=True)
 
     def shift_labels(self, col, elname, offset, allow_label_loss=True) -> Self:
@@ -319,10 +320,10 @@ class Table:
         labs = np.array(self.single_labels())
         return self.__class__(self.data[labs == lab])
 
-    def split_labels(self) -> dict[str, Self]:
+    def split_labels(self, cols=None) -> dict[str, Self]:
         '''split into multiple tables based on the labels'''
         res = {}
-        for l in self.unique_labels().iterrows():
+        for l in self.unique_labels(cols).iterrows():
             ld = l[1].to_dict()
             res['_'.join(ld.values())] = self.get_label_subset(**ld)
         return res

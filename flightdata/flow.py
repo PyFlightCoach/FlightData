@@ -34,7 +34,7 @@ class Flow(Table):
             beta = np.arctan(stab_airspeed.y / stab_airspeed.x)
         beta[np.isnan(beta)] = 0.0
 
-        with np.errstate(invalid='warn'):
+        with np.errstate(invalid='ignore'):
             q = 0.5 * env.rho * abs(airspeed)**2
         q[np.isnan(q)] = 0.0
         

@@ -20,6 +20,9 @@ class Field:
     def col(self) -> str:
         return f'{self.column}_{self.i}' if self.i > 0 else self.column
 
+    def __repr__(self):
+        return f'{self.column}_{self.i}'
+    
 class Fields:
     def __init__(self, data: Union[list[Field], dict[str: Field]]):
         if isinstance(data, list):
@@ -51,9 +54,8 @@ class Fields:
             else:
                 return self.data[f'{group}_{col}'].instance(instance)
         except KeyError:
-            raise AttributeError(f'Field {name} not found')
-
-
+            return None
+            #raise AttributeError(f'Field {name} not found')
 
     def get_fields(self, names: list[str]) -> list[Field]:
         _l = lambda v: [v] if isinstance(v, Field) else v
@@ -62,6 +64,8 @@ class Fields:
     def get_cols(self, names: list[str]) -> list[str]:
         return [f.col for f in self.get_fields(names)]
 
+    def __repr__(self) -> str:
+        return f'Fields({','.join(list(self.data.keys()))})'
 
 fields = Fields([
         Field('time_flight', 'time since the start of the flight, seconds'),
@@ -80,9 +84,15 @@ fields = Fields([
         Field('attitude_roll', 'roll angle, radians'),
         Field('attitude_pitch', 'pitch angle, radians'),
         Field('attitude_yaw', 'yaw angle, radians'),
+        Field('attdes_roll', 'desired roll angle, radians'),
+        Field('attdes_pitch', 'desired pitch angle, radians'),
+        Field('attdes_yaw', 'desired yaw angle, radians'),
         Field('axisrate_roll', 'roll rate, radians / second'),
         Field('axisrate_pitch', 'pitch rate, radians / second'),
         Field('axisrate_yaw', 'yaw rate, radians / second'),
+        Field('desrate_roll', 'roll rate, radians / second'),
+        Field('desrate_pitch', 'pitch rate, radians / second'),
+        Field('desrate_yaw', 'yaw rate, radians / second'),
         Field('battery_voltage', 'volts'),
         Field('battery_current', 'amps'),
         Field('battery_totalcurrent', 'Ah'),
