@@ -171,7 +171,6 @@ class Flight:
             flights[flightmodes[_fl.flightmode_a.iloc[0]]].append(Flight(_fl, self.parameters, self.origin, self.primary_pos_source))
         return flights
 
-
     @property
     def duration(self):
         return self.data.tail(1).index.item()
@@ -343,7 +342,7 @@ class Flight:
             
             df = Flight.build_cols(
                 time_actual = parser.MODE.timestamp,
-                flightmode_a = flightmodes[parser.MODE.Mode],
+                flightmode_a = parser.MODE.Mode,
                 flightmode_b = parser.MODE.ModeNum,
                 flightmode_c = parser.MODE.Rsn,
             )
@@ -389,7 +388,7 @@ class Flight:
 
     @staticmethod
     def parse_instances(indf: pd.DataFrame, colmap:dict[str, str], instancecol='Instance'):
-            
+            '''Where an instance column exists in an input df split the values into two columns'''
             instances = indf[instancecol].unique() if instancecol in indf.columns else [0]
             dfs = []
             for i in instances:

@@ -74,7 +74,7 @@ def vtol_hover():
     return Flight.from_json('test/data/vtol_hover.json')
 
 def test_flightmode_split(vtol_hover: Flight):
-    smodes = vtol_hover.split_modes('flightmode_a', 'flightmode_b', 'flightmode_c')
+    smodes = vtol_hover.split_modes()
     assert isinstance(smodes, dict)
     assert isinstance(smodes['QHOVER'], list)
     assert isinstance(smodes['QHOVER'][0], Flight)
@@ -101,20 +101,3 @@ def test_butter_filter(fl: Flight):
 def test_remove_time_flutter(fl: Flight):
     flf = fl.remove_time_flutter()
     assert np.gradient(np.gradient(flf.data.index)) == approx(0)
-
-def test_create_labels(vtol_hover: Flight):
-    labels = vtol_hover.create_labels('flightmode_a', 'flightmode_c')
-    assert isinstance(labels, np.ndarray)
-    pass
-    #import plotly.graph_objects as go
-
-    #fig = go.Figure()
-    #fig.add_trace(go.Scatter(x=fl.time_flight, y=fl.acceleration_x, name='original'))
-    #fig.add_trace(go.Scatter(x=filtered.time_flight, y=filtered.acceleration_x, name='filtered'))
-    #fig.show()    
-#
-#
-    #fig = go.Figure()
-    #fig.add_trace(go.Scatter(x=x, y=y, name='original'))
-    #fig.add_trace(go.Scatter(x=xf, y=yf, name='filtered'))
-    #fig.show()
