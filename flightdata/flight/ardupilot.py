@@ -1,3 +1,6 @@
+from pymavlink.mavutil import mode_mapping_bynumber
+
+
 
 
 flightmodes = {

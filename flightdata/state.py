@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Union, List, Tuple, Self
-import warnings
 from pathlib import Path
 import numpy as np
 import pandas as pd

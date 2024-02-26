@@ -162,8 +162,6 @@ class Flight:
         Returns:
             list[Flight]: list of flights
         """
-        
-        
         modechanges = (self.flightmode_a.diff().fillna(value=0) != 0).astype(int).cumsum()
 
         flights = {flightmodes[m]: [] for m in self.flightmode_a.unique()}
@@ -172,6 +170,7 @@ class Flight:
             _fl = self.data.loc[modechanges == mode, :]
             flights[flightmodes[_fl.flightmode_a.iloc[0]]].append(Flight(_fl, self.parameters, self.origin, self.primary_pos_source))
         return flights
+
 
     @property
     def duration(self):
@@ -198,7 +197,7 @@ class Flight:
             assert_almost_equal(self.origin.pos, other.origin.pos)
             assert self.origin.heading == other.origin.heading
             return True
-        except:
+        except Exception as ex:
             return False
         
     @staticmethod
@@ -248,7 +247,7 @@ class Flight:
         else:
             ppsorce = 'position'
             
-        if not ekf1 is None: 
+        if ekf1 is not None: 
             dfs = dfs + Flight.parse_instances(ekf1, dict(
                 position_N='PN',
                 position_E='PE',
@@ -258,7 +257,7 @@ class Flight:
                 velocity_D='VD',
             ), 'C')
             
-        if not ekf2 is None:
+        if ekf2 is not None:
             dfs = dfs + Flight.parse_instances(ekf2, {
                 'wind_N': 'VWN',
                 'wind_E': 'VWE',
@@ -279,7 +278,7 @@ class Flight:
             if 'I' in imu:
                 imu = imu.loc[imu.I==0, :]
             
-            if not ekf1 is None:
+            if ekf1 is not None:
                 if 'C' in ekf1.columns:
                     imu = pd.merge_asof(imu, ekf1.loc[ekf1.C==0], on='timestamp', direction='nearest')
                 else:
@@ -289,7 +288,7 @@ class Flight:
                     imu['GyrY'] = imu.GyrY + np.radians(imu.GY) / 100
                     imu['GyrZ'] = imu.GyrZ + np.radians(imu.GZ) / 100
 
-            if not ekf2 is None:
+            if ekf2 is not None:
                 if 'C' in ekf2.columns:
                     imu = pd.merge_asof(imu, ekf2.loc[ekf2.C==0], on='timestamp', direction='nearest')
                 else:
@@ -341,9 +340,10 @@ class Flight:
             ))
 
         if 'MODE' in parser.dfs:
+            
             df = Flight.build_cols(
                 time_actual = parser.MODE.timestamp,
-                flightmode_a = parser.MODE.Mode,
+                flightmode_a = flightmodes[parser.MODE.Mode],
                 flightmode_b = parser.MODE.ModeNum,
                 flightmode_c = parser.MODE.Rsn,
             )
@@ -378,7 +378,6 @@ class Flight:
         dfout = dfs[0]
         dt = dfout.time_actual.diff().max()
         for df in dfs[1:]:
-            dtn = df.time_actual.diff().max()
             dfout = pd.merge_asof(
                 dfout, df, on='time_actual', direction='nearest', 
                 tolerance=min(max(dt, df.time_actual.diff().max()), 0.1)
@@ -453,7 +452,6 @@ class Flight:
             ], axis=1).reset_index(drop=True).set_index('time_flight', drop=False)
         )
 
-
     def filter(self, b, a):
         dont_filter = [c for c in fields.get_cols(['time', 'flightmode', 'rcin', 'rcout']) if c in self.data.columns]
         unwrap_cols = [c for c in fields.get_cols(['attitude']) if c in self.data.columns]
@@ -472,11 +470,9 @@ class Flight:
         )
     
     def butter_filter(self, cutoff, order=5):
-        
         ts = self.time_flight.to_numpy()
         N = len(self)
         T = (ts[-1] - ts[0]) / N
-
         fs = 1/T
-
         return self.filter(*butter(order, cutoff, fs=fs, btype='low', analog=False))
+    

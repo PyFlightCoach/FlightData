@@ -203,9 +203,6 @@ class Table:
         '''TODO Fix This'''
         if cols is None:
             cols = self.label_cols
-        df = self.data.loc[:,cols]
-        rows = df.loc[np.sum(df[cols].shift() != df[cols], axis=1) > 0]
-        
         return self.data.loc[:, cols].reset_index(drop=True).drop_duplicates().reset_index(drop=True)
 
     def shift_labels(self, col, elname, offset, allow_label_loss=True) -> Self:
@@ -321,12 +318,31 @@ class Table:
         return self.__class__(self.data[labs == lab])
 
     def split_labels(self, cols=None) -> dict[str, Self]:
-        '''split into multiple tables based on the labels'''
+        '''Split into multiple tables based on the labels'''
         res = {}
-        for l in self.unique_labels(cols).iterrows():
-            ld = l[1].to_dict()
+        for label in self.unique_labels(cols).iterrows():
+            ld = label[1].to_dict()
             res['_'.join(ld.values())] = self.get_label_subset(**ld)
         return res
+
+    def cumulative_labels(self, *cols) -> Self:
+        '''Return a string concatenation of the requested labels. append an indexer to the end
+        of the string for repeat descrete groups of the same label.'''
+        cols = self.label_cols if len(cols)==0 else cols
+        labs = self.data.loc[:, cols].stack().groupby(level=0).apply('_'.join)
+        
+        changes = labs.shift() != labs
+        new_labels = labs.loc[changes]
+        uls = []
+        for i, nl in enumerate(new_labels):
+            uls.append(sum(new_labels.iloc[:i] == nl))
+        
+        df = pd.DataFrame(labs).assign(indexer = np.array(uls)[changes.cumsum() - 1])
+        strdf = df.copy()
+        strdf['indexer'] = strdf['indexer'].astype(int).astype(str)
+        strdf  = strdf.stack().groupby(level=0).apply('_'.join)
+        strdf.loc[df.indexer==0] = df[0]
+        return strdf.values
 
     @staticmethod
     def copy_labels(template: Self, flown: Self, path=None, min_len=0) -> Self:
