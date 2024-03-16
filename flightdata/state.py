@@ -28,10 +28,10 @@ class State(Table):
         return g.Transformation(-self.pos, self.att.inverse())
 
     @staticmethod
-    def from_transform(transform: g.Transformation=None, **kwargs):
+    def from_transform(transform: g.Transformation=None, **kwargs) -> State:
         if transform is None:
             transform = g.Transformation()
-        if not "time" in kwargs: 
+        if "time" not in kwargs: 
             kwargs["time"] = g.Time.from_t(np.linspace(0, State._construct_freq*len(transform), len(transform)))
         return State.from_constructs(pos=transform.p, att=transform.q, **kwargs)
 
@@ -63,8 +63,8 @@ class State(Table):
         att = st.att.body_rotate(rvel * time.t)
         pos = g.Point.concatenate([
             g.P0(), 
-            (att.transform_point(vel)).cumsum()[:-1]
-        ]) * time.dt + st.pos
+            (att.transform_point(vel) * time.dt).cumsum()[:-1]
+        ]) + st.pos
         return State.from_constructs(time,pos, att, vel, rvel)
     
 

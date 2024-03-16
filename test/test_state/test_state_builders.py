@@ -1,10 +1,8 @@
 from flightdata import Flight, State, Origin
-from pytest import approx, mark
+from pytest import approx
 from geometry import Transformation, PX, PY, P0, Time
 from geometry.testing import assert_almost_equal
 import numpy as np
-import pandas as pd
-from ..conftest import origin, flight, state
 from time import sleep, time
 from json import load
 
@@ -78,4 +76,13 @@ def test_fill():
     assert len(st) == 11
     assert st.pos.x[0] == approx(0)
     assert st.pos.x[-1] == approx(10)
+    
+def test_fill_vart():
+    _dt = np.full(11, 0.1)
+    _dt[::2] = 0.11
+    _t = Time.from_t(np.cumsum(_dt))
+    q = 2*np.pi/10
+    st0 = State.from_transform(Transformation.zero(), vel=PX(10), rvel=PY(q))
+    st = st0.fill(_t)
+    np.testing.assert_array_equal(st.q, np.full(11, q))
     

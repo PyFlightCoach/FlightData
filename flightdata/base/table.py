@@ -119,7 +119,7 @@ class Table:
             yield self[ind]
 
     @classmethod
-    def from_constructs(cls, *args,**kwargs):
+    def from_constructs(cls, *args,**kwargs) -> Self:
         kwargs = dict(
             **{list(cls.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
             **kwargs
@@ -130,7 +130,7 @@ class Table:
                 x.to_pandas(
                     columns=cls.constructs[key].keys, 
                     index=kwargs["time"].t
-                ) for key, x in kwargs.items() if not x is None
+                ) for key, x in kwargs.items() if x is not None
             ],
             axis=1
         )
