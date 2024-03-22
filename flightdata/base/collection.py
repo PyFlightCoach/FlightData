@@ -100,3 +100,7 @@ class Collection:
     
     def __len__(self) -> int:
         return len(self.data)
+    
+    @property
+    def uids(self) -> list[str]:
+        return list(self.data.keys())
