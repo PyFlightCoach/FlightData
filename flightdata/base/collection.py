@@ -1,5 +1,4 @@
-from typing import Dict, List, Union, Any, Self, TypeVar, Iterable
-import numpy as np
+from typing import Union, Any, Self, TypeVar, Iterable
 import pandas as pd
 
 
@@ -45,7 +44,7 @@ class Collection:
         for v in self.data.values():
             yield v
 
-    def to_list(self) -> List[T]:
+    def to_list(self) -> list[T]:
         return list(self.data.values())
     
     def to_dicts(self, *args, **kwargs) -> list[dict[str, Any]]:

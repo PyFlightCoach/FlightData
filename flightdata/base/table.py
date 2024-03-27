@@ -254,7 +254,7 @@ class Table:
     @classmethod
     def shift_multi(Cls, steps: int, tb1: Self, tb2: Self, min_len=2) -> Tuple(Self, Self):
         '''Take datapoints off the start of tb2 and add to the end tb1'''
-        if (steps>0 and len(tb2)-min_len<steps) or (steps<0 and len(tb1)-2<min_len):
+        if (steps>0 and len(tb2)-min_len<steps) or (steps<0 and min_len - len(tb1) > steps):
             raise ValueError(f'Cannot Squash a Table to less than {min_len} datapoints')
         dfj = Cls.stack([tb1, tb2], overlap=0).data
         return Cls(dfj.iloc[:len(tb1)+steps, :]), \
