@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import numpy.typing as npt
 from geometry import Base, Time
-from typing import Union, Self, Tuple
+from typing import Self, Tuple
 from .constructs import SVar, Constructs
 from numbers import Number
 from time import time
@@ -22,7 +22,7 @@ class Table:
         if len(data) < min_len:
             raise Exception(f"State constructor length check failed, data length = {len(data)}, min_len = {min_len}")
         self.base_cols = [c for c in data.columns if c in self.constructs.cols()]
-        self.label_cols = [c for c in data.columns if not c in self.constructs.cols()]
+        self.label_cols = [c for c in data.columns if c not in self.constructs.cols()]
     
         self.data = data
 
@@ -45,7 +45,7 @@ class Table:
             raise ValueError("nan values in data")
         
 
-    def __getattr__(self, name: str) -> Union[pd.DataFrame, Base]:
+    def __getattr__(self, name: str) -> npt.NDArray | Base:
         if name in self.data.columns:
             return self.data[name].to_numpy()
         elif name in self.constructs.data.keys():
@@ -73,7 +73,7 @@ class Table:
     @property
     def duration(self):
         return self.data.index[-1] - self.data.index[0]
-
+    
     def __getitem__(self, sli):
         if isinstance(sli, Number):
             if sli<0:
@@ -280,7 +280,7 @@ class Table:
             res = res.shift_label_ratio(ratio, min_len, **lab)
         return res
     
-    def get_label_id(self, **kwargs) -> Union[int, float]:
+    def get_label_id(self, **kwargs) -> int | float:
         dfo = self.unique_labels()
         for k, v in kwargs.items():
             dfo = dfo.loc[dfo[k] == v, :]            

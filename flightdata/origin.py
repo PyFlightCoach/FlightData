@@ -127,8 +127,8 @@ class Origin(object):
     def from_fcjson_parmameters(data: dict):
         return Origin.from_points(
             "FCJ_box",
-            g.GPS(float(data['pilotLat']), float(data['pilotLng']), 0),
-            g.GPS(float(data['centerLat']), float(data['centerLng']), 0)
+            g.GPS(float(data['pilotLat']), float(data['pilotLng']), float(data['pilotAlt'])),
+            g.GPS(float(data['centerLat']), float(data['centerLng']), float(data['centerAlt']))
         )
 
 
