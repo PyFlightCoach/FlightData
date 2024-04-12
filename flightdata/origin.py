@@ -91,25 +91,24 @@ class Origin(object):
             np.arctan2(direction.y[0], direction.x[0])
         )
 
-    def to_f3a_zone(self):
+    def to_f3a_zone(self, file: str):
         
         centre = self.pilot_position.offset(
             100 * g.Point(np.cos(self.heading), np.sin(self.heading), 0.0)
         )
 
-        oformat = lambda val: "{}".format(val)
-
-        return "\n".join([
-            "Emailed box data for F3A Zone Pro - please DON'T modify!",
-            self.name,
-            oformat(self.pilot_position.lat[0]),
-            oformat(self.pilot_position.long[0]),
-            oformat(centre.lat[0]),
-            oformat(centre.long[0]),
-            "120"
-        ])
-
-
+        with open(file, 'w') as f:
+            for line in [
+                "Emailed box data for F3A Zone Pro - please DON'T modify!",
+                self.name,
+                self.pilot_position.lat[0],
+                self.pilot_position.long[0],
+                centre.lat[0],
+                centre.long[0],
+                self.pilot_position.alt[0]
+            ]:
+                print(line, file=f)
+                
     @staticmethod
     def from_f3a_zone(file_path: str):
         if hasattr(file_path, "read"):
@@ -119,8 +118,8 @@ class Origin(object):
                 lines = f.read().splitlines()
         return Origin.from_points(
             lines[1],
-            g.GPS(float(lines[2]), float(lines[3]), 0),
-            g.GPS(float(lines[4]), float(lines[5]), 0)
+            g.GPS(float(lines[2]), float(lines[3]), float(lines[6])),
+            g.GPS(float(lines[4]), float(lines[5]), float(lines[6]))
         )
 
     @staticmethod

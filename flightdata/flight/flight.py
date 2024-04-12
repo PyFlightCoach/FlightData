@@ -122,8 +122,7 @@ class Flight:
 
     @staticmethod
     def from_json(file: str) -> Self:
-        with open(file, 'r') as f:
-            return Flight.from_dict(load(f))
+        return Flight.from_dict(load(open(file, 'r')))
 
     @staticmethod
     def build_cols(**kwargs):
