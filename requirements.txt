@@ -1,4 +1,5 @@
 numpy
 pandas
 simplejson
-pfc-geometry
+pfc-geometry==0.2.3
+ardupilot-log-reader==0.2.1
