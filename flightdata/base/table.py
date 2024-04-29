@@ -9,13 +9,9 @@ from numbers import Number
 from time import time
 
 
-def make_time(tab):
-    return Time.from_t(tab.t)
-    
-    
 class Table:
     constructs = Constructs([
-        SVar("time", Time,        ["t", "dt"]               , make_time )
+        SVar("time", Time, ["t", "dt"], lambda tab: Time.from_t(tab.t))
     ])
 
     def __init__(self, data: pd.DataFrame, fill=True, min_len=1):
@@ -25,13 +21,11 @@ class Table:
         self.label_cols = [c for c in data.columns if c not in self.constructs.cols()]
     
         self.data = data
-
         self.data.index = self.data.index - self.data.index[0]
         
         if fill:
             missing = self.constructs.missing(self.data.columns)
-            for svar in missing:
-                
+            for svar in missing:                
                 newdata = svar.builder(self).to_pandas(
                     columns=svar.keys, 
                     index=self.data.index
@@ -176,13 +170,7 @@ class Table:
         return self.data.loc[:, self.label_cols]
 
     def remove_labels(self) -> Self:
-        return self.__class__(
-            self.data.drop(
-                self.label_keys, 
-                axis=1, 
-                errors="ignore"
-            )
-        )
+        return self.__class__(self.data.drop(self.label_keys, axis=1, errors="ignore"))
     
     def get_subset_df(self, **kwargs) -> pd.DataFrame:
         dfo = self.data

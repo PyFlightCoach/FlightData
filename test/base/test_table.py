@@ -41,6 +41,18 @@ def test_copy(tab_full):
 
     np.testing.assert_array_equal(tab3.t, tab_full.t + 10)
 
+@fixture
+def labst(tab_full):
+    return Table.stack([
+        tab_full.label(man='m1', el='e1'),
+        tab_full.label(man='m1', el='e2'),
+        tab_full.label(man='m2', el='e1')
+    ])
+
+def test_get_subset_df(tab_full, labst):
+    df = labst.get_subset_df(man='m1', el='e1')
+    assert len(tab_full) == len(df)
+
 
 def test_shift_labels_ratios(tab_full):
     tf = tab_full.label(element='e0', manoeuvre='m0')
