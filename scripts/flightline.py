@@ -1,14 +1,16 @@
 from flightdata import Flight, Origin
 from geometry import GPS
 from pathlib import Path
-import numpy as np
 import argparse
 
 
 def box_from_log(log: Flight, channel: int):
     c6on = Flight(log.data.loc[log.data[f'rcin_c{channel}']>=1500])
-    groups = np.cumsum(c6on.time_flight.diff() >=1)
-    return Origin.from_points("new", GPS(c6on.gps[groups==0])[-1], GPS(c6on.gps[groups==1])[-1])
+    groups = (c6on.time_flight.diff() > 1).cumsum()
+    pilot = Flight(c6on.data.loc[groups==0])
+    centre = Flight(c6on.data.loc[groups==1])
+
+    return Origin.from_points("new", GPS(pilot.gps)[-1], GPS(centre.gps)[-1])
 
 def box_from_logs(pilot: Flight, centre: Flight):
     return Origin.from_points("new", GPS(*pilot.gps.iloc[-1]), GPS(*centre.gps.iloc[-1]))
