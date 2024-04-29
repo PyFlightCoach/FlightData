@@ -201,11 +201,10 @@ class Flight:
     @staticmethod
     def from_log(log:Union[Ardupilot, str], extra_types: list[str] = None, **kwargs) -> Flight:
         """Constructor from an ardupilot bin file."""
-        
         extra_types = [] if extra_types is None else extra_types
         
         if isinstance(log, str) or isinstance(log, Path):
-            parser = Ardupilot(str(log), types=list(set(Flight.ardupilot_types + extra_types)))
+            parser = Ardupilot.parse(str(log), types=list(set(Flight.ardupilot_types + extra_types)))
         else:
             parser = log
 
