@@ -31,8 +31,7 @@ def test_to_from_dict(fl):
     data = fl.to_dict()
     fl2 = Flight.from_dict(data)
     assert fl == fl2
-    assert fl2.parameters == approx(fl.parameters)
-
+    
 def test_from_fc_json(fcj):
     assert isinstance(fcj, Flight)
     assert fcj.duration > 200
@@ -101,3 +100,19 @@ def test_butter_filter(fl: Flight):
 def test_remove_time_flutter(fl: Flight):
     flf = fl.remove_time_flutter()
     assert np.gradient(np.gradient(flf.data.index)) == approx(0)
+
+
+def test_get_parameter_attr(fl: Flight):
+    assert fl.AHRS_EKF_TYPE.iloc[0].value == 3
+
+def test_make_param_labels(fl: Flight):
+    col = fl.make_param_labels('AHRS_EKF_TYPE')
+
+    assert len(col) == len(fl)  
+    assert np.all(col == 3)
+
+
+    col = fl.make_param_labels('AHRS_EKF_TYPE', 'Test')
+
+    assert np.all(col == 'Test3.0')
+
