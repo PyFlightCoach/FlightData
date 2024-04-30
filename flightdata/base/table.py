@@ -330,7 +330,6 @@ class Table:
         strdf = df.copy()
         strdf['indexer'] = strdf['indexer'].astype(int).astype(str)
         strdf  = strdf.stack().groupby(level=0).apply('_'.join)
-        strdf.loc[df.indexer==0] = df[0]
         return strdf.values
 
     @staticmethod
