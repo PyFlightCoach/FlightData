@@ -5,7 +5,7 @@ from geometry.testing import assert_almost_equal
 import numpy as np
 from time import sleep, time
 from json import load
-
+from ..conftest import state, flight, origin
 
 def test_extrapolate():
     initial = State.from_transform(
