@@ -23,7 +23,6 @@ from ardupilot_log_reader.reader import Ardupilot
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes 
 from flightdata import Origin
-from scipy.signal import butter, filtfilt
 from numbers import Number
 
 
@@ -43,7 +42,8 @@ class Flight:
     def __getattr__(self, name):
         if self.parameters is not None:
             if name in self.parameters.parameter.unique():
-                return self.parameters.loc[self.parameters.parameter==name]
+                df =  self.parameters.loc[self.parameters.parameter==name]
+                return df.loc[df.value != df.value.shift()]
         cols = getattr(fields, name)
         if cols is None:
             cols = [f for f in self.data.columns if f.startswith(name)]
@@ -61,15 +61,23 @@ class Flight:
                 return pd.DataFrame(data=np.empty((len(self), len(cols))),columns=[f.col for f in cols])
         raise AttributeError(f"'Flight' object has no attribute '{name}'")
     
-    def make_param_labels(self, pname: str, prefix:str=None, suffix:str=None):
+    def make_param_labels(self, pname: str, prefix:str=None, suffix:str=None, unknown=''):
         '''Make a series with the parameter values at the correct times.'''
         ser = pd.Series(np.nan, index=self.data.index, name=pname)
-        param = self.parameters.loc[self.parameters.parameter==pname]
+        param = getattr(self, pname)
         ser.iloc[ser.index.get_indexer(param.index, 'nearest')] = param.value
-        ser = ser.ffill().bfill()
+        ser = ser.ffill()
+        
         if prefix or suffix:
-            ser = (prefix or '') + ser.astype(str) + (suffix or '')
-        return ser
+            sout = pd.Series(unknown, index=self.data.index, name=pname)
+            sout[~np.isnan(ser)] = (prefix or '') + ser[~np.isnan(ser)].astype(str) + (suffix or '')
+            return sout
+        else:
+            return ser
+
+    def make_param_df(self, pnames: list[str]):
+        '''Make a dataframe of parameter values'''
+        return pd.DataFrame([self.make_param_labels(p) for p in pnames]).T
 
     def contains(self, name: Union[str, list[str]]):
         cols = getattr(fields, name)
@@ -491,6 +499,7 @@ class Flight:
         )
 
     def filter(self, b, a):
+        from scipy.signal import filtfilt
         dont_filter = [c for c in fields.get_cols(['time', 'flightmode', 'rcin', 'rcout']) if c in self.data.columns]
         unwrap_cols = [c for c in fields.get_cols(['attitude']) if c in self.data.columns]
 
@@ -508,6 +517,7 @@ class Flight:
         )
     
     def butter_filter(self, cutoff, order=5):
+        from scipy.signal import butter
         ts = self.time_flight.to_numpy()
         N = len(self)
         T = (ts[-1] - ts[0]) / N

@@ -21,7 +21,7 @@ class Table:
         self.label_cols = [c for c in data.columns if c not in self.constructs.cols()]
     
         self.data = data
-        self.data.index = self.data.index - self.data.index[0]
+        #self.data.index = self.data.index - self.data.index[0]
         
         if fill:
             missing = self.constructs.missing(self.data.columns)
@@ -69,15 +69,18 @@ class Table:
         return self.data.index[-1] - self.data.index[0]
     
     def __getitem__(self, sli):
-        if isinstance(sli, Number):
+        if isinstance(sli, slice):
+            return self.__class__(self.data.loc[slice(sli.start + self.data.index[0], sli.stop + self.data.index[0], sli.step)])
+        elif isinstance(sli, Number):
             if sli<0:
                 return self.__class__(self.data.iloc[[int(sli)], :])
 
             return self.__class__(
-                self.data.iloc[self.data.index.get_indexer([sli], method="nearest"), :]
+                self.data.iloc[self.data.index.get_indexer([sli + self.data.index[0]], method="nearest"), :]
             )
+        else:
+            raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
         
-        return self.__class__(self.data.loc[sli])
 
     def slice_raw_t(self, sli):
         inds = self.data.reset_index(names="t2").set_index("t").loc[sli].t2.to_numpy()#set_index("t", drop=False).columns

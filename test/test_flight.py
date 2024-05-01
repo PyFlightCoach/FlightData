@@ -9,19 +9,18 @@ from ardupilot_log_reader import Ardupilot
 
 @fixture(scope='session')
 def parser():
-    return Ardupilot('test/test_inputs/00000137.BIN',
-                     types=Flight.ardupilot_types)
+    return Ardupilot.parse('test/data/p23.BIN',types=Flight.ardupilot_types)
 
 @fixture(scope='session')
-def fl():
-    return Flight.from_log('test/test_inputs/00000137.BIN')
+def fl(parser):
+    return Flight.from_log(parser)
 
 @fixture(scope='session')
 def fcj():
-    return Flight.from_fc_json('test/test_inputs/00000137.json')
+    return Flight.from_fc_json('test/data/p23_fc.json')
 
 def test_duration(fl):
-    assert fl.duration == approx(685, rel=1e-3)
+    assert fl.duration == approx(687, rel=1e-3)
 
 def test_slice(fl):
     short_flight = fl[100:200]
@@ -109,10 +108,10 @@ def test_make_param_labels(fl: Flight):
     col = fl.make_param_labels('AHRS_EKF_TYPE')
 
     assert len(col) == len(fl)  
-    assert np.all(col == 3)
+    assert np.all(col.loc[~np.isnan(col)] == 3)
 
 
     col = fl.make_param_labels('AHRS_EKF_TYPE', 'Test')
 
-    assert np.all(col == 'Test3.0')
+    assert np.all(col.loc[col!=''] == 'Test3.0')
 
