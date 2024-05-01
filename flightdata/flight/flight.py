@@ -21,10 +21,9 @@ from time import time
 from json import load, dump
 from ardupilot_log_reader.reader import Ardupilot
 from flightdata.base.numpy_encoder import NumpyEncoder
-from flightdata.flight.fields import Fields
 from .ardupilot import flightmodes 
 from flightdata import Origin
-from scipy.signal import butter, filtfilt
+from numbers import Number
 
 
 class Flight:
@@ -34,30 +33,52 @@ class Flight:
         'ARSP', 'GPS', 'RCIN', 'RCOU', 'BARO', 'MODE', 
         'RPM', 'MAG', 'BAT', 'BAT2', 'VEL', 'ORGN', 'ESC', 'CURRENT']
     
-    def __init__(self, data: pd.DataFrame, parameters: list = None, origin: Origin = None, primary_pos_source='gps'):
+    def __init__(self, data: pd.DataFrame, parameters: pd.DataFrame = None, origin: Origin = None, primary_pos_source='gps'):
         self.data = data
         self.parameters = parameters
-        self.data.index = self.data.index - self.data.index[0]
-        self.data.index.name = 'time_index'
         self.origin = origin
         self.primary_pos_source = primary_pos_source
         
     def __getattr__(self, name):
+        if self.parameters is not None:
+            if name in self.parameters.parameter.unique():
+                df =  self.parameters.loc[self.parameters.parameter==name]
+                return df.loc[df.value != df.value.shift()]
         cols = getattr(fields, name)
         if cols is None:
             cols = [f for f in self.data.columns if f.startswith(name)]
             if len(cols) > 0:
                 return self.data[cols]
-        try:
-            if isinstance(cols, Field):
-                return self.data[cols.col]
-            else:
-                return self.data.loc[:, [f.col for f in cols if f.col in self.data.columns]]
-        except KeyError:
-            if isinstance(cols, Field):
-                cols = [cols]
-            return pd.DataFrame(data=np.empty((len(self), len(cols))),columns=[f.col for f in cols])
+        else:
+            try:
+                if isinstance(cols, Field):
+                    return self.data[cols.col]
+                else:
+                    return self.data.loc[:, [f.col for f in cols if f.col in self.data.columns]]
+            except KeyError:
+                if isinstance(cols, Field):
+                    cols = [cols]
+                return pd.DataFrame(data=np.empty((len(self), len(cols))),columns=[f.col for f in cols])
+        raise AttributeError(f"'Flight' object has no attribute '{name}'")
+    
+    def make_param_labels(self, pname: str, prefix:str=None, suffix:str=None, unknown=''):
+        '''Make a series with the parameter values at the correct times.'''
+        ser = pd.Series(np.nan, index=self.data.index, name=pname)
+        param = getattr(self, pname)
+        ser.iloc[ser.index.get_indexer(param.index, 'nearest')] = param.value
+        ser = ser.ffill()
         
+        if prefix or suffix:
+            sout = pd.Series(unknown, index=self.data.index, name=pname)
+            sout[~np.isnan(ser)] = (prefix or '') + ser[~np.isnan(ser)].astype(str) + (suffix or '')
+            return sout
+        else:
+            return ser
+
+    def make_param_df(self, pnames: list[str]):
+        '''Make a dataframe of parameter values'''
+        return pd.DataFrame([self.make_param_labels(p) for p in pnames]).T
+
     def contains(self, name: Union[str, list[str]]):
         cols = getattr(fields, name)
         if isinstance(cols, Field):
@@ -65,35 +86,55 @@ class Flight:
         else:
             return [f.column in self.data.columns for f in cols]
                 
-    def __getitem__(self, sli) -> Self:
-        if isinstance(sli, int) or isinstance(sli, float):
-            return self.data.iloc[self.data.index.get_loc(sli)]
+    def __getitem__(self, sli: Number | slice) -> Flight:
+        if isinstance(sli, Number):
+            if sli < 0:
+                return self.data.iloc[sli]
+            else:
+                gl = self.data.index.get_loc(sli + self.data.index[0])
+                return Flight(
+                    self.data.iloc[gl],
+                    self.parameters.loc[:gl],
+                )
+        elif isinstance(sli, slice):
+            return Flight(
+                self.data.loc[slice(
+                    None if sli.start is None else sli.start + self.data.index[0],
+                    None if sli.stop is None else sli.stop + self.data.index[0],
+                    sli.step
+                )], 
+                self.parameters.loc[:None if sli.stop is None else sli.stop + self.data.index[0]], 
+                self.origin, self.primary_pos_source
+            )
         else:
-            return Flight(self.data.loc[sli], self.parameters, self.origin, self.primary_pos_source)
+            raise TypeError(f'Expected a number or a slice, got a {sli.__class__.__name__}')
 
     def __len__(self):
         return len(self.data)
 
-    def slice_raw_t(self, sli):
+    def slice_raw_t(self, sli: Number | slice) -> Flight:
+        def opp(df: pd.DataFrame, indexer: Number | slice):
+            return df.reset_index(drop=True) \
+                .set_index('time_actual', drop=False) \
+                    .loc[indexer].set_index("time_flight", drop=False)
+            
         return Flight(
-            self.data.reset_index(drop=True)
-                .set_index('time_actual', drop=False)
-                    .loc[sli].set_index("time_flight", drop=False), 
-            self.parameters, self.origin, self.primary_pos_source
+            opp(self.data, sli),
+            opp(self.parameters, slice(None, sli if isinstance(sli, Number) else sli.stop, None)),
+            self.origin, self.primary_pos_source
         )
         
-    def slice_time_flight(self, sli):
+    def slice_time_flight(self, sli) -> Flight:
         return Flight(
-            self.data.reset_index(drop=True)
-                .set_index('time_flight', drop=False)
-                    .loc[sli], 
-            self.parameters, self.origin, self.primary_pos_source
+            self.data.loc[sli], 
+            self.parameters.loc[:sli if isinstance(sli, Number) else sli.stop], 
+            self.origin, self.primary_pos_source
         )
         
-    def copy(self, **kwargs):
+    def copy(self, **kwargs) -> Flight:
         return Flight(
             kwargs['data'] if 'data' in kwargs else self.data.copy() ,
-            kwargs['parameters'] if 'parameters' in kwargs else self.parameters.copy() if self.parameters else None,
+            kwargs['parameters'] if 'parameters' in kwargs else self.parameters.copy() if self.parameters is not None else None,
             kwargs['origin'] if 'origin' in kwargs else self.origin.copy(),
             kwargs['primary_pos_source'] if 'primary_pos_source' in kwargs else self.primary_pos_source
         )
@@ -101,16 +142,16 @@ class Flight:
     def to_dict(self):
         return {
             'data': self.data.to_dict('list'),
-            'parameters': self.parameters,
+            'parameters': self.parameters.to_dict('list'),
             'origin': self.origin.to_dict(),
             'primary_pos_source': self.primary_pos_source
         }
     
     @staticmethod
-    def from_dict(data: dict):
+    def from_dict(data: dict) -> Flight:
         return Flight(
             data=pd.DataFrame.from_dict(data['data']).set_index('time_flight', drop=False),
-            parameters=data['parameters'],
+            parameters=pd.DataFrame.from_dict(data['parameters']).set_index('time_flight', drop=False),
             origin=Origin.from_dict(data['origin']),
             primary_pos_source=data['primary_pos_source']
         )
@@ -125,7 +166,7 @@ class Flight:
         return Flight.from_dict(load(open(file, 'r')))
 
     @staticmethod
-    def build_cols(**kwargs):
+    def build_cols(**kwargs) -> pd.DataFrame:
         df = pd.DataFrame(columns=list(fields.data.keys()))
         for k, v in kwargs.items():
             df[k] = v
@@ -150,7 +191,7 @@ class Flight:
                     otf, 
                     fl.data.reset_index(), 
                     on='time_actual'
-                ).set_index('time_index', drop=False)
+                ).set_index('time_flight', drop=False)
             ))
 
         return flos
@@ -172,7 +213,7 @@ class Flight:
 
     @property
     def duration(self):
-        return self.data.tail(1).index.item()
+        return self.data.iloc[-1].name - self.data.iloc[0].name
 
     def flying_only(self, minalt=5, minv=10):
         vs = abs(Point(self.velocity))
@@ -194,29 +235,36 @@ class Flight:
             pd.testing.assert_frame_equal(self.data, other.data)
             assert_almost_equal(self.origin.pos, other.origin.pos)
             assert self.origin.heading == other.origin.heading
+            pd.testing.assert_frame_equal(self.parameters, other.parameters)
             return True
-        except Exception as ex:
+        except Exception:
             return False
         
     @staticmethod
     def from_log(log:Union[Ardupilot, str], extra_types: list[str] = None, **kwargs) -> Flight:
         """Constructor from an ardupilot bin file."""
-        
         extra_types = [] if extra_types is None else extra_types
         
         if isinstance(log, str) or isinstance(log, Path):
-            parser = Ardupilot(str(log), types=list(set(Flight.ardupilot_types + extra_types)))
+            parser = Ardupilot.parse(str(log), types=list(set(Flight.ardupilot_types + extra_types)))
         else:
             parser = log
-
-        if parser.parms['AHRS_EKF_TYPE'] == 2:
+        
+        params = Flight.build_cols(
+            time_actual = parser.PARM.timestamp,
+            time_flight = parser.PARM.TimeUS / 1e6,
+            parameter = parser.PARM.Name,
+            value = parser.PARM.Value
+        ).set_index('time_flight', drop=False)
+       
+        if params.loc[params.parameter=='AHRS_EKF_TYPE'].iloc[0].value == 2:
             ekf1 = 'NKF1'
             ekf2 = 'NKF2'
         else:
             ekf1 = 'XKF1'
             ekf2 = 'XKF2'
 
-        ekf1 = parser.dfs[ekf1] if ekf1 in parser.dfs else  None
+        ekf1 = parser.dfs[ekf1] if ekf1 in parser.dfs else None
         ekf2 = parser.dfs[ekf2] if ekf2 in parser.dfs else None
 
         dfs = []
@@ -262,13 +310,13 @@ class Flight:
             }, 'C')
         if 'RATE' in parser.dfs:
             dfs.append(Flight.build_cols(
-                time_actual = parser.rate.timestamp,
-                axisrate_roll = parser.rate.R,
-                axisrate_pitch = parser.rate.P,
-                axisrate_yaw = parser.rate.Y,
-                desrate_roll = parser.rate.RDes,
-                desrate_pitch = parser.rate.PDes,
-                desrate_yaw = parser.rate.YDes,
+                time_actual = parser.RATE.timestamp,
+                axisrate_roll = parser.RATE.R,
+                axisrate_pitch = parser.RATE.P,
+                axisrate_yaw = parser.RATE.Y,
+                desrate_roll = parser.RATE.RDes,
+                desrate_pitch = parser.RATE.PDes,
+                desrate_yaw = parser.RATE.YDes,
             ))
         
         if 'IMU' in parser.dfs:
@@ -383,7 +431,7 @@ class Flight:
         
         origin = Origin('ekf_origin', GPS(parser.ORGN.iloc[:,-3:]), 0)
         
-        return Flight(dfout.set_index('time_flight', drop=False), parser.parms, origin, ppsorce)
+        return Flight(dfout.set_index('time_flight', drop=False), params, origin, ppsorce)
 
     @staticmethod
     def parse_instances(indf: pd.DataFrame, colmap:dict[str, str], instancecol='Instance'):
@@ -451,6 +499,7 @@ class Flight:
         )
 
     def filter(self, b, a):
+        from scipy.signal import filtfilt
         dont_filter = [c for c in fields.get_cols(['time', 'flightmode', 'rcin', 'rcout']) if c in self.data.columns]
         unwrap_cols = [c for c in fields.get_cols(['attitude']) if c in self.data.columns]
 
@@ -468,6 +517,7 @@ class Flight:
         )
     
     def butter_filter(self, cutoff, order=5):
+        from scipy.signal import butter
         ts = self.time_flight.to_numpy()
         N = len(self)
         T = (ts[-1] - ts[0]) / N

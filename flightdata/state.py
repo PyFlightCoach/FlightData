@@ -103,16 +103,16 @@ class State(Table):
         time = g.Time.from_t(np.array(flight.data.time_flight))
 
         if all(flight.contains('gps')) and flight.primary_pos_source == 'gps':
-            pos = origin.rotation.transform_point(g.GPS(flight.gps) - origin.pos[0])
+            pos = origin.rotation.transform_point(g.GPS(flight.gps.ffill().bfill()) - origin.pos[0])
         else: 
             pos = origin.rotation.transform_point(
-                flight.origin.pos.offset(g.Point(flight.position)) - origin.pos[0]
+                flight.origin.pos.offset(g.Point(flight.position.ffill().bfill())) - origin.pos[0]
             )
         
-        att = origin.rotation * g.Euler(flight.attitude) 
-        vel =  att.inverse().transform_point(origin.rotation.transform_point(g.Point(flight.velocity))) if all(flight.contains('velocity')) else None
-        rvel = g.Point(flight.axisrate) if all(flight.contains('axisrate')) else None
-        acc = g.Point(flight.acceleration) if all(flight.contains('acceleration')) else None
+        att = origin.rotation * g.Euler(flight.attitude.ffill().bfill()) 
+        vel =  att.inverse().transform_point(origin.rotation.transform_point(g.Point(flight.velocity.ffill().bfill()))) if all(flight.contains('velocity')) else None
+        rvel = g.Point(flight.axisrate.ffill().bfill()) if all(flight.contains('axisrate')) else None
+        acc = g.Point(flight.acceleration.ffill().bfill()) if all(flight.contains('acceleration')) else None
         
         return State.from_constructs(time, pos, att, vel, rvel, acc)
 
@@ -123,7 +123,7 @@ class State(Table):
         radius=5, mirror=True,
         weights = g.Point(1,1.2,0.5),
         tp_weights = g.Point(0.6,0.6,0.6),
-    ) -> Tuple(float, Self):
+    ) -> Tuple[float, Self]:
         """Perform a temporal alignment between two sections. return the flown section with labels 
         copied from the template along the warped path. 
         """
@@ -147,8 +147,6 @@ class State(Table):
 
         return distance, State.copy_labels(template, flown, path, 3)
 
-    
-    
     def splitter_labels(self: State, mans: List[dict], better_names: List[str]=None) -> State:
             """label the manoeuvres in a State based on the flight coach splitter information
 

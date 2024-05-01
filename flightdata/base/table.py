@@ -9,13 +9,9 @@ from numbers import Number
 from time import time
 
 
-def make_time(tab):
-    return Time.from_t(tab.t)
-    
-    
 class Table:
     constructs = Constructs([
-        SVar("time", Time,        ["t", "dt"]               , make_time )
+        SVar("time", Time, ["t", "dt"], lambda tab: Time.from_t(tab.t))
     ])
 
     def __init__(self, data: pd.DataFrame, fill=True, min_len=1):
@@ -25,13 +21,11 @@ class Table:
         self.label_cols = [c for c in data.columns if c not in self.constructs.cols()]
     
         self.data = data
-
-        self.data.index = self.data.index - self.data.index[0]
+        #self.data.index = self.data.index - self.data.index[0]
         
         if fill:
             missing = self.constructs.missing(self.data.columns)
-            for svar in missing:
-                
+            for svar in missing:                
                 newdata = svar.builder(self).to_pandas(
                     columns=svar.keys, 
                     index=self.data.index
@@ -75,15 +69,18 @@ class Table:
         return self.data.index[-1] - self.data.index[0]
     
     def __getitem__(self, sli):
-        if isinstance(sli, Number):
+        if isinstance(sli, slice):
+            return self.__class__(self.data.loc[slice(sli.start + self.data.index[0], sli.stop + self.data.index[0], sli.step)])
+        elif isinstance(sli, Number):
             if sli<0:
                 return self.__class__(self.data.iloc[[int(sli)], :])
 
             return self.__class__(
-                self.data.iloc[self.data.index.get_indexer([sli], method="nearest"), :]
+                self.data.iloc[self.data.index.get_indexer([sli + self.data.index[0]], method="nearest"), :]
             )
+        else:
+            raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
         
-        return self.__class__(self.data.loc[sli])
 
     def slice_raw_t(self, sli):
         inds = self.data.reset_index(names="t2").set_index("t").loc[sli].t2.to_numpy()#set_index("t", drop=False).columns
@@ -176,13 +173,7 @@ class Table:
         return self.data.loc[:, self.label_cols]
 
     def remove_labels(self) -> Self:
-        return self.__class__(
-            self.data.drop(
-                self.label_keys, 
-                axis=1, 
-                errors="ignore"
-            )
-        )
+        return self.__class__(self.data.drop(self.label_keys, axis=1, errors="ignore"))
     
     def get_subset_df(self, **kwargs) -> pd.DataFrame:
         dfo = self.data
@@ -342,7 +333,6 @@ class Table:
         strdf = df.copy()
         strdf['indexer'] = strdf['indexer'].astype(int).astype(str)
         strdf  = strdf.stack().groupby(level=0).apply('_'.join)
-        strdf.loc[df.indexer==0] = df[0]
         return strdf.values
 
     @staticmethod
