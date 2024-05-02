@@ -16,7 +16,7 @@ def box_from_logs(pilot: Flight, centre: Flight):
     return Origin.from_points("new", GPS(*pilot.gps.iloc[-1]), GPS(*centre.gps.iloc[-1]))
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='A tool for creating a flightline .f3a file from bin logs')
 
     parser.add_argument('-l', '--logdir', default='', help='folder to look for logs in')
