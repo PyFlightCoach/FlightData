@@ -12,3 +12,16 @@ The State object is a table representing the position and orientation of the air
 
 
 Further documentation will be provided here: https://pfcdocumentation.readthedocs.io/pyflightcoach/flightdata.html
+
+
+### Installation
+
+```bash
+pip install pfc-geometry
+```
+
+### Setup from source
+
+```bash
+pip install .
+```
