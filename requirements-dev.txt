@@ -1,0 +1,6 @@
+numpy
+pandas
+simplejson
+pfc-geometry>=0.2.5
+ardupilot-log-reader>=0.3.1
+pytest

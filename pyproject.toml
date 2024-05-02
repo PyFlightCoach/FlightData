@@ -1,0 +1,26 @@
+[build-system]
+requires = [
+    "setuptools>=60",
+    "setuptools-scm>=8.0"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flightdata"
+authors = [{name = "Thomas David", email = "thomasdavid0@gmail.com"}]
+description = "Module for handling UAV flight log data"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "GNU GPL v3"}
+classifiers = ["Programming Language :: Python :: 3",]
+dynamic = ["version", "dependencies", "optional-dependencies"]
+
+[project.scripts]
+collect_logs = "flightdata.scripts.collect_logs:main"
+flightline = "flightdata.scripts.flightline:main"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+optional-dependencies = {dev = { file = ["requirements-dev.txt"] }}
+
+[tool.setuptools_scm]
