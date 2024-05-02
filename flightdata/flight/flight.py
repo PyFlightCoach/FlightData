@@ -19,7 +19,6 @@ from geometry.testing import assert_almost_equal
 from pathlib import Path
 from time import time
 from json import load, dump
-from ardupilot_log_reader.reader import Ardupilot
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes 
 from flightdata import Origin
@@ -243,6 +242,7 @@ class Flight:
     @staticmethod
     def from_log(log:Union[Ardupilot, str], extra_types: list[str] = None, **kwargs) -> Flight:
         """Constructor from an ardupilot bin file."""
+        from ardupilot_log_reader.reader import Ardupilot
         extra_types = [] if extra_types is None else extra_types
         
         if isinstance(log, str) or isinstance(log, Path):
