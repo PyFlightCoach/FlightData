@@ -81,7 +81,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: >-
-        VERSION=$(python setup.py --version)
+        VERSION=$(python ../setup.py --version)
         gh release create
         $VERSION
         --repo '${{ github.repository }}'
