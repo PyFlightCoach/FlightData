@@ -55,3 +55,6 @@ def main():
         box = box_from_log(Flight.from_log(plog), args.input)
 
     box.to_f3a_zone(Path(args.logdir) / f'box_{plog.stem}.f3a')
+
+if __name__ == '__main__':
+    main()
