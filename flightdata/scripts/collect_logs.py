@@ -26,3 +26,6 @@ def main():
             print(f'copying {file} to {folder / file.name}')
             shutil.copyfile(file, folder / file.name )
         
+
+if __name__ == '__main__':
+    main()
