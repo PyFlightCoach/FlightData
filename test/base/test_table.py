@@ -8,7 +8,7 @@ from pytest import fixture
 
 @fixture
 def df():
-    df = pd.DataFrame(np.linspace(0,100, 100), columns=['t'])
+    df = pd.DataFrame(np.linspace(0,5, 6), columns=['t'])
     return df.set_index("t", drop=False)
 
 @fixture
@@ -54,12 +54,15 @@ def test_get_subset_df(tab_full, labst):
     assert len(tab_full) == len(df)
 
 
-def test_shift_labels_ratios(tab_full):
-    tf = tab_full.label(element='e0', manoeuvre='m0')
-    tf.data.loc[tf.duration/2:,'element'] = 'e1'
-    
+def test_shift_labels_ratios(tab_full: Table):
+    tf: Table = Table.stack([
+        tab_full.label(element='e0', manoeuvre='m0'),
+        tab_full.label(element='e1', manoeuvre='m0')
+
+    ])
+        
     assert sum(tf.shift_labels_ratios([0.5],2).element == 'e1') < sum(tf.element == 'e1')
-    tf
+    
     
 def test_stack(tab_full):
     tfn = Table.stack([tab_full.label(element='e0'), tab_full.label(element='e1')], overlap=0)
@@ -72,18 +75,18 @@ def test_stack(tab_full):
 
 
 def test_shift_multi(tab_full):
-    t1, t2 = tab_full.label(element='e1'), tab_full.label(element='e2')
-    tb1, tb2 = Table.shift_multi(2, t1, t2)
+    tabs = Table.stack([tab_full.label(element='e0'), tab_full.label(element='e1')], overlap=1).split_labels()
+    tb1, tb2 = Table.shift_multi(2, tabs['e0'], tabs['e1'])
     
     assert len(tb1) == len(tab_full) + 2
     assert len(tb2) == len(tab_full) - 2
     assert tb2.duration == tab_full.data.index[-3]
     
-    tb1, tb2 = Table.shift_multi(-5, t1, t2)
+    tb1, tb2 = Table.shift_multi(-3, tabs['e0'], tabs['e1'])
     
-    assert len(tb1) == len(tab_full) - 5
-    assert len(tb2) == len(tab_full) + 5
-    assert tb1.duration == tab_full.data.index[-6]
+    assert len(tb1) == len(tab_full) - 3
+    assert len(tb2) == len(tab_full) + 3
+    assert tb1.duration == tab_full.data.index[-4]
 
 
 def test_table_cumulative_labels(tab_full):
@@ -102,6 +105,6 @@ def test_table_cumulative_labels(tab_full):
     indexes = np.unique(res, return_index=True)[1]
     np.testing.assert_array_equal(
         [res[index] for index in sorted(indexes)],
-        np.array(['a1_b1', 'a2_b1', 'a2_b2', 'a1_b1_1'])
+        np.array(['a1_b1_0', 'a2_b1_0', 'a2_b2_0', 'a1_b1_1'])
     )
     pass

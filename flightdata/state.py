@@ -217,7 +217,7 @@ class State(Table):
         
     def get_meid(self: State, manid: int, elid: int=None):
         st = self.get_manoeuvre(manid)
-        if not elid is None:
+        if elid is not None:
             return st.get_element(elid)
         else:
             return st

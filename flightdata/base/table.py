@@ -80,39 +80,15 @@ class Table:
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
         
-
     def slice_raw_t(self, sli):
         inds = self.data.reset_index(names="t2").set_index("t").loc[sli].t2.to_numpy()#set_index("t", drop=False).columns
 
         return self.__class__(self.data.loc[inds])
 
-    @classmethod
-    def stack(Cls, sections: list, overlap: int=1) -> Self:
-        """Stack a list of Tables on top of each other. 
-        The overlap is the number of rows to overlap between each section
-        """
-        # first build list of index offsets, to be added to each dataframe
-        if overlap > 0:
-            offsets = np.cumsum([0] + [sec.data.index[-overlap] for sec in sections[:-1]])
-            dfs = [section.data.iloc[:-overlap] for section in sections[:-1]] + [sections[-1].data]
-        elif overlap == 0:
-            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sections[:-1]])
-            dfs = [section.data for section in sections]
-        else:
-            raise AttributeError("Overlap must be >= 0")
-
-        for df, offset in zip(dfs, offsets):
-            df.index = np.array(df.index) - df.index[0] + offset
-        combo = pd.concat(dfs)
-        combo.index.name = "t"
-
-        combo["t"] = combo.index
-
-        return Cls(combo)
-
     def __iter__(self):
         for ind in list(self.data.index):
             yield self[ind]
+
 
     @classmethod
     def from_constructs(cls, *args,**kwargs) -> Self:
@@ -132,7 +108,7 @@ class Table:
         )
 
         return cls(df)
-
+    
     def __repr__(self):
         return f"{self.__class__.__name__} Table(duration = {self.duration})"
 
@@ -160,6 +136,30 @@ class Table:
             ignore_index=True
         ).set_index("t", drop=False))
       
+    @classmethod
+    def stack(Cls, sections: list, overlap: int=1) -> Self:
+        """Stack a list of Tables on top of each other. 
+        The overlap is the number of rows to overlap between each section
+        """
+        # first build list of index offsets, to be added to each dataframe
+        if overlap > 0:
+            offsets = np.cumsum([0] + [sec.data.index[-overlap] for sec in sections[:-1]])
+            dfs = [section.data.iloc[:-overlap] for section in sections[:-1]] + [sections[-1].data]
+        elif overlap == 0:
+            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sections[:-1]])
+            dfs = [section.data for section in sections]
+        else:
+            raise AttributeError("Overlap must be >= 0")
+
+        for df, offset in zip(dfs, offsets):
+            df.index = np.array(df.index) - df.index[0] + offset
+        combo = pd.concat(dfs)
+        combo.index.name = "t"
+
+        combo["t"] = combo.index
+
+        return Cls(combo)
+
     def label(self, **kwargs) -> Self:
         return self.__class__(self.data.assign(**kwargs))
 
@@ -176,9 +176,11 @@ class Table:
     
     def get_subset_df(self, **kwargs) -> pd.DataFrame:
         dfo = self.data
+        sel = np.full(len(self.data), True)
         for k, v in kwargs.items():
-            dfo = dfo.loc[dfo[k] == v, :]            
-        return dfo
+            sel = sel & (dfo[k] == v)
+
+        return self.data.loc[sel + (sel.astype(int).diff() == -1)]
 
     def get_label_subset(self, min_len=1, **kwargs) -> Self:
         return self.__class__(self.get_subset_df(**kwargs), min_len=min_len)
@@ -243,13 +245,14 @@ class Table:
         return self.label(**labels.to_dict(orient='list'))
     
     @classmethod
-    def shift_multi(Cls, steps: int, tb1: Self, tb2: Self, min_len=2) -> Tuple[Self, Self]:
+    def shift_multi(Cls, steps: int, tb1: Self, tb2: Self, min_len=1) -> Tuple[Self, Self]:
         '''Take datapoints off the start of tb2 and add to the end tb1'''
-        if (steps>0 and len(tb2)-min_len<steps) or (steps<0 and min_len - len(tb1) > steps):
-            raise ValueError(f'Cannot Squash a Table to less than {min_len} datapoints')
-        dfj = Cls.stack([tb1, tb2], overlap=0).data
-        return Cls(dfj.iloc[:len(tb1)+steps, :]), \
-               Cls(dfj.iloc[len(tb1)+steps:, :])
+        #if (steps>0 and len(tb2)-min_len<steps) or (steps<0 and min_len - len(tb1) > steps):
+        #    raise ValueError(f'Cannot Squash a Table to less than {min_len} datapoints')
+        tj = Cls.stack([tb1, tb2]).shift_label(steps, min_len, **dict(tb1.labels.iloc[0]))
+        
+        return Cls(tj.get_subset_df(**dict(tb1.labels.iloc[0]))), \
+             Cls(tj.get_subset_df(**dict(tb2.labels.iloc[0])))
     
     def shift_label_ratio(self, ratio: float, min_len=None, **kwargs) -> Self:
         '''shift a label within its allowable bounds, with a ratio of
