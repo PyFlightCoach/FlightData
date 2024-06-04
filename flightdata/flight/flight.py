@@ -473,20 +473,24 @@ class Flight:
             wind_N = df['wN'] if 'wN' in df.columns else None,
             wind_E = df['wE'] if 'wE' in df.columns else None,
         )
-        origin = Origin(
-            'fcj_origin',
-            GPS(
-                float(fc_json['parameters']['pilotLat']), 
-                float(fc_json['parameters']['pilotLng']), 
-                float(fc_json['parameters']['pilotAlt'])
-            ).offset(-Point(
-                fc_json['parameters']['moveNorth'],
-                fc_json['parameters']['moveEast'],
-                0,
-            )), 
-            0
-        )
-        
+
+        if 'parameters' in fc_json:
+            origin = Origin(
+                'fcj_origin',
+                GPS(
+                    float(fc_json['parameters']['pilotLat']), 
+                    float(fc_json['parameters']['pilotLng']), 
+                    float(fc_json['parameters']['pilotAlt'])
+                ).offset(-Point(
+                    fc_json['parameters']['moveNorth'],
+                    fc_json['parameters']['moveEast'],
+                    0,
+                )), 
+                0
+            )
+        else:
+            origin = Origin('dummy_origin', GPS(0,0,0), -np.pi/2)
+            
         return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')#.remove_time_flutter()
 
     def remove_time_flutter(self):

@@ -147,7 +147,7 @@ class State(Table):
 
         return distance, State.copy_labels(template, flown, path, 3)
 
-    def splitter_labels(self: State, mans: List[dict], better_names: List[str]=None) -> State:
+    def splitter_labels(self: State, mans: List[dict], better_names: List[str]=None, target_col='manoeuvre') -> State:
             """label the manoeuvres in a State based on the flight coach splitter information
 
             TODO this assumes the state only contains the dataset contained in the json
@@ -164,7 +164,7 @@ class State(Table):
             takeoff = self.data.iloc[0:int(mans[0]["stop"])+1]
 
             labels = [mans[0]["name"]]
-            labelled = [State(takeoff).label(manoeuvre=labels[0])]
+            labelled = [State(takeoff).label(**{target_col:labels[0]})]
             if better_names:
                 better_names.append('land')
 
@@ -179,7 +179,7 @@ class State(Table):
                 labelled.append(
                     State(
                         self.data.iloc[int(split_man["start"]):int(split_man["stop"])+1]
-                    ).label(manoeuvre=name)
+                    ).label(**{target_col:name})
                 )
                 labels.append(split_man["name"])
 
