@@ -448,6 +448,27 @@ class Flight:
             return dfs
 
     @staticmethod
+    def parse_fcj_data(origin: Origin, df: pd.DataFrame):
+        df = Flight.build_cols(
+            time_actual = df['time']/1e6 + int(time()),
+            time_flight = df['time']/1e6,
+            attitude_roll = np.radians(df['r']),
+            attitude_pitch = np.radians(df['p']),
+            attitude_yaw = np.radians(df['yw']),
+            position_N = df['N'],
+            position_E = df['E'],
+            position_D = df['D'],
+            velocity_N = df['VN'],
+            velocity_E = df['VE'],
+            velocity_D = df['VD'],
+            wind_N = df['wN'] if 'wN' in df.columns else None,
+            wind_E = df['wE'] if 'wE' in df.columns else None,
+        )
+
+        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')
+    
+    
+    @staticmethod
     def from_fc_json(fc_json: Union[str, dict, IO]) -> Self:
         
         if isinstance(fc_json, str):

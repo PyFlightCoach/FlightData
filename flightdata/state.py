@@ -15,7 +15,6 @@ class State(Table):
         SVar("vel", g.Point,       ["u", "v", "w"]           , lambda st: g.P0() if len(st)==1 else st.att.inverse().transform_point(st.pos.diff(st.dt))),
         SVar("rvel", g.Point,       ["p", "q", "r"]           , lambda st: g.P0() if len(st)==1 else st.att.body_diff(st.dt)),
         SVar("acc", g.Point,       ["du", "dv", "dw"]        , lambda st : g.P0() if len(st)==1 else st.att.inverse().transform_point(st.att.transform_point(st.vel).diff(st.dt) + g.PZ(9.81, len(st)))),
-        SVar("racc", g.Point,       ["dp", "dq", "dr"]        , lambda st: g.P0() if len(st)==1 else st.rvel.diff(st.dt)),
     ])
     _construct_freq = 30
 
@@ -131,7 +130,7 @@ class State(Table):
         from scipy.spatial.distance import euclidean
         def get_brv(brv):
             if mirror:
-                brv = brv.abs() * g.Point(1, 0, 1) + brv * g.Point(0, 1, 0 )
+                brv = g.Point(np.abs(brv.x), brv.y, np.abs(brv.z))#brv.abs() * g.Point(1, 0, 1) + brv * g.Point(0, 1, 0 )
             return brv * weights
 
         fl = get_brv(flown.rvel)
@@ -233,7 +232,6 @@ class State(Table):
             vel=q.transform_point(self.vel),
             rvel=q.transform_point(self.rvel),
             acc=q.transform_point(self.acc),
-            racc=q.transform_point(self.racc),
         ))
 
     def scale(self: State, factor: float) -> State:
@@ -244,7 +242,6 @@ class State(Table):
             vel=self.vel * factor,
             rvel=self.rvel,
             acc=self.acc * factor,
-            racc=self.racc,
         ))
 
     def mirror_zy(self: State) -> State:
@@ -456,7 +453,6 @@ class State(Table):
             vel=self.vel,
             rvel=self.rvel,
             acc=self.acc,
-            racc=self.racc,
         ))
 
     def move_back(self:State, transform:g.Transformation) -> State:
