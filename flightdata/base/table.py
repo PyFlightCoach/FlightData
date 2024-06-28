@@ -135,19 +135,24 @@ class Table:
             axis=0, 
             ignore_index=True
         ).set_index("t", drop=False))
-      
+    
+    def zero_index(self):
+        data = self.data.copy()
+        return self.__class__(data.set_index(data.index - data.index[0]))
+
     @classmethod
-    def stack(Cls, sections: list, overlap: int=1) -> Self:
+    def stack(Cls, sts: list, overlap: int=1) -> Self:
         """Stack a list of Tables on top of each other. 
-        The overlap is the number of rows to overlap between each section
+        The overlap is the number of rows to overlap between each st
         """
-        # first build list of index offsets, to be added to each dataframe
+        t0 = sts[0].data.index[0]
+        sts = [st.zero_index() for st in sts]
         if overlap > 0:
-            offsets = np.cumsum([0] + [sec.data.index[-overlap] for sec in sections[:-1]])
-            dfs = [section.data.iloc[:-overlap] for section in sections[:-1]] + [sections[-1].data]
+            offsets = np.cumsum([0] + [s0.data.index[-overlap] for s0 in sts[:-1]])
+            dfs = [st.data.iloc[:-overlap] for st in sts[:-1]] + [sts[-1].data]
         elif overlap == 0:
-            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sections[:-1]])
-            dfs = [section.data for section in sections]
+            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sts[:-1]])
+            dfs = [st.data for st in sts]
         else:
             raise AttributeError("Overlap must be >= 0")
 
@@ -155,7 +160,7 @@ class Table:
             df.index = np.array(df.index) - df.index[0] + offset
         combo = pd.concat(dfs)
         combo.index.name = "t"
-
+        combo.index = combo.index + t0
         combo["t"] = combo.index
 
         return Cls(combo)
