@@ -74,6 +74,12 @@ def test_stack(tab_full):
     assert len(tfn) == 2 * len(tab_full) - 1
 
 
+    tfn = Table.stack([tfn.label(manoeuvre='m1'),tfn.label(manoeuvre='m2')])
+    assert tfn.data.index.is_monotonic_increasing
+    tfn2 = Table.stack(list(tfn.split_labels().values()))
+    assert tfn.duration == tfn2.duration
+
+
 def test_shift_multi(tab_full):
     tabs = Table.stack([tab_full.label(element='e0'), tab_full.label(element='e1')], overlap=1).split_labels()
     tb1, tb2 = Table.shift_multi(2, tabs['e0'], tabs['e1'])
