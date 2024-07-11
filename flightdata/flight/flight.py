@@ -14,9 +14,8 @@ from typing import Self, Union, IO
 import numpy as np
 import pandas as pd
 from .fields import fields, Field
-from geometry import GPS, Point
+from geometry import GPS, Point, P0
 from geometry.testing import assert_almost_equal
-from pathlib import Path
 from time import time
 from json import load, dump
 from flightdata.base.numpy_encoder import NumpyEncoder
@@ -240,15 +239,14 @@ class Flight:
             return False
         
     @staticmethod
-    def from_log(log:Union[Ardupilot, str], extra_types: list[str] = None, **kwargs) -> Flight:
+    def from_log(log: str, extra_types: list[str] = None, **kwargs) -> Flight:
         """Constructor from an ardupilot bin file."""
         from ardupilot_log_reader.reader import Ardupilot
         extra_types = [] if extra_types is None else extra_types
         
-        if isinstance(log, str) or isinstance(log, Path):
+        parser = log
+        if not isinstance(log, Ardupilot):
             parser = Ardupilot.parse(str(log), types=list(set(Flight.ardupilot_types + extra_types)))
-        else:
-            parser = log
         
         params = Flight.build_cols(
             time_actual = parser.PARM.timestamp,
@@ -448,7 +446,10 @@ class Flight:
             return dfs
 
     @staticmethod
-    def parse_fcj_data(origin: Origin, df: pd.DataFrame):
+    def parse_fcj_data(df: pd.DataFrame | dict, origin: Origin, shift: Point=None):
+        
+        df = pd.DataFrame(df, dtype=float) if isinstance(df, dict) else df
+
         df = Flight.build_cols(
             time_actual = df['time']/1e6 + int(time()),
             time_flight = df['time']/1e6,
@@ -464,7 +465,10 @@ class Flight:
             wind_N = df['wN'] if 'wN' in df.columns else None,
             wind_E = df['wE'] if 'wE' in df.columns else None,
         )
-
+        shift = P0() if shift is None else shift
+        df['position_N'] = df['position_N'] + shift.x
+        df['position_E'] = df['position_E'] + shift.y
+        df['position_D'] = df['position_D'] + shift.z
         return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')
     
     
@@ -477,42 +481,22 @@ class Flight:
         elif isinstance(fc_json, IO):
             fc_json = load(f)
         
-        df = pd.DataFrame.from_dict(fc_json['data'], dtype=float)
-                
-        df = Flight.build_cols(
-            time_actual = df['time']/1e6 + int(time()),
-            time_flight = df['time']/1e6,
-            attitude_roll = np.radians(df['r']),
-            attitude_pitch = np.radians(df['p']),
-            attitude_yaw = np.radians(df['yw']),
-            position_N = df['N'],
-            position_E = df['E'],
-            position_D = df['D'],
-            velocity_N = df['VN'],
-            velocity_E = df['VE'],
-            velocity_D = df['VD'],
-            wind_N = df['wN'] if 'wN' in df.columns else None,
-            wind_E = df['wE'] if 'wE' in df.columns else None,
-        )
-
         if 'parameters' in fc_json:
-            origin = Origin(
-                'fcj_origin',
-                GPS(
-                    float(fc_json['parameters']['pilotLat']), 
-                    float(fc_json['parameters']['pilotLng']), 
-                    float(fc_json['parameters']['pilotAlt'])
-                ).offset(-Point(
-                    fc_json['parameters']['moveNorth'],
-                    fc_json['parameters']['moveEast'],
-                    0,
-                )), 
+            origin = Origin.from_fcjson_parameters(fc_json['parameters'])
+            shift = origin.rotation.transform_point(Point(
+                fc_json['parameters']['moveEast'],
+                -fc_json['parameters']['moveNorth'],
                 0
-            )
+            ))
         else:
             origin = Origin('dummy_origin', GPS(0,0,0), -np.pi/2)
-            
-        return Flight(df.set_index('time_flight', drop=False), None, origin, 'position')#.remove_time_flutter()
+            shift=P0()
+
+        return Flight.parse_fcj_data(
+            pd.DataFrame(fc_json['data'], dtype=float),
+            origin, 
+            shift    
+        )
 
     def remove_time_flutter(self):
         #I think the best option is just to take the average of the timestep.

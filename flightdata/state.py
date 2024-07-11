@@ -52,7 +52,7 @@ class State(Table):
         if rotation_only:
             self.back_transform.rotate(pin)
         else:
-            return self.back_transform.g.Point(pin)
+            return self.back_transform.point(pin)
 
     def fill(self, time: g.Time) -> State:
         '''Project forward through time assuming small angles and uniform circular motion'''
@@ -98,15 +98,13 @@ class State(Table):
                 origin = Origin.from_json(origin)
         elif origin is None:
             origin = flight.origin
-
+        
         time = g.Time.from_t(np.array(flight.data.time_flight))
 
         if all(flight.contains('gps')) and flight.primary_pos_source == 'gps':
-            pos = origin.rotation.transform_point(g.GPS(flight.gps.ffill().bfill()) - origin.pos[0])
+            pos = origin.rotation.transform_point(g.GPS(flight.gps.ffill().bfill()) - origin.pos)
         else: 
-            pos = origin.rotation.transform_point(
-                flight.origin.pos.offset(g.Point(flight.position.ffill().bfill())) - origin.pos[0]
-            )
+            pos = origin.rotation.transform_point(g.Point(flight.position.ffill().bfill()))
         
         att = origin.rotation * g.Euler(flight.attitude.ffill().bfill()) 
         vel =  att.inverse().transform_point(origin.rotation.transform_point(g.Point(flight.velocity.ffill().bfill()))) if all(flight.contains('velocity')) else None
