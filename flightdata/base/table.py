@@ -69,7 +69,11 @@ class Table:
     
     def __getitem__(self, sli):
         if isinstance(sli, slice):
-            return self.__class__(self.data.loc[slice(sli.start + self.data.index[0], sli.stop + self.data.index[0], sli.step)])
+            return self.__class__(self.data.loc[slice(
+                sli.start if sli.start else self.data.index[0], 
+                sli.stop if sli.stop else self.data.index[-1], 
+                sli.step
+            )])
         elif isinstance(sli, Number):
             if sli<0:
                 return self.__class__(self.data.iloc[[int(sli)], :])
@@ -87,7 +91,7 @@ class Table:
 
     def __iter__(self):
         for ind in list(self.data.index):
-            yield self[ind]
+            yield self[ind - self.data.index[0]]
 
 
     @classmethod

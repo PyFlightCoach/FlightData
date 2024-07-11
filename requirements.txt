@@ -2,3 +2,4 @@ numpy
 pandas
 simplejson
 pfc-geometry>=0.2.7
+json_stream

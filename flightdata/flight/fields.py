@@ -1,8 +1,7 @@
 
 from typing import Union, Self
 from itertools import chain
-import string
-import re
+
 
 class Field:
     def __init__(self, column: str, description: str = '', i: int = 0):
