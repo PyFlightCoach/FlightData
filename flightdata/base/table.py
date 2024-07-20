@@ -67,6 +67,9 @@ class Table:
     def duration(self):
         return self.data.index[-1] - self.data.index[0]
     
+    def iloc(self, sli):
+        return self.__class__(self.data.iloc[sli])
+
     def __getitem__(self, sli):
         if isinstance(sli, slice):
             return self.__class__(self.data.loc[slice(
@@ -83,7 +86,7 @@ class Table:
             )
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
-        
+
     def slice_raw_t(self, sli):
         inds = self.data.reset_index(names="t2").set_index("t").loc[sli].t2.to_numpy()#set_index("t", drop=False).columns
 

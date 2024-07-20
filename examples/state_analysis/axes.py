@@ -2,7 +2,7 @@ from flightdata import State, Environment
 from geometry import Transformation, P0, Euldeg, PY, PX, Point, Time
 from flightplotting import plotsec
 import numpy as np
-from flightdata import Coefficients, Environment, Environment, Flow
+from flightdata import Coefficients, Environment, Flow
 from flightdata.model import cold_draft as constants
 import plotly.express as px
 
