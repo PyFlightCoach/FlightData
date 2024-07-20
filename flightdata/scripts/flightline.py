@@ -4,11 +4,20 @@ from pathlib import Path
 import argparse
 
 
-def box_from_log(log: Flight, channel: int):
-    c6on = Flight(log.data.loc[log.data[f'rcin_c{channel}']>=1500])
+
+def get_con_groups(log: Flight, channel: int):
+    c6on = log.data.loc[log.data[f'rcin_c{channel}']>=1500]
     groups = (c6on.time_flight.diff() > 1).cumsum()
-    pilot = Flight(c6on.data.loc[groups==0])
-    centre = Flight(c6on.data.loc[groups==1])
+    return [Flight(c6on.loc[groups==grp]) for grp in groups.unique()]
+
+def box_from_log(log: Flight, channel: int):
+    grps = get_con_groups(log, channel)
+    pilot = grps[0]
+    centre = grps[1]
+#    c6on = Flight(log.data.loc[log.data[f'rcin_c{channel}']>=1500])
+#    groups = (c6on.time_flight.diff() > 1).cumsum()
+#    pilot = Flight(c6on.data.loc[groups==0])
+#    centre = Flight(c6on.data.loc[groups==1])
 
     return Origin.from_points("new", GPS(pilot.gps)[-1], GPS(centre.gps)[-1])
 
@@ -22,6 +31,7 @@ def main():
     parser.add_argument('-l', '--logdir', default='', help='folder to look for logs in')
     parser.add_argument('-p', '--pilot', default=None, help='flight log bin file to use, None for first')
     parser.add_argument('-c', '--centre', default=None, help='centre position bin file to use if input==None')
+    parser.add_argument('-d', '--direction', default=None, help='heading of the box, if this is specified only pilot will be read')
     parser.add_argument('-i', '--input', default=6, help='channel used to indicate pilot or centre postions (pwm>=1500), None for two files')
 
     args = parser.parse_args()
@@ -38,6 +48,8 @@ def main():
     elif args.pilot.isdigit():
         plog = logs[logids.index(int(args.pilot))]
 
+    pilot = Flight.from_log(plog)
+
     print(f'Pilot position log: {plog}')
 
     if args.centre in logs:
@@ -46,14 +58,19 @@ def main():
         clog=None
     elif args.centre.isdigit():
         clog = logs[logids.index(int(args.centre))]
-    
+    if clog:
+        centre = Flight.from_log(clog)
     print(f'Centre position log: {clog}')
 
     if args.centre:
-        box = box_from_logs(Flight.from_log(plog), Flight.from_log(clog))
+        box = Origin.from_points("new", GPS(*pilot.gps.iloc[-1]), GPS(*centre.gps.iloc[-1]))
     else:
-        box = box_from_log(Flight.from_log(plog), args.input)
-
+        groups = get_con_groups(pilot, args.input)
+        if args.direction:
+            box = Origin("new", GPS(groups[0].gps)[-1], float(args.direction))
+        else:
+            box = Origin.from_points("new", GPS(groups[0].gps)[-1], GPS(groups[1].gps)[-1])
+            
     box.to_f3a_zone(Path(args.logdir) / f'box_{plog.stem}.f3a')
 
 if __name__ == '__main__':
