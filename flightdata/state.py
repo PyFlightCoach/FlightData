@@ -182,43 +182,12 @@ class State(Table):
 
             return State.stack(labelled)
 
-    
-    def get_subset(self: State, mans: Union[list, slice], col="manoeuvre", min_len=1) -> Self:
-        selectors = self.data.loc[:,col].unique()
-        if isinstance(mans, slice):
-            mans = selectors[mans]
-
-        if not is_list_like(mans):
-            mans = [mans]
-        
-        if not all(isinstance(m, str) for m in mans):
-            mans = [m.uid if m.__class__.__name__ == "Manoeuvre" else m for m in mans]
-            mans = [m.uid if m.__class__.__bases__[0].__name__ == "El" else m for m in mans]    
-            mans = [selectors[m] if isinstance(m, int) else m for m in mans]
-            
-        assert all(isinstance(m, str) for m in mans)
-
-        return State(self.data.loc[self.data.loc[:, col].isin(mans)], False, min_len)
-
     def get_manoeuvre(self: State, manoeuvre: Union[str, list, int]) -> Self:
-        return self.get_subset(manoeuvre, "manoeuvre")
+        return self.get_label_subset(manoeuvre=manoeuvre)
 
-    def get_element(self: State, element: Union[str, list, int]) -> Self:
-        return self.get_subset(element, "element") 
+    def get_element(self: State, element: Union[str, list, int], subels: bool = False) -> Self:
+        return self.get_label_subset(test='startswith' if subels else None, element=element) 
         
-    def get_man_or_el(self: State, el: str) -> Self:
-        if el in self.data.element.unique():
-            return self.get_element([el])
-        elif el in self.data.manoeuvre.unique():
-            return self.get_manoeuvre([el])
-        
-    def get_meid(self: State, manid: int, elid: int=None):
-        st = self.get_manoeuvre(manid)
-        if elid is not None:
-            return st.get_element(elid)
-        else:
-            return st
-
     def convert_state(self: State, r: g.Point) -> State:
         """Rotate body axis by an axis angle"""
         att = self.att.body_rotate(r)
@@ -461,7 +430,7 @@ class State(Table):
         offset = start_pos - self.pos[0]
         return self.move(g.Transformation(offset, g.Q0()))
 
-    def superimpose_angles(self: State, angles: g.Point, reference:str="body"): 
+    def superimpose_angles(self: State, angles: g.Point, reference:str="body") -> State: 
         assert reference in ["body", "world"]
 
         if reference == "body":
@@ -487,7 +456,7 @@ class State(Table):
                 )
             )
 
-    def superimpose_rotation(self: State, axis: g.Point, angle: float, reference:str="body"):
+    def superimpose_rotation(self: State, axis: g.Point, angle: float, reference:str="body") -> State:
         """Generate a new section, identical to self, but with a continous rotation integrated
         """
         t = self.time.t - self.time.t[0]
@@ -560,4 +529,5 @@ class State(Table):
         h = mass.angular_momentum(self.rvel)
         return h.diff(self.dt) + g.Point.cross(self.rvel, h)
     
-    
+    def get_rotation(self):
+        return np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.dt)
