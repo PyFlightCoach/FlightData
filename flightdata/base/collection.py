@@ -40,6 +40,9 @@ class Collection:
             return self.data[getattr(key, self.__class__.uid)]
         raise ValueError(f"Invalid Key or Indexer {key}")
 
+    def subset(self, keys: list[str]) -> Self:
+        return self.__class__([getattr(self, k) for k in keys])
+
     def __iter__(self) -> Iterable[T]:
         for v in self.data.values():
             yield v
