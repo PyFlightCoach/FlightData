@@ -442,17 +442,21 @@ class State(Table):
                     self.pos,
                     self.att.body_rotate(angles),
                     vel = rot.transform_point(self.vel),
-                    #rvel = rot.transform_point(self.rvel), # need to differentiate angles and add here
+                    rvel = rot.transform_point(self.rvel) + angles.diff(self.dt), # need to differentiate angles and add here
                     acc = rot.transform_point(self.acc),
                 )
             ) 
         else:
+            att = self.att.rotate(angles)
             return State.copy_labels(
                 self, 
                 State.from_constructs(
                     self.time,
                     self.pos,
-                    self.att.rotate(angles),
+                    att,
+                    att.inverse().transform_point(self.att.transform_point(self.vel)),
+                    rvel = att.inverse().transform_point(self.att.transform_point(self.rvel) + angles.diff(self.dt)),
+                    acc = att.inverse().transform_point(self.att.transform_point(self.acc))
                 )
             )
 

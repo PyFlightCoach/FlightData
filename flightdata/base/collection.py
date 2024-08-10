@@ -15,6 +15,8 @@ class Collection:
             self.data = data
         elif isinstance(data, self.__class__):
             self.data = data.data
+        elif isinstance(data, self.__class__.VType):
+            self.data = {getattr(data, self.__class__.uid): data}
         elif data is None:
             pass
         else:
