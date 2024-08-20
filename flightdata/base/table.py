@@ -90,7 +90,7 @@ class Table:
             return self.__class__(
                 self.data.iloc[
                     self.data.index.get_indexer(
-                        [sli + self.data.index[0]], method="nearest"
+                        [sli], method="nearest"
                     ),
                     :,
                 ]

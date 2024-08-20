@@ -66,12 +66,19 @@ class Collection:
     def from_dict(cls, vals: dict[str, dict[str, Any]]) -> Self:
         return cls([cls.VType.from_dict(v) for v in vals.values()])
     
-    def add(self, v: Union[T, Self]) -> Self:
+    def add(self, v: Union[T, Self], inplace=True) -> Self:
+        odata = self.data.copy()
         if isinstance(v, self.VType):
-            self.data[getattr(v, self.uid)] = v
+            odata[getattr(v, self.uid)] = v
         elif isinstance(v, self.__class__):
-            self.data = dict(**self.data, **v.data)
-        return v
+            odata = dict(**odata, **v.data)
+        elif isinstance(v, list):
+            odata = dict(**odata, **{getattr(d, self.uid): d for d in v})
+        if inplace:
+            self.data = odata
+            return v
+        else:
+            return self.__class__(odata) 
     
     def concat(self, vs: list[Self]) -> Self:
         coll = self.__class__([])

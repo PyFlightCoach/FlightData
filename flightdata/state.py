@@ -3,9 +3,9 @@ from typing import Union, List, Tuple, Self
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_list_like
+import numpy.typing as npt
 import geometry as g
-from flightdata import Table, Constructs, SVar, Origin, Flow, Environment
+from flightdata import Table, Constructs, SVar, Origin, Flow, Environment, Flight
 
 
 class State(Table):
@@ -87,7 +87,7 @@ class State(Table):
 
 
     @staticmethod
-    def from_flight(flight, origin: Union[Origin, str] = None) -> State:
+    def from_flight(flight: Flight, origin: Origin | str | None = None, ppsource=None, core=0) -> State:
         """Read position and attitude directly from the log(after transforming to flightline)"""
         #flight = flight.remove_time_flutter()
         if isinstance(origin, str):
@@ -101,7 +101,7 @@ class State(Table):
         
         time = g.Time.from_t(np.array(flight.data.time_flight))
 
-        if all(flight.contains('gps')) and flight.primary_pos_source == 'gps':
+        if flight.primary_pos_source.startswith('pos'):
             pos = origin.rotation.transform_point(g.GPS(flight.gps.ffill().bfill()) - origin.pos)
         else: 
             pos = origin.rotation.transform_point(g.Point(flight.position.ffill().bfill()))
@@ -391,7 +391,8 @@ class State(Table):
         return np.sign(self.att.transform_point(g.Point(1, 0, 0)).y)
     
 
-    def inverted(self):
+    def inverted(self) -> npt.NDArray:
+        '''returns true if the aircraft is inverted, false if upright'''
         return self.att.transform_point(g.Point(0, 0, 1)).z > 0
 
     def upright(self):
