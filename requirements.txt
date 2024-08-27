@@ -1,5 +1,5 @@
 numpy
 pandas
 simplejson
-pfc-geometry>=0.2.9
+pfc-geometry>=0.2.10
 json_stream

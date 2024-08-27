@@ -309,7 +309,7 @@ class Flight:
     def from_log(
         log: str,
         extra_types: list[str] = None,
-        ppsource: str  = "pos",
+        ppsource: str = "pos",
         imu_instance=0,
         **kwargs,
     ) -> Flight:
@@ -318,12 +318,17 @@ class Flight:
         """
         from ardupilot_log_reader.reader import Ardupilot
 
-        extra_types = [] if extra_types is None else extra_types
-
         parser = log
         if not isinstance(log, Ardupilot):
             parser = Ardupilot.parse(
-                str(log), types=list(set(Flight.ardupilot_types + extra_types))
+                str(log),
+                types=list(
+                    set(
+                        Flight.ardupilot_types + []
+                        if extra_types is None
+                        else extra_types
+                    )
+                ),
             )
 
         params = Flight.build_cols(
@@ -364,9 +369,9 @@ class Flight:
             dfs.append(
                 Flight.build_cols(
                     time_actual=parser.POS.timestamp,
-                    gps_latitude=parser.POS.Lat,
-                    gps_longitude=parser.POS.Lng,
-                    gps_altitude=parser.POS.Alt,
+                    pos_latitude=parser.POS.Lat,
+                    pos_longitude=parser.POS.Lng,
+                    pos_altitude=parser.POS.Alt,
                 )
             )
         else:
@@ -387,7 +392,7 @@ class Flight:
                 ),
                 "C",
             )
-            
+
         if ekf2 is not None:
             dfs = dfs + Flight.parse_instances(
                 ekf2,
@@ -451,6 +456,18 @@ class Flight:
                     axisrate_roll=imu.GyrX,
                     axisrate_pitch=imu.GyrY,
                     axisrate_yaw=imu.GyrZ,
+                )
+            )
+
+        if "GPS" in parser.dfs:
+            dfs.append(
+                Flight.build_cols(
+                    time_actual=parser.GPS.timestamp,
+                    gps_latitude=parser.GPS.Lat,
+                    gps_longitude=parser.GPS.Lng,
+                    gps_altitude=parser.GPS.Alt,
+                    gps_satellites=parser.GPS.NSats,
+                    gps_hdop=parser.GPS.HDop,
                 )
             )
 

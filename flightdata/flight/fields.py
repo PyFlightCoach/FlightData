@@ -57,7 +57,8 @@ class Fields:
             #raise AttributeError(f'Field {name} not found')
 
     def get_fields(self, names: list[str]) -> list[Field]:
-        _l = lambda v: [v] if isinstance(v, Field) else v
+        def _l(v):
+            return [v] if isinstance(v, Field) else v
         return list(chain(*[_l(getattr(self, n)) for n in names]))
     
     def get_cols(self, names: list[str]) -> list[str]:
@@ -80,6 +81,11 @@ fields = Fields([
         Field('gps_latitude', 'latitude, degrees'),
         Field('gps_longitude', 'longitude, degrees'),
         Field('gps_altitude', 'altitude, meters'),
+        Field('gps_satellites', 'number of satellites'),
+        Field('gps_hdop', 'number precision'),
+        Field('pos_latitude', 'latitude, degrees'),
+        Field('pos_longitude', 'longitude, degrees'),
+        Field('pos_altitude', 'altitude, meters'),
         Field('attitude_roll', 'roll angle, radians'),
         Field('attitude_pitch', 'pitch angle, radians'),
         Field('attitude_yaw', 'yaw angle, radians'),
