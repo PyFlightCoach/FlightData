@@ -316,10 +316,9 @@ class Flight:
         """Constructor from an ardupilot bin file.
         ppsource = xkf or pos
         """
-        from ardupilot_log_reader.reader import Ardupilot
-
         parser = log
-        if not isinstance(log, Ardupilot):
+        if not hasattr(log, 'dfs'):
+            from ardupilot_log_reader.reader import Ardupilot
             parser = Ardupilot.parse(
                 str(log),
                 types=list(
