@@ -1,5 +1,5 @@
-from flightdata import Flight, State, Origin
-from pytest import approx
+from flightdata import Flight, State, Origin, BinData
+from pytest import approx, fixture
 from geometry import Transformation, PX, PY, P0, Time
 from geometry.testing import assert_almost_equal
 import numpy as np
@@ -86,3 +86,18 @@ def test_fill_vart():
     st = st0.fill(_t)
     np.testing.assert_array_equal(st.q, np.full(11, q))
     
+
+
+
+@fixture(scope='session')
+def bindata():
+    return BinData.parse_json(load(open('test/data/web_bin_parse.json', 'r')))
+
+@fixture(scope='session')
+def flbd(bindata: BinData):
+    return Flight.from_log(bindata)
+
+
+def test_st_from_bindata(flbd: State):
+    st = State.from_flight(flbd)
+    assert isinstance(st, State)

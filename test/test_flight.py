@@ -1,11 +1,10 @@
-from flightdata import Flight, Origin
+from flightdata import Flight, Origin, BinData
 from io import open
 from json import load
 from pytest import fixture, approx, mark
 import numpy as np
 import pandas as pd
 from ardupilot_log_reader import Ardupilot
-
 
 @fixture(scope='session')
 def parser():
@@ -114,4 +113,16 @@ def test_make_param_labels(fl: Flight):
     col = fl.make_param_labels('AHRS_EKF_TYPE', 'Test')
 
     assert np.all(col.loc[col!=''] == 'Test3.0')
+
+
+
+@fixture(scope='session')
+def bindata():
+    return BinData.parse_json(load(open('test/data/web_bin_parse.json', 'r')))
+
+def test_from_bindata(bindata: BinData):
+    fl = Flight.from_log(bindata)
+    assert isinstance(fl, Flight)
+
+    
 

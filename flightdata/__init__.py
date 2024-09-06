@@ -1,4 +1,5 @@
 from .base import *
+from .bindata import BinData
 from .origin import Origin
 from .flight import *
 from .environment import *
