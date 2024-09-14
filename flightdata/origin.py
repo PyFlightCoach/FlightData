@@ -4,17 +4,21 @@ from json import load, dump
 from typing import Self
 import json_stream
 from pathlib import Path
+from dataclasses import dataclass   
 
 
+@dataclass
 class Origin(object):
     '''This class defines an aerobatic box in the world, it uses the pilot position and the direction 
     in which the pilot is facing (normal to the main aerobatic manoeuvering plane)'''
+    name: str
+    pos: g.GPS # position of pilot
+    heading: float# direction pilot faces in radians from North (clockwise)
 
-    def __init__(self, name, pos: g.GPS, heading: float):
-        self.name = name
-        self.pos = pos # position of pilot
-        self.heading = heading  # direction pilot faces in radians from North (clockwise)
-        self.rotation = g.Euler(np.pi, 0, self.heading + np.pi/2)  # converts NED to x right, y heading direction, z up
+    @property
+    def rotation(self):
+        # converts NED to x right, y heading direction, z up
+        return g.Euler(np.pi, 0, self.heading + np.pi/2)  
 
     @property
     def pilot_position(self):

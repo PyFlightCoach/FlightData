@@ -23,7 +23,14 @@ from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes
 from flightdata import Origin
 from numbers import Number
+from scipy.signal import filtfilt, butter
 
+def filter(data, cutoff=25, order=5, fs=25):
+    return filtfilt(
+        *butter(order, cutoff, fs=fs, btype="low", analog=False),
+        data,
+        padlen=len(data) - 1,
+    )
 
 class Flight:
     ardupilot_types = [
@@ -379,7 +386,7 @@ class Flight:
         ppsource = f"{ppsource}_c{imu_instance}"
 
         if ekf1 is not None:
-            dfs = dfs + Flight.parse_instances(
+            newdfs = Flight.parse_instances(
                 ekf1,
                 dict(
                     position_N="PN",
@@ -391,6 +398,16 @@ class Flight:
                 ),
                 "C",
             )
+
+            for i, df in enumerate(newdfs):
+
+                ekffs = 1 / np.mean(np.diff(df.time_actual))
+                ps = '' if i == 0 else f"_{i}"
+                df[f'velocity_N{ps}'] = filter(df[f'velocity_N{ps}'], 5, 5, ekffs)
+                df[f'velocity_E{ps}'] = filter(df[f'velocity_E{ps}'], 5, 5, ekffs)
+                df[f'velocity_D{ps}'] = filter(df[f'velocity_D{ps}'], 5, 5, ekffs)
+                dfs.append(df)
+
 
         if ekf2 is not None:
             dfs = dfs + Flight.parse_instances(
@@ -422,10 +439,11 @@ class Flight:
             if ekf1 is not None:
                 if "C" in ekf1.columns:
                     imu = pd.merge_asof(
-                        imu, ekf1.loc[ekf1.C == 0], on="timestamp", direction="nearest"
+                        imu, ekf1.loc[ekf1.C == imu_instance], on="timestamp", direction="nearest"
                     )
                 else:
                     imu = pd.merge_asof(imu, ekf1, on="timestamp", direction="nearest")
+
                 if all([v in imu.columns for v in ["GX", "GY", "GZ"]]):
                     imu["GyrX"] = imu.GyrX + np.radians(imu.GX) / 100
                     imu["GyrY"] = imu.GyrY + np.radians(imu.GY) / 100
@@ -445,16 +463,18 @@ class Flight:
                     imu["AccX"] = imu.AccX + imu.AX / 100
                     imu["AccY"] = imu.AccY + imu.AY / 100
                     imu["AccZ"] = imu.AccZ + imu.AZ / 100
-
+            
+            _imufs = 1 / np.mean(np.diff(imu.timestamp))
+            
             dfs.append(
                 Flight.build_cols(
                     time_actual=imu.timestamp,
-                    acceleration_x=imu.AccX,
-                    acceleration_y=imu.AccY,
-                    acceleration_z=imu.AccZ,
-                    axisrate_roll=imu.GyrX,
-                    axisrate_pitch=imu.GyrY,
-                    axisrate_yaw=imu.GyrZ,
+                    acceleration_x=filter(imu.AccX,10, 5, _imufs),
+                    acceleration_y=filter(imu.AccY,10, 5, _imufs),
+                    acceleration_z=filter(imu.AccZ,10, 5, _imufs),
+                    axisrate_roll=filter(imu.GyrX,10, 5, _imufs),
+                    axisrate_pitch=filter(imu.GyrY,10, 5, _imufs),
+                    axisrate_yaw=filter(imu.GyrZ,10, 5, _imufs),
                 )
             )
 
@@ -725,3 +745,6 @@ class Flight:
         T = (ts[-1] - ts[0]) / N
         fs = 1 / T
         return self.filter(*butter(order, cutoff, fs=fs, btype="low", analog=False))
+
+
+    

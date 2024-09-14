@@ -1,11 +1,15 @@
 from __future__ import annotations
-from typing import Union, List, Tuple, Self
+
+from json import load
 from pathlib import Path
+from typing import Self, Tuple, Union
+
 import numpy as np
-import pandas as pd
 import numpy.typing as npt
+import pandas as pd
+
 import geometry as g
-from flightdata import Table, Constructs, SVar, Origin, Flow, Environment, Flight
+from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 
 
 class State(Table):
@@ -194,11 +198,13 @@ class State(Table):
 
         return distance, State.copy_labels(template, flown, path, 3)
 
+
     def splitter_labels(
         self: State,
-        mans: List[dict],
-        better_names: List[str] = None,
+        mans: list[dict],
+        better_names: list[str] = None,
         target_col="manoeuvre",
+        t0=0
     ) -> State:
         """label the manoeuvres in a State based on the flight coach splitter information
 
@@ -211,8 +217,9 @@ class State(Table):
         Returns:
             State: State with labelled manoeuvres
         """
+        i0 = self.data.index.get_indexer([t0], 'nearest')[0]
 
-        takeoff = self.data.iloc[0 : int(mans[0]["stop"]) + 1]
+        takeoff = self.data.iloc[0 : int(mans[0]["stop"]) + i0 + 1]
 
         labels = [mans[0]["name"]]
         labelled = [State(takeoff).label(**{target_col: labels[0]})]
@@ -227,7 +234,7 @@ class State(Table):
 
             labelled.append(
                 State(
-                    self.data.iloc[int(split_man["start"]) : int(split_man["stop"]) + 1]
+                    self.data.iloc[int(split_man["start"]) + i0 : int(split_man["stop"]) + i0 + 1]
                 ).label(**{target_col: name})
             )
             labels.append(split_man["name"])
