@@ -36,7 +36,7 @@ class BinData:
     @staticmethod
     def parse_json(bindata: dict[str, dict[str, list]]) -> BinData:
         # dfs = {k: pd.DataFrame(v) for k,v in bindata.items()}
-
+        
         dfs: dict[str, pd.DataFrame] = {}
         groups = {}
         for k, v in bindata.items():

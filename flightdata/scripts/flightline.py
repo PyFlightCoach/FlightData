@@ -19,10 +19,10 @@ def box_from_log(log: Flight, channel: int):
 #    pilot = Flight(c6on.data.loc[groups==0])
 #    centre = Flight(c6on.data.loc[groups==1])
 
-    return Origin.from_points("new", GPS(pilot.gps)[-1], GPS(centre.gps)[-1])
+    return Origin.from_points("new", GPS(pilot.pos)[-1], GPS(centre.pos)[-1])
 
 def box_from_logs(pilot: Flight, centre: Flight):
-    return Origin.from_points("new", GPS(*pilot.gps.iloc[-1]), GPS(*centre.gps.iloc[-1]))
+    return Origin.from_points("new", GPS(*pilot.pos.iloc[-1]), GPS(*centre.pos.iloc[-1]))
 
 
 def main():
@@ -63,13 +63,13 @@ def main():
     print(f'Centre position log: {clog}')
 
     if args.centre:
-        box = Origin.from_points("new", GPS(*pilot.gps.iloc[-1]), GPS(*centre.gps.iloc[-1]))
+        box = Origin.from_points("new", GPS(*pilot.pos.iloc[-1]), GPS(*centre.pos.iloc[-1]))
     else:
         groups = get_con_groups(pilot, args.input)
         if args.direction:
-            box = Origin("new", GPS(groups[0].gps)[-1], float(args.direction))
+            box = Origin("new", GPS(groups[0].pos)[-1], float(args.direction))
         else:
-            box = Origin.from_points("new", GPS(groups[0].gps)[-1], GPS(groups[1].gps)[-1])
+            box = Origin.from_points("new", GPS(groups[0].pos)[-1], GPS(groups[1].pos)[-1])
             
     box.to_f3a_zone(Path(args.logdir) / f'box_{plog.stem}.f3a')
 

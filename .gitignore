@@ -1,4 +1,5 @@
 __pycache__/
+_trials/
 *.py[cod]
 *$py.class
 .Python
