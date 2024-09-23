@@ -14,7 +14,9 @@ class Table:
         [SVar("time", Time, ["t", "dt"], lambda tab: Time.from_t(tab.t))]
     )
 
-    def __init__(self, data: pd.DataFrame, fill=True, min_len=1):
+    def __init__(self, data: pd.DataFrame | dict, fill=True, min_len=1):
+        if isinstance(data, dict):
+            data = pd.DataFrame(pd.Series(data)).T
         if len(data) < min_len:
             raise Exception(
                 f"State constructor length check failed, data length = {len(data)}, min_len = {min_len}"
@@ -138,7 +140,7 @@ class Table:
         old_constructs = {
             key: self.__getattr__(key)
             for key in self.constructs.existing(self.data.columns).data
-            if not key in kwargs
+            if key not in kwargs
         }
         new_constructs = {
             key: value

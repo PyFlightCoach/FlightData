@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from json import load
 from pathlib import Path
 from typing import Self, Tuple, Union
 
@@ -198,13 +197,12 @@ class State(Table):
 
         return distance, State.copy_labels(template, flown, path, 3)
 
-
     def splitter_labels(
         self: State,
         mans: list[dict],
         better_names: list[str] = None,
         target_col="manoeuvre",
-        t0=0
+        t0=0,
     ) -> State:
         """label the manoeuvres in a State based on the flight coach splitter information
 
@@ -217,7 +215,7 @@ class State(Table):
         Returns:
             State: State with labelled manoeuvres
         """
-        i0 = self.data.index.get_indexer([t0], 'nearest')[0]
+        i0 = self.data.index.get_indexer([t0], "nearest")[0]
 
         takeoff = self.data.iloc[0 : int(mans[0]["stop"]) + i0 + 1]
 
@@ -234,12 +232,29 @@ class State(Table):
 
             labelled.append(
                 State(
-                    self.data.iloc[int(split_man["start"]) + i0 : int(split_man["stop"]) + i0 + 1]
+                    self.data.iloc[
+                        int(split_man["start"]) + i0 : int(split_man["stop"]) + i0 + 1
+                    ]
                 ).label(**{target_col: name})
             )
             labels.append(split_man["name"])
 
         return State.stack(labelled)
+
+    def label_els(self, els: dict):
+        return self.splitter_labels(
+            pd.DataFrame(els).to_dict('records'), target_col='element'
+        ).str_replace_label(
+            element=np.array(
+                [
+                    ["_break", ""],
+                    ["_autorotation", ""],
+                    ["_recovery", ""],
+                    ["_nose_drop", ""],
+                ]
+            ),
+        )
+
 
     def get_manoeuvre(self: State, manoeuvre: Union[str, list, int]) -> Self:
         return self.get_label_subset(manoeuvre=manoeuvre)
@@ -250,7 +265,7 @@ class State(Table):
         return self.get_label_subset(
             test="startswith" if subels else None, element=element
         )
-
+    
     def convert_state(self: State, r: g.Point) -> State:
         """Rotate body axis by an axis angle"""
         att = self.att.body_rotate(r)
@@ -636,9 +651,24 @@ class State(Table):
         return self.att.inverse().transform_point(g.PZ(-9.81)) + self.acc
 
     def arc_centre(self) -> g.Point:
-        acc = g.Point.vector_rejection(self.zero_g_acc(), self.vel)
+        acc = g.point.vector_rejection(self.zero_g_acc(), self.vel)
         with np.errstate(invalid="ignore"):
             return acc.unit() * abs(self.vel) ** 2 / abs(acc)
+
+    def curvature(self, axis: g.Point) -> g.Point:
+        """Returns the curvature of the path in 1/m, axis is the desired axial direction
+        in the world frame"""
+        trfl = self.to_track()
+
+        po= g.point.vector_rejection(
+            trfl.att.transform_point(
+                trfl.zero_g_acc() * g.Point(0, 1, 1) / abs(trfl.u) ** 2
+            ),
+            axis,
+        )
+        po.data[-1,:] = np.nan
+        return po.ffill()
+
 
     def F_gravity(self, mass: g.Mass):
         """Returns the gravitational force in N"""

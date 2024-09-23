@@ -47,10 +47,13 @@ class BinData:
                         pd.Series(v["time_boot_s"]).reset_index(drop=True),
                         pd.Series(v["Name"]),
                         pd.Series(v["Value"]).reset_index(drop=True),
-                        pd.Series(v["Default"]).reset_index(drop=True),
                     ],
-                    index=["time_boot_s", "Name", "Value", "Default"],
+                    index=["time_boot_s", "Name", "Value"],
                 ).T
+                if 'Default' in v:
+                    new_df["Default"] = v["Default"]
+
+
             else:
                 try:
                     new_df = pd.DataFrame(v)    
