@@ -608,7 +608,7 @@ class Flight:
         indf: pd.DataFrame, colmap: dict[str, str], instancecol="Instance"
     ):
         """Where an instance column exists in an input df split the values into two columns"""
-        instances = indf[instancecol].unique() if instancecol in indf.columns else [0]
+        instances = sorted(indf[instancecol].unique()) if instancecol in indf.columns else [0]
         dfs = []
         for i in instances:
             _subdf = (
