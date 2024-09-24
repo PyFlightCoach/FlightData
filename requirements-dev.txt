@@ -1,6 +1,6 @@
 numpy
 pandas
 simplejson
-pfc-geometry>=0.2.9
+pfc-geometry>=0.2.11
 ardupilot-log-reader>=0.3.3
 pytest
