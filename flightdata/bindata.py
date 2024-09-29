@@ -2,7 +2,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
-from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)    
@@ -78,6 +77,8 @@ class BinData:
                 BinData._gpsTimeToTime(dfs["GPS"].GWk.iloc[0], dfs["GPS"].GMS.iloc[0])
                 - dfs["GPS"].time_boot_s.iloc[0]
             ) 
+        else:
+            start_time = 0 
 
         def process_df(df: pd.DataFrame) -> pd.DataFrame:
             df.insert(0, "TimeUS", np.floor(df.time_boot_s * 1e6)) # ms
