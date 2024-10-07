@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import logging
 
-logger = logging.getLogger(__name__)    
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class BinData:
@@ -35,11 +36,10 @@ class BinData:
     @staticmethod
     def parse_json(bindata: dict[str, dict[str, list]]) -> BinData:
         # dfs = {k: pd.DataFrame(v) for k,v in bindata.items()}
-        
+
         dfs: dict[str, pd.DataFrame] = {}
         groups = {}
         for k, v in bindata.items():
-
             if k == "PARM":
                 new_df = pd.DataFrame(
                     [
@@ -49,17 +49,23 @@ class BinData:
                     ],
                     index=["time_boot_s", "Name", "Value"],
                 ).T
-                if 'Default' in v:
+                if "Default" in v:
                     new_df["Default"] = v["Default"]
-
-
+            elif k == "MSG":
+                new_df = pd.DataFrame(
+                    [
+                        pd.Series(v["time_boot_s"]).reset_index(drop=True),
+                        pd.Series(v["Message"]),
+                    ],
+                    index=["time_boot_s", "Message"],
+                ).T
             else:
                 try:
-                    new_df = pd.DataFrame(v)    
+                    new_df = pd.DataFrame(v)
                 except Exception as ex:
                     logger.info(f"Error parsing {k}: {ex}")
                     new_df = None
-            
+
             if new_df is not None:
                 if "[" not in k:
                     dfs[k] = new_df
@@ -68,7 +74,7 @@ class BinData:
                     if nk not in groups:
                         groups[nk] = []
                     groups[nk].append(new_df)
-            
+
         for k, v in groups.items():
             dfs[k] = pd.concat(v).sort_values("time_boot_s")
 
@@ -76,12 +82,12 @@ class BinData:
             start_time = (
                 BinData._gpsTimeToTime(dfs["GPS"].GWk.iloc[0], dfs["GPS"].GMS.iloc[0])
                 - dfs["GPS"].time_boot_s.iloc[0]
-            ) 
+            )
         else:
-            start_time = 0 
+            start_time = 0
 
         def process_df(df: pd.DataFrame) -> pd.DataFrame:
-            df.insert(0, "TimeUS", np.floor(df.time_boot_s * 1e6)) # ms
+            df.insert(0, "TimeUS", np.floor(df.time_boot_s * 1e6))  # ms
             df.insert(0, "timestamp", start_time + df.time_boot_s)
 
             return df.drop(columns="time_boot_s")
