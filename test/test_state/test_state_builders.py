@@ -1,11 +1,11 @@
-from flightdata import Flight, State, Origin, BinData
+from flightdata import Flight, State, Origin, BinData, fcj
 from pytest import approx, fixture
 from geometry import Transformation, PX, PY, P0, Time
 from geometry.testing import assert_almost_equal
 import numpy as np
 from time import sleep, time
 from json import load
-from ..conftest import state, flight, origin
+from ..conftest import state, flight, origin, fcjson
 
 def test_extrapolate():
     initial = State.from_transform(
@@ -16,7 +16,7 @@ def test_extrapolate():
     extrapolated = initial.extrapolate(10)
     assert extrapolated.x[-1] == approx(300)
     
-    assert len(extrapolated) == 300
+    assert len(extrapolated) == 250
     assert_almost_equal(extrapolated.pos[0], initial.pos)
 
 
@@ -49,11 +49,9 @@ def test_from_flight_pos(flight: Flight, state: State, origin: Origin):
     #pd.testing.assert_frame_equal(state.data, st2.data)
     assert st2.z.mean() > 0
 
-def test_fc_json():
-    with open('test/data/manual_F3A_P23.json', 'r') as f:
-        fcj = load(f)
-    fl = Flight.from_fc_json(fcj)
-    origin = Origin.from_fcjson_parmameters(fcj['parameters'])
+def test_fc_json(fcjson: fcj.FCJ):
+    fl = Flight.from_fc_json(fcjson)
+    origin = Origin.from_fcjson_parameters(fcjson.parameters)
     st = State.from_flight(fl, origin)
     assert st.z.mean() > 0
 

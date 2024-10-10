@@ -1,10 +1,10 @@
 from flightdata import Flight, Origin, BinData
-from io import open
 from json import load
 from pytest import fixture, approx, mark
 import numpy as np
 import pandas as pd
 from ardupilot_log_reader import Ardupilot
+from .conftest import fcjson
 
 @fixture(scope='session')
 def parser():
@@ -14,9 +14,6 @@ def parser():
 def fl(parser):
     return Flight.from_log(parser)
 
-@fixture(scope='session')
-def fcj():
-    return Flight.from_fc_json('test/data/p23_fc.json')
 
 def test_duration(fl):
     assert fl.duration == approx(687, rel=1e-3)
@@ -30,10 +27,10 @@ def test_to_from_dict(fl):
     fl2 = Flight.from_dict(data)
     assert fl == fl2
     
-def test_from_fc_json(fcj):
-    assert isinstance(fcj, Flight)
-    assert fcj.duration > 200
-    assert fcj.position_D.max() < -10
+def test_from_fc_json(fcjson):
+    assert isinstance(fcjson, Flight)
+    assert fcjson.duration > 200
+    assert fcjson.position_D.max() < -10
   
 @mark.skip
 def test_unique_identifier():

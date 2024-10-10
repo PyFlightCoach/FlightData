@@ -1,7 +1,9 @@
 from pytest import fixture
-from flightdata import Flight, Origin
-from flightdata import State
+from flightdata import Flight, Origin, State, fcj
 
+@fixture(scope='session')
+def fcjson():
+    return Flight.from_fc_json(fcj.FCJ.model_validate_json(open('test/data/p23_fc.json', 'r').read()))
 
 @fixture(scope="session")
 def flight():

@@ -21,7 +21,7 @@ from time import time
 from json import load, dump
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes
-from flightdata import Origin
+from flightdata import Origin, fcj
 from numbers import Number
 from scipy.signal import filtfilt, butter
 
@@ -629,8 +629,21 @@ class Flight:
         return dfs
 
     @staticmethod
-    def parse_fcj_data(df: pd.DataFrame | dict, origin: Origin, shift: Point = None):
-        df = pd.DataFrame(df, dtype=float) if isinstance(df, dict) else df
+    def from_fc_json(fc_json: fcj.FCJ) -> Self:
+        if "parameters" in fc_json:
+            origin = Origin.from_fcjson_parameters(fc_json.parameters)
+            shift = origin.rotation.transform_point(
+                Point(
+                    fc_json.parameters.moveEast,
+                    -fc_json.parameters.moveNorth,
+                    0,
+                )
+            )
+        else:
+            origin = Origin("dummy_origin", GPS(0, 0, 0), -np.pi / 2)
+            shift = P0()
+
+        df = pd.DataFrame([d.__dict__ for d in fc_json.data], dtype=float)
 
         df = Flight.build_cols(
             time_actual=df["time"] / 1e6 + int(time()),
@@ -652,31 +665,6 @@ class Flight:
         df["position_E"] = df["position_E"] + shift.y
         df["position_D"] = df["position_D"] + shift.z
         return Flight(df.set_index("time_flight", drop=False), None, origin, "xkf_c0")
-
-    @staticmethod
-    def from_fc_json(fc_json: Union[str, dict, IO]) -> Self:
-        if isinstance(fc_json, str):
-            with open(fc_json, "r") as f:
-                fc_json = load(f)
-        elif isinstance(fc_json, IO):
-            fc_json = load(f)
-
-        if "parameters" in fc_json:
-            origin = Origin.from_fcjson_parameters(fc_json["parameters"])
-            shift = origin.rotation.transform_point(
-                Point(
-                    fc_json["parameters"]["moveEast"],
-                    -fc_json["parameters"]["moveNorth"],
-                    0,
-                )
-            )
-        else:
-            origin = Origin("dummy_origin", GPS(0, 0, 0), -np.pi / 2)
-            shift = P0()
-
-        return Flight.parse_fcj_data(
-            pd.DataFrame(fc_json["data"], dtype=float), origin, shift
-        )
 
     def remove_time_flutter(self):
         # I think the best option is just to take the average of the timestep.
