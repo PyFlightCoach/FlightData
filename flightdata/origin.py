@@ -5,7 +5,8 @@ from typing import Self
 import json_stream
 from pathlib import Path
 from dataclasses import dataclass   
-
+from pydantic import BaseModel
+from flightdata import fcj  
 
 @dataclass
 class Origin(object):
@@ -72,7 +73,7 @@ class Origin(object):
         This is a convenient, but not very accurate way to setup the box. 
         '''
         
-        position = g.GPS(flight.gps_latitude[0], flight.gps_longitude[0], flight.gps_altitude[0])
+        position = g.GPS(flight.gps_latitude.iloc[0], flight.gps_longitude.iloc[0], flight.gps_altitude.iloc[0])
         heading = g.Euler(flight.attitude)[0].transform_point(g.PX())
 
         return Origin('origin', position, np.arctan2(heading.y, heading.x)[0])
@@ -118,26 +119,42 @@ class Origin(object):
         )
 
     @staticmethod
-    def from_fcjson_parameters(data: dict | str | Path):
-        if not isinstance(data, dict):
-            data = json_stream.to_standard_types(
-                json_stream.load(open(data, 'r'))['parameters']
-            )
+    def from_fcjson_parameters(parms: fcj.Parameters):
         return Origin(
             "FCJ_box",
             g.GPS(
-                float(data['pilotLat']), 
-                float(data['pilotLng']), 
-                float(data['pilotAlt'])
+                float(parms.pilotLat), 
+                float(parms.pilotLng), 
+                float(parms.pilotAlt)
             ),
-            float(data['rotation'])
+            float(parms.rotation)
         )
         
-
-
     def gps_to_point(self, gps: g.GPS) -> g.Point:
         pned = gps - self.pilot_position
         return self.rotation.transform_point(g.Point(pned.y, pned.x, -pned.z ))
 
     
-    
+
+class FCJOrigin(BaseModel):
+    lat: float
+    lng: float
+    alt: float
+    heading: float
+    move_east: float
+    move_north: float
+
+    def origin(self):
+        """Create a flightdata.Origin object from the FCJOrigin object."""
+        return Origin(
+            "fcj",
+            g.GPS(self.lat, self.lng, self.alt).offset(
+                g.Point(self.move_north, self.move_east, 0)
+            ),
+            np.radians(self.heading),
+        )
+
+    def shift(self):
+        return self.origin().rotation.transform_point(
+            g.Point(self.move_east, -self.move_north, 0)
+        )
