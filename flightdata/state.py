@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pandas as pd
 
 import geometry as g
-from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
+from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table, fcj
 
 
 class State(Table):
@@ -199,7 +199,7 @@ class State(Table):
 
     def splitter_labels(
         self: State,
-        mans: list[dict],
+        mans: list[fcj.Man],
         better_names: list[str] = None,
         target_col="manoeuvre",
         t0=0,
@@ -217,31 +217,31 @@ class State(Table):
         """
         i0 = self.data.index.get_indexer([t0], "nearest")[0]
 
-        takeoff = self.data.iloc[0 : int(mans[0]["stop"]) + i0 + 1]
+        takeoff = self.data.iloc[0 : int(mans[0].stop) + i0 + 1]
 
-        labels = [mans[0]["name"]]
+        labels = [mans[0].name]
         labelled = [State(takeoff).label(**{target_col: labels[0]})]
         if better_names:
             better_names.append("land")
 
         for i, split_man in enumerate(mans[1:]):
-            while split_man["name"] in labels:
-                split_man["name"] = split_man["name"] + "2"
+            while split_man.name in labels:
+                split_man.name = split_man.name + "2"
 
-            name = better_names[i] if better_names else split_man["name"]
+            name = better_names[i] if better_names else split_man.name
 
             labelled.append(
                 State(
                     self.data.iloc[
-                        int(split_man["start"]) + i0 : int(split_man["stop"]) + i0 + 1
+                        int(split_man.start) + i0 : int(split_man.stop) + i0 + 1
                     ]
                 ).label(**{target_col: name})
             )
-            labels.append(split_man["name"])
+            labels.append(split_man.name)
 
         return State.stack(labelled)
 
-    def label_els(self, els: dict):
+    def label_els(self, els: list[fcj.El]):
         return self.splitter_labels(
             pd.DataFrame(els).to_dict('records'), target_col='element'
         ).str_replace_label(

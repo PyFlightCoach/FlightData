@@ -24,6 +24,8 @@ from .ardupilot import flightmodes
 from flightdata import Origin, fcj
 from numbers import Number
 from scipy.signal import filtfilt, butter
+from datetime import datetime
+
 
 def filter(data, cutoff=25, order=5, fs=25):
     return filtfilt(
@@ -31,6 +33,7 @@ def filter(data, cutoff=25, order=5, fs=25):
         data,
         padlen=len(data) - 1,
     )
+
 
 class Flight:
     ardupilot_types = [
@@ -92,10 +95,11 @@ class Flight:
                     ]
             except KeyError:
                 if isinstance(cols, Field):
-                    cols = [cols]
-                return pd.DataFrame(
-                    data=np.empty((len(self), len(cols))), columns=[f.col for f in cols]
-                )
+                    return pd.Series(np.full(len(self), np.nan), name=cols.col)
+                else:
+                    return pd.DataFrame(
+                        data=np.full((len(self), len(cols)), np.nan), columns=[f.col for f in cols]
+                    )
         raise AttributeError(f"'Flight' object has no attribute '{name}'")
 
     def make_param_labels(
@@ -132,23 +136,17 @@ class Flight:
             if sli < 0:
                 return self.data.iloc[sli]
             else:
-                gl = self.data.index.get_loc(sli + self.data.index[0])
+                gl = self.data.index.get_indexer([sli], method="nearest")
                 return Flight(
                     self.data.iloc[gl],
-                    self.parameters.loc[:gl],
+                    self.parameters[:sli] if self.parameters else None,
+                    self.origin,
+                    self.primary_pos_source,
                 )
         elif isinstance(sli, slice):
             return Flight(
-                self.data.loc[
-                    slice(
-                        None if sli.start is None else sli.start + self.data.index[0],
-                        None if sli.stop is None else sli.stop + self.data.index[0],
-                        sli.step,
-                    )
-                ],
-                self.parameters.loc[
-                    : None if sli.stop is None else sli.stop + self.data.index[0]
-                ],
+                self.data.loc[slice(sli.start, sli.stop, sli.step)],
+                self.parameters[:sli.stop] if self.parameters else None,
                 self.origin,
                 self.primary_pos_source,
             )
@@ -312,6 +310,10 @@ class Flight:
         except Exception:
             return False
 
+    def boot_time(self):
+        timestamp = self.time_actual.iloc[0]
+        return datetime.fromtimestamp(timestamp) if not np.isnan(timestamp) else None
+
     @staticmethod
     def from_log(
         log: str,
@@ -324,8 +326,9 @@ class Flight:
         ppsource = xkf or pos
         """
         parser = log
-        if not hasattr(log, 'dfs'):
+        if not hasattr(log, "dfs"):
             from ardupilot_log_reader.reader import Ardupilot
+
             parser = Ardupilot.parse(
                 str(log),
                 types=list(
@@ -400,14 +403,12 @@ class Flight:
             )
 
             for i, df in enumerate(newdfs):
-
                 ekffs = 1 / np.mean(np.diff(df.time_actual))
-                ps = '' if i == 0 else f"_{i}"
-                df[f'velocity_N{ps}'] = filter(df[f'velocity_N{ps}'], 5, 5, ekffs)
-                df[f'velocity_E{ps}'] = filter(df[f'velocity_E{ps}'], 5, 5, ekffs)
-                df[f'velocity_D{ps}'] = filter(df[f'velocity_D{ps}'], 5, 5, ekffs)
+                ps = "" if i == 0 else f"_{i}"
+                df[f"velocity_N{ps}"] = filter(df[f"velocity_N{ps}"], 5, 5, ekffs)
+                df[f"velocity_E{ps}"] = filter(df[f"velocity_E{ps}"], 5, 5, ekffs)
+                df[f"velocity_D{ps}"] = filter(df[f"velocity_D{ps}"], 5, 5, ekffs)
                 dfs.append(df)
-
 
         if ekf2 is not None:
             dfs = dfs + Flight.parse_instances(
@@ -439,7 +440,10 @@ class Flight:
             if ekf1 is not None:
                 if "C" in ekf1.columns:
                     imu = pd.merge_asof(
-                        imu, ekf1.loc[ekf1.C == imu_instance], on="timestamp", direction="nearest"
+                        imu,
+                        ekf1.loc[ekf1.C == imu_instance],
+                        on="timestamp",
+                        direction="nearest",
                     )
                 else:
                     imu = pd.merge_asof(imu, ekf1, on="timestamp", direction="nearest")
@@ -463,18 +467,18 @@ class Flight:
                     imu["AccX"] = imu.AccX + imu.AX / 100
                     imu["AccY"] = imu.AccY + imu.AY / 100
                     imu["AccZ"] = imu.AccZ + imu.AZ / 100
-            
+
             _imufs = 1 / np.mean(np.diff(imu.timestamp))
-            
+
             dfs.append(
                 Flight.build_cols(
                     time_actual=imu.timestamp,
-                    acceleration_x=filter(imu.AccX,10, 5, _imufs),
-                    acceleration_y=filter(imu.AccY,10, 5, _imufs),
-                    acceleration_z=filter(imu.AccZ,10, 5, _imufs),
-                    axisrate_roll=filter(imu.GyrX,10, 5, _imufs),
-                    axisrate_pitch=filter(imu.GyrY,10, 5, _imufs),
-                    axisrate_yaw=filter(imu.GyrZ,10, 5, _imufs),
+                    acceleration_x=filter(imu.AccX, 10, 5, _imufs),
+                    acceleration_y=filter(imu.AccY, 10, 5, _imufs),
+                    acceleration_z=filter(imu.AccZ, 10, 5, _imufs),
+                    axisrate_roll=filter(imu.GyrX, 10, 5, _imufs),
+                    axisrate_pitch=filter(imu.GyrY, 10, 5, _imufs),
+                    axisrate_yaw=filter(imu.GyrZ, 10, 5, _imufs),
                 )
             )
 
@@ -608,7 +612,9 @@ class Flight:
         indf: pd.DataFrame, colmap: dict[str, str], instancecol="Instance"
     ):
         """Where an instance column exists in an input df split the values into two columns"""
-        instances = sorted(indf[instancecol].unique()) if instancecol in indf.columns else [0]
+        instances = (
+            sorted(indf[instancecol].unique()) if instancecol in indf.columns else [0]
+        )
         dfs = []
         for i in instances:
             _subdf = (
@@ -629,8 +635,8 @@ class Flight:
         return dfs
 
     @staticmethod
-    def from_fc_json(fc_json: fcj.FCJ) -> Self:
-        if "parameters" in fc_json:
+    def from_fc_json(fc_json: fcj.FCJ) -> Flight:
+        if fc_json.parameters:
             origin = Origin.from_fcjson_parameters(fc_json.parameters)
             shift = origin.rotation.transform_point(
                 Point(
@@ -646,7 +652,6 @@ class Flight:
         df = pd.DataFrame([d.__dict__ for d in fc_json.data], dtype=float)
 
         df = Flight.build_cols(
-            time_actual=df["time"] / 1e6 + int(time()),
             time_flight=df["time"] / 1e6,
             attitude_roll=np.radians(df["r"]),
             attitude_pitch=np.radians(df["p"]),
@@ -733,6 +738,3 @@ class Flight:
         T = (ts[-1] - ts[0]) / N
         fs = 1 / T
         return self.filter(*butter(order, cutoff, fs=fs, btype="low", analog=False))
-
-
-    

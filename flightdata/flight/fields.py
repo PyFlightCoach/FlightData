@@ -29,7 +29,7 @@ class Fields:
         self.data = data
         self.groups = {}
         for v in data.values():
-            if not v.field in self.groups:
+            if v.field not in self.groups:
                 self.groups[v.field] = []
             self.groups[v.field].append(v)
         
