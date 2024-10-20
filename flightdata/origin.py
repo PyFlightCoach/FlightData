@@ -17,6 +17,18 @@ class Origin(object):
     heading: float# direction pilot faces in radians from North (clockwise)
 
     @property
+    def lat(self):
+        return self.pos.lat[0] 
+    
+    @property
+    def long(self):
+        return self.pos.long[0]
+    
+    @property
+    def alt(self):
+        return self.pos.alt[0]
+
+    @property
     def rotation(self):
         # converts NED to x right, y heading direction, z up
         return g.Euler(np.pi, 0, self.heading + np.pi/2)  
@@ -131,8 +143,7 @@ class Origin(object):
         )
         
     def gps_to_point(self, gps: g.GPS) -> g.Point:
-        pned = gps - self.pilot_position
-        return self.rotation.transform_point(g.Point(pned.y, pned.x, -pned.z ))
+        return self.rotation.transform_point(gps - self.pos)
 
     
 
@@ -141,8 +152,8 @@ class FCJOrigin(BaseModel):
     lng: float
     alt: float
     heading: float
-    move_east: float
-    move_north: float
+    move_east: float=0
+    move_north: float=0
 
     def origin(self):
         """Create a flightdata.Origin object from the FCJOrigin object."""

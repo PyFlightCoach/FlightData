@@ -19,6 +19,7 @@ class FCJ(BaseModel):
     data: list[Data]
     jhash: int | None = None
 
+
     def score_df(self):
         return pd.concat(
             {fcjr.fa_version: fcjr.to_df() for fcjr in self.fcs_scores},
@@ -50,9 +51,12 @@ class FCJ(BaseModel):
 
     @property
     def created(self):
-        return datetime.datetime.strptime(
-            re.search(r"_\d{2}_\d{2}_\d{2}_", self.name)[0], "_%y_%m_%d_"
-        )
+        try:
+            return datetime.datetime.strptime(
+                re.search(r"_\d{2}_\d{2}_\d{2}_", self.name)[0], "_%y_%m_%d_"
+            )
+        except Exception:
+            return None
 
 
 class View(BaseModel):
@@ -107,6 +111,11 @@ class ManResult(BaseModel):
             ),
         )
 
+    def get_score(self, props: ScoreProperties):
+        for r in self.results:
+            if r.properties == props:
+                return r.score
+
 class El(BaseModel):
     name: str
     start: int
@@ -123,8 +132,13 @@ class ScoreValues(BaseModel):
     total: float
 
 class ScoreProperties(BaseModel):
-    difficulty: int
-    truncate: bool
+    difficulty: int=3
+    truncate: bool=False
+
+    def __eq__(self, other):
+        if not isinstance(other, ScoreProperties):
+            return False
+        return self.difficulty == other.difficulty and self.truncate == other.truncate
 
 class Man(BaseModel):
     name: str

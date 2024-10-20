@@ -16,6 +16,14 @@ class BinData:
             return self.dfs[name]
         raise AttributeError(f"No such attribute: {name}")
 
+    def get_dft(self, df_name: str, t: float, coren: str|None='C', coreid: int=0) -> pd.DataFrame:
+        bdx = self.dfs[df_name].copy()
+        bdx['TimeUS'] = bdx.TimeUS / 1e6
+        if coren and coren in bdx.columns:
+            bdx = bdx.loc[bdx[coren]==coreid]
+        bdx = bdx.set_index('TimeUS')
+        return bdx.iloc[bdx.index.get_indexer([t], method='nearest')]
+
     def parameters(self) -> dict[str, pd.DataFrame]:
         gb = self.PARM.groupby("Name")
 
