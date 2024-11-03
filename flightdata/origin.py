@@ -85,7 +85,7 @@ class Origin(object):
         This is a convenient, but not very accurate way to setup the box. 
         '''
         
-        position = g.GPS(flight.gps_latitude.iloc[0], flight.gps_longitude.iloc[0], flight.gps_altitude.iloc[0])
+        position = g.GPS(flight.pos_latitude.iloc[0], flight.pos_longitude.iloc[0], flight.pos_altitude.iloc[0])
         heading = g.Euler(flight.attitude)[0].transform_point(g.PX())
 
         return Origin('origin', position, np.arctan2(heading.y, heading.x)[0])
