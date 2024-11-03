@@ -101,7 +101,7 @@ class Result(BaseModel):
 
 class ManResult(BaseModel):
     els: list[El]
-    results: list[Score]
+    results: list[Score] = []
 
     def to_df(self) -> pd.DataFrame:
         return pd.DataFrame(

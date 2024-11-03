@@ -76,7 +76,7 @@ class Flight:
         self.primary_pos_source = primary_pos_source
 
     def __getattr__(self, name):
-        if self.parameters is not None:
+        if self.parameters is not None and 'parameter' in self.parameters.columns:
             if name in self.parameters.parameter.unique():
                 df = self.parameters.loc[self.parameters.parameter == name]
                 return df.loc[df.value != df.value.shift()]
