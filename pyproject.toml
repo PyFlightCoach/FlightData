@@ -1,14 +1,23 @@
 [project]
 name = "flightdata"
-version = "0.1.0"
-description = "Add your description here"
+description = "Python tools for handling flight data"
 readme = "README.md"
-authors = [
-    { name = "Thomas David", email = "thomasdavid0@gmail.com" }
-]
+authors = [{ name = "Thomas David", email = "thomasdavid0@gmail.com" }]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["numpy>=2.1.3", "pandas>=2.2.3", "pfc-geometry", "pfcschemas"]
+dynamic = ["version"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.uv.sources]
+pfc-geometry = { workspace = true }
+ardupilot_log_reader = { workspace = true }
+pfcschemas = { workspace = true }
+
+[dependency-groups]
+dev = ["ardupilot_log_reader", "pymavlink>=2.4.42", "pytest>=8.3.3"]

@@ -4,7 +4,9 @@ from .numpy_encoder import NumpyEncoder
 from numbers import Number
 
 def to_list(obj):
-    if hasattr(obj, 'tolist'):
+    if obj is None:
+        return []
+    elif hasattr(obj, 'tolist'):
         return obj.tolist()
     elif obj is None:
         return None
