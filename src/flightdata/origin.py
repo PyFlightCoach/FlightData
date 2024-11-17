@@ -169,3 +169,7 @@ class FCJOrigin(BaseModel):
         return self.origin().rotation.transform_point(
             g.Point(self.move_east, -self.move_north, 0)
         )
+    
+    @staticmethod
+    def zero():
+        return FCJOrigin(lat=0, lng=0, alt=0, heading=0)
