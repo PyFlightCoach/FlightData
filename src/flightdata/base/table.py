@@ -52,7 +52,7 @@ class Table:
             raise AttributeError(f"Unknown column or construct {name}")
 
     def to_csv(self, filename):
-        self.data.to_csv(filename)
+        self.data.to_csv(filename, index=False)
         return filename
 
     def to_dict(self):
