@@ -1,5 +1,6 @@
 [project]
 name = "flightdata"
+version = "v0.2.24"
 description = "Python tools for handling flight data"
 readme = "README.md"
 authors = [{ name = "Thomas David", email = "thomasdavid0@gmail.com" }]
@@ -9,14 +10,10 @@ dependencies = [
     "pandas>=2.2.3",
     "pfc-geometry",
 ]
-dynamic = ["version"]
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.version]
-source = "vcs"
 
 [tool.uv.sources]
 pfc-geometry = { path = "../geometry" , editable = true }
