@@ -1,7 +1,7 @@
 from flightdata import Flight, State, Origin, BinData, fcj
 from pytest import approx, fixture
 from geometry import Transformation, PX, PY, P0, Time
-from geometry.testing import assert_almost_equal
+from geometry.checks import assert_almost_equal
 import numpy as np
 from time import sleep, time
 from json import load
