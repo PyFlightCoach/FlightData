@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from .fields import fields, Field
 from geometry import GPS, Point, P0
-from geometry.testing import assert_almost_equal
+from geometry.checks import assert_almost_equal
 from time import time
 from json import load, dump
 from flightdata.base.numpy_encoder import NumpyEncoder
