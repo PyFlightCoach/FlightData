@@ -1,3 +1,0 @@
-[sources]
-pfc-geometry = { path = "../geometry" , editable = true }
-ardupilot_log_reader = { path = "../ArdupilotLogReader" , editable = true  }

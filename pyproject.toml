@@ -15,7 +15,9 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-
+[tool.uv.sources]
+pfc-geometry = { path = "../geometry" , editable = true }
+ardupilot_log_reader = { path = "../ArdupilotLogReader" , editable = true  }
 
 [dependency-groups]
-dev = ["ardupilot_log_reader", "pymavlink>=2.4.42", "pytest>=8.3.3"]
+dev = ["ardupilot_log_reader>=0.3.5", "pymavlink>=2.4.42", "pytest>=8.3.3"]
