@@ -3,7 +3,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "ardupilot-log-reader"
-version = "0.3.6.dev0+g055c96f.d20241119"
+version = "0.3.5"
 source = { editable = "../ArdupilotLogReader" }
 dependencies = [
     { name = "numpy" },
@@ -33,7 +33,7 @@ wheels = [
 
 [[package]]
 name = "flightdata"
-version = "0.2.24.dev2+g04931a7.d20241111"
+version = "0.2.24"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -205,7 +205,7 @@ wheels = [
 
 [[package]]
 name = "pfc-geometry"
-version = "0.2.13.dev1+g4261759.d20241109"
+version = "0.2.13"
 source = { editable = "../geometry" }
 dependencies = [
     { name = "numpy" },
