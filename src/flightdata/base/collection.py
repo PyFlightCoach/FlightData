@@ -66,7 +66,7 @@ class Collection:
     def from_dict(cls, vals: dict[str, dict[str, Any]]) -> Self:
         return cls([cls.VType.from_dict(v) for v in vals.values()])
     
-    def add(self, v: Union[T, Self], inplace=True) -> Self:
+    def add(self, v: T | Self, inplace=True) -> Self:
         odata = self.data.copy()
         if isinstance(v, self.VType):
             odata[getattr(v, self.uid)] = v
@@ -86,12 +86,15 @@ class Collection:
             coll.add(v)
         return coll
     
-    def add_start(self, v: Union[T, Self]) -> Self:
+    def add_start(self, v: T | Self, inplace=True) -> Self:
+        ocol = self.copy() if not inplace else self
         if isinstance(v, self.VType):
-            self.data.update({getattr(v, self.uid): v})
+            ocol.data.update({getattr(v, ocol.uid): v})
         elif isinstance(v, self.__class__):
-            self.data = dict(**v.data, **self.data)
-        return v
+            ocol.data = dict(**v.data, **ocol.data)
+        else:
+            raise TypeError(f"Expected a {self.__class__.__name__} or a {self.VType}")
+        return ocol
     
     def next_free_name(self, prefix: str) -> str:
         i=0

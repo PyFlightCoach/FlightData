@@ -266,7 +266,7 @@ class State(Table):
             test="startswith" if subels else None, element=element
         )
     
-    def convert_state(self: State, r: g.Point) -> State:
+    def body_rotate(self: State, r: g.Point) -> State:
         """Rotate body axis by an axis angle"""
         att = self.att.body_rotate(r)
         q = att.inverse() * self.att
@@ -317,13 +317,13 @@ class State(Table):
         if not flow:
             env = Environment.from_constructs(self.time)
             flow = Flow.build(self, env)
-        return self.convert_state(-g.Point(0, 1, 0) * flow.alpha)
+        return self.body_rotate(-g.Point(0, 1, 0) * flow.alpha)
 
     def stability_to_wind(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
             flow = Flow.build(self, env)
-        return self.convert_state(g.Point(0, 0, 1) * flow.beta)
+        return self.body_rotate(g.Point(0, 0, 1) * flow.beta)
 
     def body_to_wind(self: State, flow: Flow = None) -> State:
         return self.body_to_stability(flow).stability_to_wind(flow)
@@ -346,7 +346,7 @@ class State(Table):
         yaw_rotation = (jwind + self.vel).angles(g.PX()) * g.Point(0, 0, 1)
 
         # transform the data by this yaw rotation:
-        int_axis = self.convert_state(yaw_rotation)
+        int_axis = self.body_rotate(yaw_rotation)
 
         # the local wind vector in the intermediate frame:
         intwind = int_axis.att.inverse().transform_point(env.wind)
@@ -355,11 +355,11 @@ class State(Table):
         pitch_rotation = (intwind + int_axis.vel).angles(g.PX()) * g.Point(0, 1, 0)
 
         # transform by this pitch rotation to get the wind axis state
-        return int_axis.convert_state(pitch_rotation)
+        return int_axis.body_rotate(pitch_rotation)
 
     def wind_to_body(self: State, flow: Flow) -> State:
-        stability_axis = self.convert_state(-g.Point(0, 0, 1) * flow.beta)
-        body_axis = stability_axis.convert_state(g.Point(0, 1, 0) * flow.alpha)
+        stability_axis = self.body_rotate(-g.Point(0, 0, 1) * flow.beta)
+        body_axis = stability_axis.body_rotate(g.Point(0, 1, 0) * flow.alpha)
 
         return body_axis
 
