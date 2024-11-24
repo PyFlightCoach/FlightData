@@ -19,5 +19,8 @@ build-backend = "hatchling.build"
 pfc-geometry = { path = "../geometry" , editable = true }
 ardupilot_log_reader = { path = "../ArdupilotLogReader" , editable = true  }
 
+[project.optional-dependencies]
+dataflash = ["ardupilot_log_reader"]
+
 [dependency-groups]
-dev = ["ardupilot_log_reader>=0.3.5", "pymavlink>=2.4.42", "pytest>=8.3.3"]
+dev = ["pytest>=8.3.3"]

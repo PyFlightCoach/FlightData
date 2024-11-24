@@ -17,11 +17,14 @@ Further documentation will be provided here: https://pfcdocumentation.readthedoc
 ### Installation
 
 ```bash
-pip install pfc-geometry
+    pip install flightdata
+    # or to include ardupilot dataflash log parsing capability:
+    pip install flightdata[dataflash]
 ```
 
 ### Setup from source
 
 ```bash
-pip install .
+    pip install .
 ```
+
