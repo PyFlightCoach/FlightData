@@ -15,9 +15,6 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv.sources]
-pfc-geometry = { path = "../geometry" , editable = true }
-ardupilot_log_reader = { path = "../ArdupilotLogReader" , editable = true  }
 
 [project.optional-dependencies]
 dataflash = ["ardupilot_log_reader"]
