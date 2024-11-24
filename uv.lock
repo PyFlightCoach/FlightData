@@ -41,26 +41,26 @@ dependencies = [
     { name = "pfc-geometry" },
 ]
 
+[package.optional-dependencies]
+dataflash = [
+    { name = "ardupilot-log-reader" },
+]
+
 [package.dev-dependencies]
 dev = [
-    { name = "ardupilot-log-reader" },
-    { name = "pymavlink" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "ardupilot-log-reader", marker = "extra == 'dataflash'", editable = "../ArdupilotLogReader" },
     { name = "numpy", specifier = ">=2.1.3" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pfc-geometry", editable = "../geometry" },
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "ardupilot-log-reader", editable = "../ArdupilotLogReader" },
-    { name = "pymavlink", specifier = ">=2.4.42" },
-    { name = "pytest", specifier = ">=8.3.3" },
-]
+dev = [{ name = "pytest", specifier = ">=8.3.3" }]
 
 [[package]]
 name = "future"
