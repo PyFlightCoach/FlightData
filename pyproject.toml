@@ -1,6 +1,6 @@
 [project]
 name = "flightdata"
-version = "0.2.24"
+version = "0.2.25"
 description = "Python tools for handling flight data"
 readme = "README.md"
 authors = [{ name = "Thomas David", email = "thomasdavid0@gmail.com" }]
@@ -17,7 +17,7 @@ build-backend = "hatchling.build"
 
 
 [project.optional-dependencies]
-dataflash = ["ardupilot_log_reader"]
+dataflash = ["ardupilot_log_reader>=0.3.5"]
 
 [dependency-groups]
 dev = ["pytest>=8.3.3"]
