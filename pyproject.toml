@@ -11,6 +11,10 @@ dependencies = [
     "pfc-geometry>=0.2.13",
 ]
 
+[project.scripts]
+collect_logs = "flightdata.scripts.collect_logs:main"
+flightline = "flightdata.scripts.flightline:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
