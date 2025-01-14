@@ -8,7 +8,8 @@ import numpy.typing as npt
 import pandas as pd
 
 import geometry as g
-from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table, fcj
+from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
+from schemas import fcj
 
 
 class State(Table):
