@@ -1,12 +1,11 @@
+from __future__ import annotations
 import geometry as g
 import numpy as np
 from json import load, dump
 from typing import Self
-import json_stream
-from pathlib import Path
 from dataclasses import dataclass   
-from pydantic import BaseModel
-from flightdata import fcj  
+from schemas import fcj  
+
 
 @dataclass
 class Origin(object):
@@ -141,35 +140,26 @@ class Origin(object):
             ),
             float(parms.rotation)
         )
-        
+    
     def gps_to_point(self, gps: g.GPS) -> g.Point:
         return self.rotation.transform_point(gps - self.pos)
 
-    
-
-class FCJOrigin(BaseModel):
-    lat: float
-    lng: float
-    alt: float
-    heading: float
-    move_east: float=0
-    move_north: float=0
-
-    def origin(self):
-        """Create a flightdata.Origin object from the FCJOrigin object."""
+    @staticmethod
+    def from_fcj_origin(fcj_origin: fcj.Origin):
         return Origin(
             "fcj",
-            g.GPS(self.lat, self.lng, self.alt).offset(
-                g.Point(self.move_north, self.move_east, 0)
+            g.GPS(fcj_origin.lat, fcj_origin.lng, fcj_origin.alt).offset(
+                g.Point(fcj_origin.move_north, fcj_origin.move_east, 0)
             ),
-            np.radians(self.heading),
+            np.radians(fcj_origin.heading),
         )
 
-    def shift(self):
-        return self.origin().rotation.transform_point(
-            g.Point(self.move_east, -self.move_north, 0)
-        )
     
-    @staticmethod
-    def zero():
-        return FCJOrigin(lat=0, lng=0, alt=0, heading=0)
+    @property
+    def fcj_origin(self):
+        return fcj.Origin(
+            lat=self.lat,
+            lng=self.long,
+            alt=self.alt,
+            heading=np.degrees(self.heading),
+        )

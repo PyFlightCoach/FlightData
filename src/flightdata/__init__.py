@@ -1,7 +1,6 @@
-from .schemas import fcj
 from .base import *
 from .bindata import BinData
-from .origin import Origin, FCJOrigin
+from .origin import Origin
 from .flight import *
 from .environment import *
 from .coefficients import Coefficients

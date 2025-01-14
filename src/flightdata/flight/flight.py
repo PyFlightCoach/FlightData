@@ -21,7 +21,8 @@ from time import time
 from json import load, dump
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes
-from flightdata import Origin, fcj
+from flightdata import Origin
+from schemas import fcj
 from numbers import Number
 from scipy.signal import filtfilt, butter
 from datetime import datetime
