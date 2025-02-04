@@ -52,6 +52,7 @@ class Collection:
     def to_list(self) -> list[T]:
         return list(self.data.values())
     
+
     def to_dicts(self, *args, **kwargs) -> list[dict[str, Any]]:
         return [v.to_dict(*args, **kwargs) for v in self.data.values()]
 
@@ -86,6 +87,13 @@ class Collection:
             coll.add(v)
         return coll
     
+    @classmethod
+    def merge(Cls, vs: list[Self]) -> Self:
+        coll = vs[0].data
+        for v in vs[1:]:
+            coll = coll | v.data
+        return Cls(coll)
+
     def add_start(self, v: T | Self, inplace=True) -> Self:
         ocol = self.copy() if not inplace else self
         if isinstance(v, self.VType):
