@@ -222,6 +222,17 @@ class Table:
 
         return Cls(combo)
 
+    @classmethod
+    def concatenate(Cls, sts: list) -> Self:
+        """Concatenate a list of Tables"""
+        df = pd.concat([st.data for st in sts], axis=0)
+        t = Time.from_t(df.t.to_numpy())
+        df.t = t.t
+        df.dt = t.dt
+        return Cls(df)
+
+
+
     def label(self, **kwargs) -> Self:
         return self.__class__(self.data.assign(**kwargs))
 
