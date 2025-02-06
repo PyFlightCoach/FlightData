@@ -46,6 +46,15 @@ def test_tab_getslice_interpolate(tab_full):
     assert sli.dt[-2] == 0.5
     assert sli.dt[-1] == 0.5
     
+def test_interpolate_labelled(tab_full):
+    tlab = tab_full.label(a="a1", b="b1")
+    t = tlab.interpolate(2.5)
+    assert t.a == "a1"
+    assert t.b == "b1"
+    sli = tlab[2.5:4.5 ]
+    assert sli[3].a == "a1"
+    assert sli[2.5].a == "a1"
+    assert sli[4.5].a == "a1"
 
 def test_copy(tab_full):
     tab2 = tab_full.copy()
