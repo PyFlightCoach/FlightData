@@ -4,7 +4,7 @@ import pandas as pd
 import numpy.typing as npt
 from geometry import Base, Time
 from typing import Self, Tuple, Annotated, Literal
-from .constructs import SVar, Constructs
+from flightdata.base.constructs import SVar, Constructs
 from numbers import Number
 from time import time
 
@@ -15,12 +15,14 @@ class Table:
     )
 
     def __init__(self, data: pd.DataFrame | dict, fill=True, min_len=1):
-        if isinstance(data, dict):
+        if isinstance(data, dict) or isinstance(data, pd.Series):
             data = pd.DataFrame(pd.Series(data)).T
+
         if len(data) < min_len:
             raise Exception(
                 f"State constructor length check failed, data length = {len(data)}, min_len = {min_len}"
             )
+
         self.base_cols = [c for c in data.columns if c in self.constructs.cols()]
         self.label_cols = [c for c in data.columns if c not in self.constructs.cols()]
 
@@ -74,38 +76,64 @@ class Table:
     def iloc(self, sli):
         return self.__class__(self.data.iloc[sli])
 
+    def interpolate(self, t: float):
+        interpolators = dict(
+            Time="linterp",
+            Point="linterp",
+            Quaternion="slerp",
+        )
+
+        i0 = self.data.index.get_indexer([t], method="ffill")[0]
+        i1 = self.data.index.get_indexer([t], method="bfill")[0]
+        if i0 == i1:
+            return self.iloc(i0)
+        t0 = self.data.index[i0]
+        t1 = self.data.index[i1]
+        loc = i0 + (t - t0) / (t1 - t0)
+        new_table = self.__class__.from_constructs(
+            *[
+                getattr(self, con.name).interpolate(
+                    loc, interpolators[con.obj.__name__]
+                )
+                for con in self.constructs
+            ]
+        )
+
+        return new_table
+
     def __getitem__(self, sli):
         if isinstance(sli, slice):
-            return self.__class__(
-                self.data.loc[
-                    slice(
-                        sli.start if sli.start else self.data.index[0],
-                        sli.stop if sli.stop else self.data.index[-1],
-                        sli.step,
-                    )
-                ]
-            )
-        elif isinstance(sli, Number):
-            if sli < 0:
-                return self.__class__(self.data.iloc[[int(sli)], :])
+            middle = self.data.loc[
+                slice(
+                    sli.start if sli.start else self.data.index[0],
+                    sli.stop if sli.stop else self.data.index[-1],
+                    sli.step,
+                )
+            ]
+            istart = self.data.index.get_indexer([sli.start])[0]
+            iend = self.data.index.get_indexer([sli.stop])[0]
 
-            return self.__class__(
-                self.data.iloc[
-                    self.data.index.get_indexer(
-                        [sli], method="nearest"
-                    ),
-                    :,
-                ]
-            )
+            first = self.interpolate(sli.start) if istart == -1 else None
+            last = self.interpolate(sli.stop) if iend == -1 else None
+            if first is not None:
+                middle = pd.concat([first.data, middle], axis=0)
+            if last is not None:
+                middle.loc[middle.iloc[-1].name, "dt"] = (
+                    last.data.t - middle.iloc[-1].t
+                ).item()
+                middle = pd.concat([middle, last.data], axis=0)
+
+            return self.__class__(middle)
+        elif isinstance(sli, Number):
+            if sli <= 0:
+                return self.__class__(self.data.iloc[[int(sli)], :])
+            i = self.data.index.get_indexer([sli])[0]
+            if i == -1:
+                return self.interpolate(sli)
+            else:
+                return self.__class__(self.data.iloc[i, :])
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
-
-    def slice_raw_t(self, sli):
-        inds = (
-            self.data.reset_index(names="t2").set_index("t").loc[sli].t2.to_numpy()
-        )  # set_index("t", drop=False).columns
-
-        return self.__class__(self.data.loc[inds])
 
     def __iter__(self):
         for ind in list(self.data.index):

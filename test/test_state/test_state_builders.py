@@ -1,4 +1,5 @@
-from flightdata import Flight, State, Origin, BinData, fcj
+from flightdata import Flight, State, Origin, BinData
+from schemas import fcj
 from pytest import approx, fixture
 from geometry import Transformation, PX, PY, P0, Time
 from geometry.checks import assert_almost_equal

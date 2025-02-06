@@ -17,7 +17,6 @@ import pandas as pd
 from .fields import fields, Field
 from geometry import GPS, Point, P0
 from geometry.checks import assert_almost_equal
-from time import time
 from json import load, dump
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes
@@ -137,7 +136,7 @@ class Flight:
             if sli < 0:
                 return self.data.iloc[sli]
             else:
-                gl = self.data.index.get_indexer([sli], method="nearest")
+                gl = self.data.index.get_indexer([sli], method="nearest")                    
                 return Flight(
                     self.data.iloc[gl],
                     self.parameters[:sli] if self.parameters else None,
