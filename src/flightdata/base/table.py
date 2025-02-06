@@ -41,7 +41,7 @@ class Table:
             bcs = self.constructs.cols()
         else:
             bcs = self.base_cols
-        if np.any(np.isnan(self.data.loc[:, bcs])):
+        if self.data.loc[:, bcs].isnull().values.any():
             raise ValueError("nan values in data")
 
     def __getattr__(self, name: str) -> npt.NDArray | Base:
@@ -99,7 +99,7 @@ class Table:
             ]
         )
 
-        return new_table
+        return new_table.label(**self.labels.loc[t0].to_dict())
 
     def __getitem__(self, sli):
         if isinstance(sli, slice):
