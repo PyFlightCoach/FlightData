@@ -2,10 +2,7 @@ from flightdata import State
 import geometry as g
 from plotting import plotsec
 import numpy as np
-import plotly.express as px
-from pathlib import Path
-from json import load
-
+import plotly.graph_objects as go
 
 st = (
     State.from_transform(g.Transformation(), vel=g.PX(30), rvel=g.PY(10))
@@ -22,11 +19,33 @@ plotsec(
     scale=0.2,
 ).show()
 
-# fig = plotsec(st, nmodels=20, scale=0.5)
-# for t in np.linspace(st.t[0], st.t[-1], 20):
-#
-#    fig = plotsec(st.interpolate(t), nmodels=1, scale=0.5, fig=fig, color="red")
-#    fig = plotsec(st.interpolate_kinematic(t), nmodels=1, scale=0.5, fig=fig, color="green")
-# fig.show()
+st = (
+    State.from_transform(g.Transformation(), vel=g.PX(30), rvel=g.PY(10))
+    .extrapolate(0.2)
+)
 
+st1s = []
+st2s = []
+for t in np.linspace(st.t[0], st.t[-1], 20):
+    st1s.append(st.interpolate(t))
+    st2s.append(st.interpolate_kinematic(t))
+st1 = State.concatenate(st1s).move(g.Transformation(g.PY(0.5)))
+st2 = State.concatenate(st2s).move(g.Transformation(g.PY(1.0)))
+fig = plotsec(
+    dict(
+        original=st,
+        linear=st1,
+        kinematic=st2,
+    ),
+    nmodels=20,
+    scale=0.1,
+)
+
+fig.show()
+
+
+accfig = go.Figure()
+for k, v in dict(base=st, linear=st1, kinematic=st2).items():
+    accfig.add_trace(go.Scatter(x=v.t, y=v.dw, name=k, mode="lines"))
 # px.scatter(st.data).show()
+accfig.show()
