@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from turtle import st
 from typing import Self, Tuple, Union
 
 import numpy as np
@@ -10,6 +11,7 @@ import pandas as pd
 import geometry as g
 from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from schemas import fcj
+from flightdata.kinematics import interpolate
 
 
 class State(Table):
@@ -198,6 +200,38 @@ class State(Table):
 
         return distance, State.copy_labels(template, flown, path, 3)
 
+    @staticmethod
+    def kinematic_interpolation(a: State, b: State):
+        def interp(t):
+            pos, vel, acc = interpolate(
+                a.t[0],
+                b.t[0],
+                a.pos[0],
+                b.pos[0],
+                a.att.transform_point(a.vel)[0],
+                b.att.transform_point(b.vel)[0],
+            )(t)
+            att = g.Quaternion.slerp(a.att[0], b.att[0])(t)
+            rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(t)
+
+            return State.from_constructs(
+                g.Time(t, b.t[0] - t),
+                pos,
+                att,
+                a.att.inverse().transform_point(vel),
+                rvel,
+                a.att.inverse().transform_point(acc),
+            )
+
+        return interp
+
+    def interpolate_kinematic(self: State, t: float) -> State:
+        i0 = self.data.index.get_indexer([t], method="ffill")[0]
+        i1 = self.data.index.get_indexer([t], method="bfill")[0]
+        if i0 == i1:
+            return self.iloc(i0)
+        return self.kinematic_interpolation(self.iloc(i0), self.iloc(i1))(t)
+
     def splitter_labels(
         self: State,
         mans: list[fcj.Man],
@@ -244,7 +278,7 @@ class State(Table):
 
     def label_els(self, els: list[fcj.El]):
         return self.splitter_labels(
-            pd.DataFrame(els).to_dict('records'), target_col='element'
+            pd.DataFrame(els).to_dict("records"), target_col="element"
         ).str_replace_label(
             element=np.array(
                 [
@@ -256,7 +290,6 @@ class State(Table):
             ),
         )
 
-
     def get_manoeuvre(self: State, manoeuvre: Union[str, list, int]) -> Self:
         return self.get_label_subset(manoeuvre=manoeuvre)
 
@@ -266,7 +299,7 @@ class State(Table):
         return self.get_label_subset(
             test="startswith" if subels else None, element=element
         )
-    
+
     def body_rotate(self: State, r: g.Point) -> State:
         """Rotate body axis by an axis angle"""
         att = self.att.body_rotate(r)
@@ -661,15 +694,14 @@ class State(Table):
         in the world frame"""
         trfl = self.to_track()
 
-        po= g.point.vector_rejection(
+        po = g.point.vector_rejection(
             trfl.att.transform_point(
                 trfl.zero_g_acc() * g.Point(0, 1, 1) / abs(trfl.u) ** 2
             ),
             axis,
         )
-        po.data[-1,:] = np.nan
+        po.data[-1, :] = np.nan
         return po.ffill()
-
 
     def F_gravity(self, mass: g.Mass):
         """Returns the gravitational force in N"""

@@ -31,9 +31,21 @@ def test_table_getattr(tab_full):
 
 
 def test_tab_getitem(tab_full):
-    t = tab_full[20]
-    pass
+    assert tab_full[2].t[0]==2
+    assert tab_full[2.6].t[0]==2.6
 
+def test_tab_getslice_exact(tab_full):
+    assert len(tab_full[2:4]) == 3
+
+def test_tab_getslice_interpolate(tab_full):
+    sli = tab_full[2.5:4.5 ]
+    assert len(sli) == 4
+    assert sli.t[0] == 2.5
+    assert sli.t[-1] == 4.5
+    assert sli.dt[0] == 0.5
+    assert sli.dt[-2] == 0.5
+    assert sli.dt[-1] == 0.5
+    
 
 def test_copy(tab_full):
     tab2 = tab_full.copy()

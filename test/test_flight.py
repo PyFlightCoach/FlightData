@@ -18,7 +18,7 @@ def fl(parser):
 def test_duration(fl):
     assert fl.duration == approx(687, rel=1e-3)
 
-def test_slice(fl):
+def test_slice(fl: Flight):
     short_flight = fl[100:200]
     assert short_flight.duration == approx(100, 0.01)
 
