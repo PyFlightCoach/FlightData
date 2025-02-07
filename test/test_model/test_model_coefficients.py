@@ -8,7 +8,7 @@ from ..conftest import flight, state
 @fixture
 def environments(flight, state):
     wmodel = WindModelBuilder.uniform(1.0, 20.0)([np.pi, 1.0])
-    return Environment.build(flight, state, wmodel)
+    return Environment.from_flight_wmodel(flight, state, wmodel)
 
 @fixture
 def flows(state, environments):
