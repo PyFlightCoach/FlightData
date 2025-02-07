@@ -1,8 +1,6 @@
-from flightdata import WindModelBuilder, WindModel
-import pytest
+from flightdata import WindModelBuilder
 import numpy as np 
-import pandas as pd
-from geometry import Point, Quaternion, Transformation
+from geometry import Point
 
 
 

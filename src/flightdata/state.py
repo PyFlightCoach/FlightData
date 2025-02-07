@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from turtle import st
-from typing import Self, Tuple, Union
+from typing import Self, Tuple, Union, ClassVar
 
 import numpy as np
 import numpy.typing as npt
@@ -15,7 +14,7 @@ from flightdata.kinematics import interpolate
 
 
 class State(Table):
-    constructs = Table.constructs + Constructs(
+    constructs: ClassVar[Constructs] = Table.constructs + Constructs(
         [
             SVar("pos", g.Point, ["x", "y", "z"], lambda self: g.P0(len(self))),
             SVar(
@@ -50,7 +49,7 @@ class State(Table):
             ),
         ]
     )
-    _construct_freq = 30
+    _construct_freq: ClassVar[float] = 25
 
     @property
     def transform(self):
@@ -176,14 +175,17 @@ class State(Table):
         template: State,
         radius=5,
         mirror=True,
-        weights=g.Point(1, 1.2, 0.5),
-        tp_weights=g.Point(0.6, 0.6, 0.6),
+        weights: g.Point = None,
+        tp_weights: g.Point = None,
     ) -> Tuple[float, Self]:
         """Perform a temporal alignment between two sections. return the flown section with labels
         copied from the template along the warped path.
         """
-        from fastdtw import fastdtw
+        from fastdtw.fastdtw import fastdtw
         from scipy.spatial.distance import euclidean
+
+        weights = weights or g.Point(1, 1.2, 0.5)
+        tp_weights = tp_weights or g.Point(0.6, 0.6, 0.6)
 
         def get_brv(brv):
             if mirror:
@@ -304,44 +306,35 @@ class State(Table):
         """Rotate body axis by an axis angle"""
         att = self.att.body_rotate(r)
         q = att.inverse() * self.att
-        return State.copy_labels(
-            self,
-            State.from_constructs(
-                time=self.time,
-                pos=self.pos,
-                att=att,
-                vel=q.transform_point(self.vel),
-                rvel=q.transform_point(self.rvel),
-                acc=q.transform_point(self.acc),
-            ),
-        )
+        return State.from_constructs(
+            time=self.time,
+            pos=self.pos,
+            att=att,
+            vel=q.transform_point(self.vel),
+            rvel=q.transform_point(self.rvel),
+            acc=q.transform_point(self.acc),
+        ).label(**self.labels)
 
     def scale(self: State, factor: float) -> State:
-        return State.copy_labels(
-            self,
-            State.from_constructs(
-                time=self.time,
-                pos=self.pos * factor,
-                att=self.att,
-                vel=self.vel * factor,
-                rvel=self.rvel,
-                acc=self.acc * factor,
-            ),
-        )
+        return State.from_constructs(
+            time=self.time,
+            pos=self.pos * factor,
+            att=self.att,
+            vel=self.vel * factor,
+            rvel=self.rvel,
+            acc=self.acc * factor,
+        ).label(**self.labels)
 
     def mirror_zy(self: State) -> State:
         att = g.Quaternion.from_euler(
             (self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1)
         )
-        return State.copy_labels(
-            self,
-            State.from_constructs(
-                time=self.time,
-                pos=self.pos * g.Point(-1, 1, 1),
-                att=att,  # g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
-                vel=self.vel,
-            ),
-        )
+        return State.from_constructs(
+            time=self.time,
+            pos=self.pos * g.Point(-1, 1, 1),
+            att=att,  # g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
+            vel=self.vel,
+        ).label(**self.labels)
 
     def to_track(self: State) -> State:
         """This rotates the body so the x axis is in the velocity vector"""
@@ -350,13 +343,13 @@ class State(Table):
     def body_to_stability(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
-            flow = Flow.build(self, env)
+            flow = Flow.from_body(self, env)
         return self.body_rotate(-g.Point(0, 1, 0) * flow.alpha)
 
     def stability_to_wind(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
-            flow = Flow.build(self, env)
+            flow = Flow.from_body(self, env)
         return self.body_rotate(g.Point(0, 0, 1) * flow.beta)
 
     def body_to_wind(self: State, flow: Flow = None) -> State:
@@ -561,17 +554,14 @@ class State(Table):
         )
 
     def move(self: State, transform: g.Transformation) -> State:
-        return State.copy_labels(
-            self,
-            State.from_constructs(
-                time=self.time,
-                pos=transform.point(self.pos),
-                att=transform.rotate(self.att),
-                vel=self.vel,
-                rvel=self.rvel,
-                acc=self.acc,
-            ),
-        )
+        return State.from_constructs(
+            time=self.time,
+            pos=transform.point(self.pos),
+            att=transform.rotate(self.att),
+            vel=self.vel,
+            rvel=self.rvel,
+            acc=self.acc,
+        ).label(**self.labels)
 
     def move_back(self: State, transform: g.Transformation) -> State:
         self = self.move(g.Transformation(-transform.pos, g.Q0()))
@@ -588,9 +578,7 @@ class State(Table):
 
         if reference == "body":
             rot = g.Quaternion.from_axis_angle(angles).inverse()
-            return State.copy_labels(
-                self,
-                State.from_constructs(
+            return State.from_constructs(
                     self.time,
                     self.pos,
                     self.att.body_rotate(angles),
@@ -598,13 +586,10 @@ class State(Table):
                     rvel=rot.transform_point(self.rvel)
                     + angles.diff(self.dt),  # need to differentiate angles and add here
                     acc=rot.transform_point(self.acc),
-                ),
-            )
+                ).label(**self.labels)
         else:
             att = self.att.rotate(angles)
-            return State.copy_labels(
-                self,
-                State.from_constructs(
+            return State.from_constructs(
                     self.time,
                     self.pos,
                     att,
@@ -615,8 +600,7 @@ class State(Table):
                     acc=att.inverse().transform_point(
                         self.att.transform_point(self.acc)
                     ),
-                ),
-            )
+                ).label(**self.labels)
 
     def superimpose_rotation(
         self: State, axis: g.Point, angle: float, reference: str = "body"

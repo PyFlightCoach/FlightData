@@ -16,7 +16,7 @@ class Flow(Table):
 
 
     @staticmethod
-    def build(body, env):
+    def from_body(body, env):
 
         airspeed = body.vel - body.att.inverse().transform_point(env.wind)
 

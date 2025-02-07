@@ -4,6 +4,7 @@ import pandas as pd
 
 T = TypeVar('T')
 
+
 class Collection:
     VType: T = None
 

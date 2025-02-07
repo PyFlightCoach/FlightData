@@ -1,6 +1,4 @@
-import pytest
-
-from flightdata import Constructs, SVar, State
+from flightdata import State
 import numpy as np
 
 
@@ -23,6 +21,5 @@ def test_contains():
     res = State.constructs.contains(["pos"])
     assert np.all(res==[True])
 
-    res = State.constructs.contains("pos")
-    assert res==True
+    assert State.constructs.contains("pos")
 

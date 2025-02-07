@@ -9,7 +9,7 @@
 
     """
 from typing import Union
-from .collection import Collection
+from ..collection import Collection
 from itertools import chain
 
 

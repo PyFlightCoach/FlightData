@@ -1,6 +1,6 @@
 from pytest import fixture
 
-from flightdata import Environment, WindModelBuilder
+from flightdata import Environment, Flight
 import numpy as np
 from numpy.testing import assert_allclose
 import pandas as pd
@@ -9,7 +9,7 @@ from ..conftest import flight
 
 
 
-def test_from_flight(flight):
+def test_from_flight(flight: Flight):
     env = Environment.from_flight(flight)
 
     assert isinstance(env.data, pd.DataFrame)

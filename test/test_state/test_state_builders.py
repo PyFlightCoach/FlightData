@@ -14,6 +14,7 @@ def test_extrapolate():
         vel=PX(30)
     )
 
+    assert isinstance(initial, State)
     extrapolated = initial.extrapolate(10)
     assert extrapolated.x[-1] == approx(300)
     
@@ -43,12 +44,14 @@ def test_from_flight(flight, state):
     assert not np.any(np.isnan(state.pos.data))
     assert state.z.mean() > 0
 
+
 def test_from_flight_pos(flight: Flight, state: State, origin: Origin):
     fl2 = flight.copy()
     fl2.primary_pos_source = 'position'
     st2 = State.from_flight(fl2, origin)
     #pd.testing.assert_frame_equal(state.data, st2.data)
     assert st2.z.mean() > 0
+
 
 def test_fc_json(fcjson: fcj.FCJ):
     fl = Flight.from_fc_json(fcjson)

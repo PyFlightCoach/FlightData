@@ -3,53 +3,79 @@ import numpy as np
 import pandas as pd
 import numpy.typing as npt
 from geometry import Base, Time
-from typing import Self, Tuple, Annotated, Literal
-from flightdata.base.constructs import SVar, Constructs
+from typing import ClassVar, Self, Tuple, Annotated, Literal
+from flightdata.base.table.constructs import SVar, Constructs
 from numbers import Number
 from time import time
+from dataclasses import field, dataclass
+from .labels import Label, LabelGroup, Slicer
 
 
+@dataclass
 class Table:
-    constructs = Constructs(
+    """Base data structure, wraps around a pandas dataframe.
+    All the columns are defined in the constructs class variable.
+    A dictionary of labels is included, keys are label group names, values are instances of LabelGroup.
+    """
+
+    constructs: ClassVar[Constructs] = Constructs(
         [SVar("time", Time, ["t", "dt"], lambda tab: Time.from_t(tab.t))]
     )
+    data: pd.DataFrame
+    labels: dict[str, LabelGroup] = field(default_factory=lambda: {})
 
-    def __init__(self, data: pd.DataFrame | dict, fill=True, min_len=1):
-        if isinstance(data, dict) or isinstance(data, pd.Series):
-            data = pd.DataFrame(pd.Series(data)).T
+    @property
+    def t_end(self):
+        return self.data.t + self.data.dt
+
+    @classmethod
+    def build(
+        Cls,
+        data: pd.DataFrame | dict | pd.Series,
+        labels: dict[str, LabelGroup] = None,
+        fill=True,
+        min_len=1,
+    ):
+        if isinstance(data, dict):
+            data = pd.Series(data)
+        if isinstance(data, pd.Series):
+            data = pd.DataFrame(data).T
 
         if len(data) < min_len:
             raise Exception(
-                f"State constructor length check failed, data length = {len(data)}, min_len = {min_len}"
+                f"Table constructor length check failed, data length = {len(data)}, min_len = {min_len}"
             )
 
-        self.base_cols = [c for c in data.columns if c in self.constructs.cols()]
-        self.label_cols = [c for c in data.columns if c not in self.constructs.cols()]
+        base_cols = [c for c in data.columns if c in Cls.constructs.cols()]
+        # label_cols = [c for c in data.columns if c not in Cls.constructs.cols()]
 
-        self.data = data
-
-        if fill:
-            missing = self.constructs.missing(self.data.columns)
-            for svar in missing:
-                newdata = (
-                    svar.builder(self)
-                    .to_pandas(columns=svar.keys, index=self.data.index)
-                    .loc[:, [key for key in svar.keys if key not in self.data.columns]]
-                )
-
-                self.data = pd.concat([self.data, newdata], axis=1)
-            bcs = self.constructs.cols()
-        else:
-            bcs = self.base_cols
-        if self.data.loc[:, bcs].isnull().values.any():
+        bcs = base_cols
+        if data.loc[:, bcs].isnull().values.any():
             raise ValueError("nan values in data")
+
+        return Cls(data, labels or {}).populate() if fill else Cls(data, labels or {})
+
+    def populate(self):
+        data = self.data.copy()
+        missing = self.__class__.constructs.missing(self.data.columns)
+        for svar in missing:
+            newdata = (
+                svar.builder(self)
+                .to_pandas(columns=svar.keys, index=self.data.index)
+                .loc[:, [key for key in svar.keys if key not in self.data.columns]]
+            )
+            data = pd.concat([data, newdata], axis=1)
+
+        return self.__class__(data, self.labels)
 
     def __getattr__(self, name: str) -> npt.NDArray | Base:
         if name in self.data.columns:
             return self.data[name].to_numpy()
-        elif name in self.constructs.data.keys():
-            con = self.constructs.data[name]
+        elif name in self.__class__.constructs.data.keys():
+            con: SVar = self.__class__.constructs[name]
             return con.obj(self.data.loc[:, con.keys])
+        elif name in self.labels:
+            return Slicer(self.labels[name], self)
         else:
             raise AttributeError(f"Unknown column or construct {name}")
 
@@ -64,7 +90,7 @@ class Table:
     def from_dict(Cls, data):
         if "data" in data:
             data = data["data"]
-        return Cls(pd.DataFrame.from_dict(data).set_index("t", drop=False))
+        return Cls.build(pd.DataFrame.from_dict(data).set_index("t", drop=False))
 
     def __len__(self):
         return len(self.data)
@@ -73,20 +99,32 @@ class Table:
     def duration(self):
         return self.data.index[-1] - self.data.index[0]
 
-    def iloc(self, sli):
-        return self.__class__(self.data.iloc[sli])
+    @property
+    def iloc(self):
+        @dataclass
+        class ILocer:
+            data: Table
+
+            def __getitem__(inner, sli):
+                return self.__class__(inner.data.iloc[sli], self.labels)
+
+        return ILocer(self)
 
     def interpolate(self, t: float):
         interpolators = dict(
             Time="linterp",
             Point="linterp",
             Quaternion="slerp",
+            Air="linterp",
+            Attack="linterp",
         )
 
         i0 = self.data.index.get_indexer([t], method="ffill")[0]
         i1 = self.data.index.get_indexer([t], method="bfill")[0]
         if i0 == i1:
             return self.iloc(i0)
+        if i0 == -1 or i1 == -1:
+            raise ValueError(f"Interpolation time {t} is outside the table range")
         t0 = self.data.index[i0]
         t1 = self.data.index[i1]
         loc = i0 + (t - t0) / (t1 - t0)
@@ -99,7 +137,9 @@ class Table:
             ]
         )
 
-        return new_table.label(**self.labels.loc[t0].to_dict())
+        return new_table.label(
+            **(self.labels or {})
+        )
 
     def __getitem__(self, sli):
         if isinstance(sli, slice):
@@ -123,7 +163,7 @@ class Table:
                 ).item()
                 middle = pd.concat([middle, last.data], axis=0)
 
-            return self.__class__(middle)
+            return self.__class__(middle).label(**(self.labels or {}))
         elif isinstance(sli, Number):
             if sli <= 0:
                 return self.__class__(self.data.iloc[[int(sli)], :])
@@ -131,7 +171,9 @@ class Table:
             if i == -1:
                 return self.interpolate(sli)
             else:
-                return self.__class__(self.data.iloc[i, :])
+                return self.__class__(pd.DataFrame(self.data.iloc[i, :]).T).label(
+                    **(self.labels or {})
+                )
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
 
@@ -140,22 +182,22 @@ class Table:
             yield self[ind - self.data.index[0]]
 
     @classmethod
-    def from_constructs(cls, *args, **kwargs) -> Self:
+    def from_constructs(Cls, *args, **kwargs) -> Self:
         kwargs = dict(
-            **{list(cls.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
+            **{list(Cls.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
             **kwargs,
         )
 
         df = pd.concat(
             [
-                x.to_pandas(columns=cls.constructs[key].keys, index=kwargs["time"].t)
+                x.to_pandas(columns=Cls.constructs[key].keys, index=kwargs["time"].t)
                 for key, x in kwargs.items()
                 if x is not None
             ],
             axis=1,
         )
 
-        return cls(df)
+        return Cls.build(df)
 
     def __repr__(self):
         return f"{self.__class__.__name__} Table(duration = {self.duration})"
@@ -175,7 +217,7 @@ class Table:
             for key, value in list(kwargs.items()) + list(old_constructs.items())
         }
         return self.__class__.from_constructs(**new_constructs).label(
-            **self.labels.to_dict(orient="list")
+            **(self.labels or {})
         )
 
     def append(self, other, timeoption: str = "dt"):
@@ -231,21 +273,26 @@ class Table:
         df.dt = t.dt
         return Cls(df)
 
+    def label(self, **kwargs: dict[str, LabelGroup | str | npt.NDArray]) -> Self:
+        labelgroups: dict[str, LabelGroup] = {}
+        for key, value in kwargs.items():
+            newlg: LabelGroup = None
+            if isinstance(value, str):
+                newlg = LabelGroup({value: Label(self.t[0], self.t_end.iloc[-1])})
+            elif isinstance(value, LabelGroup):
+                newlg = value
+            elif pd.api.types.is_list_like(value):
+                newlg = LabelGroup.read_array(self, np.array(value))
+            else:
+                raise ValueError(f"Unknown type for label {key}")
+            newlg = newlg.intersect(self)
+            if not newlg.empty:
+                labelgroups[key] = newlg
 
-
-    def label(self, **kwargs) -> Self:
-        return self.__class__(self.data.assign(**kwargs))
-
-    @property
-    def label_keys(self):
-        return self.label_cols
-
-    @property
-    def labels(self) -> dict[str, npt.NDArray]:
-        return self.data.loc[:, self.label_cols]
+        return self.__class__(self.data, {k: v for k, v in labelgroups.items()})
 
     def remove_labels(self) -> Self:
-        return self.__class__(self.data.drop(self.label_keys, axis=1, errors="ignore"))
+        return self.__class__(self.data)
 
     @staticmethod
     def labselect(
@@ -428,85 +475,18 @@ class Table:
 
     @staticmethod
     def copy_labels(
-        template: Self,
-        flown: Self,
+        template: Table,
+        flown: Table,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] = None,
         min_len=0,
     ) -> Self:
         """Copy the labels from template to flown along the index warping path
         If path is None, the labels are copied directly from the template to the flown
-        min_len prevents the labels from being shortened to less than min_len rows,
+        TODO - min_len prevents the labels from being shortened to less than min_len rows,
         even if the label dows not exist in the warping path the order of labels in template
         will be preserved.
         """
 
-        flown = flown.remove_labels()
-
-        if not path:
-            return flown.__class__(
-                pd.concat(
-                    [
-                        flown.data.reset_index(drop=True),
-                        template.data.loc[:, template.label_cols].reset_index(
-                            drop=True
-                        ),
-                    ],
-                    axis=1,
-                ).set_index("t", drop=False)
-            )
-        else:
-            mans = (
-                pd.DataFrame(path, columns=["template", "flight"])
-                .set_index("template")
-                .join(template.data.reset_index(drop=True).loc[:, template.label_cols])
-                .groupby(["flight"])
-                .last()
-                .reset_index()
-                .set_index("flight")
-            )
-
-            st: Self = flown.__class__(flown.data).label(**mans.to_dict(orient="list"))
-
-            if min_len > 0:
-                unique_labels = template.unique_labels()
-
-                for i, row in unique_labels.iterrows():
-                    lens = st.label_lens()
-                    labels = st.labels.copy()
-
-                    def get_len(_i: int):
-                        key = "_".join(list(unique_labels.iloc[_i].to_dict().values()))
-                        return lens[key] if key in lens else 0
-
-                    def get_range(_i: int):
-                        return st.label_range(**unique_labels.iloc[_i].to_dict())
-
-                    if get_len(i) < min_len:
-                        max_bck = get_len(i - 1) - min_len if i > 0 else 0
-                        max_fwd = (
-                            get_len(i + 1) - min_len
-                            if i < len(unique_labels) - 1
-                            else 0
-                        )
-
-                        if max_bck + max_fwd + get_len(i) < min_len:
-                            raise Exception(
-                                f"{row.iloc[0]},{row.iloc[1]} too short and cannot shorten adjacent labels further"
-                            )
-                        else:
-                            _extend = int(np.ceil((min_len - get_len(i)) / 2))
-                            ebck = min(max_bck, int(np.floor(_extend)))
-                            efwd = min(max_fwd, int(np.floor(_extend)) + 1)
-
-                            if ebck > 0:
-                                rng = get_range(i - 1)
-                                labels.iloc[rng[1] - ebck : rng[1] + 1] = (
-                                    unique_labels.iloc[i]
-                                )
-                            if efwd > 0:
-                                rng = get_range(i + 1)
-                                labels.iloc[rng[0] : rng[0] + efwd + 1] = (
-                                    unique_labels.iloc[i]
-                                )
-                            st = st.label(**labels.to_dict(orient="list"))
-            return st
+        return template.label(
+            **{k: v.transfer(flown, template, path) for k, v in flown.labels.items()}
+        )

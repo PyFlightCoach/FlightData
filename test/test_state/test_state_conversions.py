@@ -13,8 +13,8 @@ def test_to_track(state: State):
     assert isinstance(jst, State)
 
     env = Environment.from_constructs(state.time)
-    flw_body = Flow.build(state, env)
-    flw_judge = Flow.build(jst, env)
+    flw_body = Flow.from_body(state, env)
+    flw_judge = Flow.from_body(jst, env)
 
     
     #this wont reduce alpha and beta to zero as velocity comes from IMU,
@@ -45,7 +45,7 @@ def test_to_track_sim(sl_wind_axis):
 
 def test_track_to_wind(sl_wind_axis):
     judge_axis = sl_wind_axis
-    wind_axis = judge_axis.convert_state(Point(0, 0, -np.radians(10)))
+    wind_axis = judge_axis.track_to_wind(Environment.build())
     
     env = Environment.from_constructs(
         sl_wind_axis.time, 
