@@ -8,6 +8,7 @@
     rvel = rotational velocity (body axis rates)
 
     """
+from __future__ import annotations
 from typing import Union
 from ..collection import Collection
 from itertools import chain
@@ -29,7 +30,7 @@ class Constructs(Collection):
         super().__init__(data)
         self._cols = list(chain(*[c.keys for c in self.data.values()]))
 
-    def subset(self, names: list[str]):
+    def subset(self, names: list[str]) -> Constructs:
         """get a subset of the constructs"""
         return Constructs({key: value for key, value in self.data.items() if key in names})
 
@@ -40,7 +41,7 @@ class Constructs(Collection):
             if all(val in vars for val in value.keys)
         ])
 
-    def missing(self, vars: list[str]):
+    def missing(self, vars: list[str]) -> Constructs:
         """return a subset that has not been populated by the list of vars"""
         return self.subset([
             key for key, value in self.data.items() 

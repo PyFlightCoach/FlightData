@@ -6,6 +6,7 @@ from geometry import Time
 
 from pytest import fixture, mark
 from flightdata.base.table import Slicer, Label, LabelGroup
+from flightdata.base.table.labels import LabelGroups
 
 
 @fixture
@@ -24,20 +25,20 @@ def tab_full(df):
     return Table.build(df, fill=True)
 
 
-def test_table_init(tab_full):
+def test_table_init(tab_full: Table):
     np.testing.assert_array_equal(tab_full.data.columns, ["t", "dt"])
 
 
-def test_table_get_svar(tab_full):
+def test_table_get_svar(tab_full: Table):
     assert isinstance(tab_full.time, Time)
 
 
-def test_table_get_column(tab_full):
+def test_table_get_column(tab_full: Table):
     assert isinstance(tab_full.t, np.ndarray)
     assert isinstance(tab_full.dt, np.ndarray)
 
 
-def test_table_interpolate(tab_full):
+def test_table_interpolate(tab_full: Table):
     with pytest.raises(ValueError):
         t = tab_full.interpolate(7)
 
@@ -53,7 +54,7 @@ def test_tab_getitem(tab_full):
 
 def test_tab_getslice_exact(tab_full):
     assert len(tab_full[2:4]) == 3
-
+    
 
 def test_tab_getslice_interpolate(tab_full):
     sli = tab_full[2.5:4.5]
@@ -70,16 +71,15 @@ def label_array(tab_full):
     return np.array([f"a{int(i / 2)}" for i in range(len(tab_full))])
 
 
-def test_labelgroup_read_series(tab_full, label_array):
-    labels = pd.Series(label_array, index=tab_full.data.index)
-    lg = LabelGroup.read_series(labels)
+def test_labelgroup_read_array(tab_full, label_array):
+    lg = LabelGroup.read_array(tab_full.time, label_array)
     assert len(lg) == 3
     assert lg.a0.start == tab_full.data.index[0]
     assert lg.a0.stop == tab_full.data.index[2]
     assert lg.a1.start == tab_full.data.index[2]
     assert lg.a1.stop == tab_full.data.index[4]
     assert lg.a2.start == tab_full.data.index[4]
-    assert lg.a2.stop is None
+    assert lg.a2.stop == tab_full.data.index[-1] + tab_full.data.dt[4]
 
 
 @fixture
@@ -89,7 +89,7 @@ def tab_lab(tab_full: Table, label_array):
 
 def test_label_array(tab_lab):
     assert len(tab_lab.labels) == 1
-    assert isinstance(tab_lab.labels["a"], LabelGroup)
+    assert isinstance(tab_lab.labels.a, LabelGroup)
     assert len(tab_lab.labels["a"]) == 3
 
 
@@ -110,6 +110,12 @@ def test_slicer_slice(tab_lab):
     assert slice.t[0] == 2
     assert slice.t[-1] == 4
 
+def test_slice_labels(tab_lab: Table):
+    sli = tab_lab[:1]
+    assert len(sli) == 2
+    assert len(sli.labels["a"]) == 1
+    assert sli.labels["a"].labels["a0"].start == 0
+    assert sli.labels["a"].labels["a0"].stop == 2
 
 def test_is_tesselated(tab_lab: Table):
     assert tab_lab.labels["a"].is_tesselated()
@@ -117,8 +123,8 @@ def test_is_tesselated(tab_lab: Table):
 
 
 def test_label_intersects(tab_lab: Table):
-    assert Label(2, 4).intersects(tab_lab)
-    assert not Label(7, 9).intersects(tab_lab)
+    assert Label(2, 4).intersects(tab_lab.t[0], tab_lab.t[-1])
+    assert not Label(7, 9).intersects(tab_lab.t[0], tab_lab.t[-1])
 
 
 def test_label_contains():
@@ -127,7 +133,6 @@ def test_label_contains():
     assert not Label(7, 9).contains(9.1)
     assert not Label(7, 9).contains(6.9)
     assert Label(7, 9).contains(7)
-    assert Label(7, None).contains(9)
 
 
 def test_interpolate_labelled(tab_lab: Table):
@@ -179,7 +184,7 @@ def test_shift_labels_ratios(tab_full: Table):
 
 
 def test_labels_dump_array(tab_lab: Table):
-    arr = tab_lab.labels["a"].dump_array(tab_lab.time)
+    arr = tab_lab.labels["a"].to_array(tab_lab.time)
     assert all(arr == ["a0", "a0", "a1", "a1", "a2", "a2"])
 
 
@@ -216,31 +221,69 @@ def test_label_transfer():
     assert newlab == Label(1, 2)
 
 
+def test_shift_time(tab_lab):
+    new_lab = tab_lab.shift_time(2)
+    assert new_lab.t[0] == 2
+    assert new_lab.labels["a"].labels["a0"].start == 2
+    assert new_lab.labels["a"].labels["a0"].stop == 4
 
-def test_copy_labels(tab_lab: Table, tab_full: Table):
-    to = Table.copy_labels(
-        labst, tab_full, np.array([[0, 0], [1, ], [2, 1], [3, 2], [4, 4]])
-    )
-    assert to.labels["a"].length == 3
+
+def test_concat_labelgroup():
+    lg1 = LabelGroup({"a0": Label(0, 2), "a1": Label(2, 4)})
+    lg2 = LabelGroup({"a1": Label(4, 6), "a2": Label(6, 8)})
+    nlg = LabelGroup.concat(lg1, lg2)
+    assert len(nlg) == 3
+    assert nlg.a0.start == 0
+    assert nlg.a0.stop == 2
+    assert nlg.a1.start == 2
+    assert nlg.a1.stop == 6
+    assert nlg.a2.start == 6
+    assert nlg.a2.stop == 8
+
+def test_stack_labelgroups():
+    lgs1 = LabelGroups({"a": LabelGroup({"a0": Label(0, 2), "a1": Label(2, 4)})})
+    lgs2 = LabelGroups({"a": LabelGroup({"a1": Label(4, 6), "a2": Label(6, 8)})})
+    nlgs = LabelGroups.concat(lgs1, lgs2)
+    assert len(nlgs) == 1
+    assert len(nlgs.a) == 3
+    assert nlgs.a.a0.start == 0
+    assert nlgs.a.a0.stop == 2
+    assert nlgs.a.a1.start == 2
+    assert nlgs.a.a1.stop == 6
+    assert nlgs.a.a2.start == 6
+    assert nlgs.a.a2.stop == 8
 
 
-def test_stack(tab_full):
+def test_stack_no_overlap(tab_full: Table):
     tfn = Table.stack(
         [tab_full.label(element="e0"), tab_full.label(element="e1")], overlap=0
     )
     assert tfn.duration == 2 * tab_full.duration + tab_full.dt[-1]
     assert len(tfn) == 2 * len(tab_full)
 
+    assert "element" in tfn.labels.lgs
+    assert tfn.element.e0.duration == tab_full.duration + tab_full.dt[-1]
+    assert tfn.element.e1.t[0] == tab_full.duration + tab_full.dt[-1]
+    assert tfn.element.e1.duration == tab_full.duration
+
+def test_iloc(tab_full: Table):
+    t = tab_full.iloc[2:4]
+    assert len(t) == 2
+    assert t.t[0] == 2
+    assert t.t[-1] == 3
+
+
+def test_stack_overlap(tab_full):
     tfn = Table.stack(
         [tab_full.label(element="e0"), tab_full.label(element="e1")], overlap=1
     )
     assert tfn.duration == 2 * tab_full.duration
     assert len(tfn) == 2 * len(tab_full) - 1
 
-    tfn = Table.stack([tfn.label(manoeuvre="m1"), tfn.label(manoeuvre="m2")])
-    assert tfn.data.index.is_monotonic_increasing
-    tfn2 = Table.stack(list(tfn.split_labels().values()))
-    assert tfn.duration == tfn2.duration
+    assert "element" in tfn.labels.lgs
+    assert tfn.element.e0.duration == tab_full.duration
+    assert tfn.element.e1.t[0] == tab_full.duration
+    assert tfn.element.e1.duration == tab_full.duration
 
 
 def test_shift_multi(tab_full):
