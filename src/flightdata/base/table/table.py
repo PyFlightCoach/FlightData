@@ -1,14 +1,18 @@
 from __future__ import annotations
-import numpy as np
-import pandas as pd
-import numpy.typing as npt
-from geometry import Base, Time
-from typing import ClassVar, Self, Tuple, Annotated, Literal
-from flightdata.base.table.constructs import SVar, Constructs
+
+from dataclasses import dataclass, field
 from numbers import Number
 from time import time
-from dataclasses import field, dataclass
-from .labels import Label, LabelGroup, Slicer
+from typing import Annotated, ClassVar, Literal, Self, Tuple
+
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+from geometry import Base, Time
+
+from flightdata.base.table.constructs import Constructs, SVar
+
+from .labels import Label, LabelGroup, Slicer, LabelGroups
 
 
 @dataclass
@@ -22,20 +26,21 @@ class Table:
         [SVar("time", Time, ["t", "dt"], lambda tab: Time.from_t(tab.t))]
     )
     data: pd.DataFrame
-    labels: dict[str, LabelGroup] = field(default_factory=lambda: {})
+    labels: LabelGroups = field(default_factory=lambda: LabelGroups())
 
     @property
     def t_end(self):
-        return self.data.t + self.data.dt
+        return self.t + self.dt
 
     @classmethod
     def build(
         Cls,
         data: pd.DataFrame | dict | pd.Series,
-        labels: dict[str, LabelGroup] = None,
+        labels: LabelGroups = None,
         fill=True,
         min_len=1,
     ):
+        labels = LabelGroups() if labels is None else labels
         if isinstance(data, dict):
             data = pd.Series(data)
         if isinstance(data, pd.Series):
@@ -53,7 +58,7 @@ class Table:
         if data.loc[:, bcs].isnull().values.any():
             raise ValueError("nan values in data")
 
-        return Cls(data, labels or {}).populate() if fill else Cls(data, labels or {})
+        return Cls(data, labels).populate() if fill else Cls(data, labels)
 
     def populate(self):
         data = self.data.copy()
@@ -74,16 +79,13 @@ class Table:
         elif name in self.__class__.constructs.data.keys():
             con: SVar = self.__class__.constructs[name]
             return con.obj(self.data.loc[:, con.keys])
-        elif name in self.labels:
+        elif name in self.labels.lgs:
             return Slicer(self.labels[name], self)
         else:
             raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_csv(self, filename):
-        self.data.to_csv(filename, index=False)
-        return filename
-
     def to_dict(self):
+        # TODO - add labels
         return self.data.to_dict(orient="records")
 
     @classmethod
@@ -98,17 +100,6 @@ class Table:
     @property
     def duration(self):
         return self.data.index[-1] - self.data.index[0]
-
-    @property
-    def iloc(self):
-        @dataclass
-        class ILocer:
-            data: Table
-
-            def __getitem__(inner, sli):
-                return self.__class__(inner.data.iloc[sli], self.labels)
-
-        return ILocer(self)
 
     def interpolate(self, t: float):
         interpolators = dict(
@@ -137,24 +128,29 @@ class Table:
             ]
         )
 
-        return new_table.label(
-            **(self.labels or {})
-        )
+        return new_table.label(self.labels)
 
-    def __getitem__(self, sli):
+    def __getitem__(self, sli: Number | slice) -> Self:
         if isinstance(sli, slice):
             middle = self.data.loc[
                 slice(
-                    sli.start if sli.start else self.data.index[0],
-                    sli.stop if sli.stop else self.data.index[-1],
+                    self.t[0] if sli.start is None else sli.start,
+                    self.t[-1] + self.dt[-1] if sli.stop is None else sli.stop,
                     sli.step,
                 )
             ]
-            istart = self.data.index.get_indexer([sli.start])[0]
-            iend = self.data.index.get_indexer([sli.stop])[0]
+            if sli.start is None or sli.start <= self.data.index[0]:
+                first = None
+            else:
+                istart = self.data.index.get_indexer([sli.start])[0]
+                first = self.interpolate(sli.start) if istart == -1 else None
 
-            first = self.interpolate(sli.start) if istart == -1 else None
-            last = self.interpolate(sli.stop) if iend == -1 else None
+            if sli.stop is None or sli.stop >= self.data.index[-1]:
+                last = None
+            else:
+                iend = self.data.index.get_indexer([sli.stop])[0]
+                last = self.interpolate(sli.stop) if iend == -1 else None
+
             if first is not None:
                 middle = pd.concat([first.data, middle], axis=0)
             if last is not None:
@@ -163,23 +159,36 @@ class Table:
                 ).item()
                 middle = pd.concat([middle, last.data], axis=0)
 
-            return self.__class__(middle).label(**(self.labels or {}))
+            res = self.__class__(middle)
         elif isinstance(sli, Number):
             if sli <= 0:
                 return self.__class__(self.data.iloc[[int(sli)], :])
             i = self.data.index.get_indexer([sli])[0]
             if i == -1:
-                return self.interpolate(sli)
+                res = self.interpolate(sli)
             else:
-                return self.__class__(pd.DataFrame(self.data.iloc[i, :]).T).label(
-                    **(self.labels or {})
-                )
+                res = self.__class__(pd.DataFrame(self.data.iloc[i, :]).T)
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
 
+        return res.label(self.labels.slice(res.t[0], res.t_end[-1]))
+
+    @property
+    def iloc(self):
+        @dataclass
+        class ILocer:
+
+            def __getitem__(_, sli):
+                new_table = self.__class__(self.data.iloc[sli])
+                return new_table.label(
+                    self.labels.slice(new_table.t[0], new_table.t_end[-1])
+                )
+
+        return ILocer()
+
     def __iter__(self):
-        for ind in list(self.data.index):
-            yield self[ind - self.data.index[0]]
+        for t in list(self.data.index):
+            yield self[t]
 
     @classmethod
     def from_constructs(Cls, *args, **kwargs) -> Self:
@@ -200,9 +209,9 @@ class Table:
         return Cls.build(df)
 
     def __repr__(self):
-        return f"{self.__class__.__name__} Table(duration = {self.duration})"
+        return f"{self.__class__.__name__}(duration={self.duration}{','.join([str(l) for l in self.labels.lgs.keys()])})"
 
-    def copy(self, *args, **kwargs):
+    def copy(self, *args, **kwargs) -> Table:
         kwargs = dict(
             kwargs,
             **{list(self.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
@@ -216,9 +225,7 @@ class Table:
             key: value
             for key, value in list(kwargs.items()) + list(old_constructs.items())
         }
-        return self.__class__.from_constructs(**new_constructs).label(
-            **(self.labels or {})
-        )
+        return self.__class__.from_constructs(**new_constructs).label(self.labels)
 
     def append(self, other, timeoption: str = "dt"):
         if timeoption in ["now", "t"]:
@@ -236,33 +243,47 @@ class Table:
         )
 
     def zero_index(self):
-        data = self.data.copy()
-        return self.__class__(data.set_index(data.index - data.index[0]))
+        return self.shift_time(-self.data.index[0])
+
+    def shift_time(self, offset: float):
+        """Shift the time of the table by offset seconds"""
+        data = self.copy(time=self.time + offset).label(self.labels.offset(offset))
+
+        return data
 
     @classmethod
-    def stack(Cls, sts: list, overlap: int = 1) -> Self:
+    def stack(Cls, sts: list[Table], overlap: Literal[0, 1] = 1) -> Self:
         """Stack a list of Tables on top of each other.
         The overlap is the number of rows to overlap between each st
         """
+        if len(sts) == 1:
+            return sts[0]
+        
         t0 = sts[0].data.index[0]
+        
         sts = [st.zero_index() for st in sts]
         if overlap > 0:
             offsets = np.cumsum([0] + [s0.data.index[-overlap] for s0 in sts[:-1]])
-            dfs = [st.data.iloc[:-overlap] for st in sts[:-1]] + [sts[-1].data]
+            sts = [st.iloc[:-overlap] for st in sts[:-1]] + [sts[-1]]
         elif overlap == 0:
-            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sts[:-1]])
-            dfs = [st.data for st in sts]
+            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sts[:-1]])    
         else:
-            raise AttributeError("Overlap must be >= 0")
+            raise AttributeError("Overlap must be 0 or 1")
+        
+        dfs = [st.zero_index().data for st in sts]
 
         for df, offset in zip(dfs, offsets):
             df.index = np.array(df.index) - df.index[0] + offset
+
         combo = pd.concat(dfs)
         combo.index.name = "t"
         combo.index = combo.index + t0
         combo["t"] = combo.index
+        labels = LabelGroups.concat(
+            *[st.labels.offset(off) for st, off in zip(sts, offsets)]
+        )
 
-        return Cls(combo)
+        return Cls(combo).label(labels)
 
     @classmethod
     def concatenate(Cls, sts: list) -> Self:
@@ -271,25 +292,31 @@ class Table:
         t = Time.from_t(df.t.to_numpy())
         df.t = t.t
         df.dt = t.dt
-        return Cls(df)
+        return Cls(df).label(**LabelGroups.concat([st.labels for st in sts]))
 
-    def label(self, **kwargs: dict[str, LabelGroup | str | npt.NDArray]) -> Self:
-        labelgroups: dict[str, LabelGroup] = {}
+    def label(
+        self,
+        lgs: LabelGroups = None,
+        **kwargs: dict[str, LabelGroup | str | npt.NDArray],
+    ) -> Self:
+        labelgroups: dict[str, LabelGroup] = {} if lgs is None else lgs.lgs
         for key, value in kwargs.items():
             newlg: LabelGroup = None
             if isinstance(value, str):
-                newlg = LabelGroup({value: Label(self.t[0], self.t_end.iloc[-1])})
+                newlg = LabelGroup({value: Label(self.t[0], self.t_end[-1])})
             elif isinstance(value, LabelGroup):
                 newlg = value
             elif pd.api.types.is_list_like(value):
-                newlg = LabelGroup.read_array(self, np.array(value))
+                newlg = LabelGroup.read_array(self.time, np.array(value))
             else:
                 raise ValueError(f"Unknown type for label {key}")
             newlg = newlg.intersect(self)
             if not newlg.empty:
+                if key in labelgroups:
+                    raise ValueError(f"Label {key} already exists")
                 labelgroups[key] = newlg
 
-        return self.__class__(self.data, {k: v for k, v in labelgroups.items()})
+        return self.__class__(self.data, LabelGroups(labelgroups))
 
     def remove_labels(self) -> Self:
         return self.__class__(self.data)
@@ -487,6 +514,6 @@ class Table:
         will be preserved.
         """
 
-        return template.label(
-            **{k: v.transfer(flown, template, path) for k, v in flown.labels.items()}
+        return flown.label(
+            **{k: v.transfer(template, flown, path) for k, v in template.labels.items()}
         )
