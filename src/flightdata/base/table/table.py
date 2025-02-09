@@ -28,6 +28,11 @@ class Table:
     data: pd.DataFrame
     labels: LabelGroups = field(default_factory=lambda: LabelGroups())
 
+
+    @overload
+    def __getattr__(self, pos: str) -> g.Point: ...
+
+
     @property
     def t_end(self):
         return self.t + self.dt
@@ -99,7 +104,7 @@ class Table:
 
     @property
     def duration(self):
-        return self.data.index[-1] - self.data.index[0]
+        return self.t[-1] - self.t[0]
 
     def interpolate(self, t: float):
         interpolators = dict(
@@ -139,13 +144,13 @@ class Table:
                     sli.step,
                 )
             ]
-            if sli.start is None or sli.start <= self.data.index[0]:
+            if sli.start is None or sli.start < self.data.index[0]:
                 first = None
             else:
                 istart = self.data.index.get_indexer([sli.start])[0]
                 first = self.interpolate(sli.start) if istart == -1 else None
 
-            if sli.stop is None or sli.stop >= self.data.index[-1]:
+            if sli.stop is None or sli.stop > self.data.index[-1]:
                 last = None
             else:
                 iend = self.data.index.get_indexer([sli.stop])[0]
@@ -171,17 +176,16 @@ class Table:
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
 
-        return res.label(self.labels.slice(res.t[0], res.t_end[-1]))
+        return res.label(self.labels.slice(res.t[0], res.t[-1]))
 
     @property
     def iloc(self):
         @dataclass
         class ILocer:
-
             def __getitem__(_, sli):
                 new_table = self.__class__(self.data.iloc[sli])
                 return new_table.label(
-                    self.labels.slice(new_table.t[0], new_table.t_end[-1])
+                    self.labels.slice(new_table.t[0], new_table.t[-1])
                 )
 
         return ILocer()
@@ -209,7 +213,7 @@ class Table:
         return Cls.build(df)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(duration={self.duration}{','.join([str(l) for l in self.labels.lgs.keys()])})"
+        return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs.keys()])},duration={self.duration})"
 
     def copy(self, *args, **kwargs) -> Table:
         kwargs = dict(
@@ -252,47 +256,51 @@ class Table:
         return data
 
     @classmethod
-    def stack(Cls, sts: list[Table], overlap: Literal[0, 1] = 1) -> Self:
+    def stack(
+        Cls,
+        sts: list[Table],
+        label_title: str = None,
+        label_values: list[str] = None,
+        overlap: Literal[0, 1] = 1,
+    ) -> Self:
         """Stack a list of Tables on top of each other.
-        The overlap is the number of rows to overlap between each st
+        The overlap is the number of rows to overlap between each st.
+        Existing labels will be moved to sublabels if label_title is not None
+        otherwise they will be concatenated.
         """
         if len(sts) == 1:
             return sts[0]
-        
-        t0 = sts[0].data.index[0]
-        
-        sts = [st.zero_index() for st in sts]
-        if overlap > 0:
-            offsets = np.cumsum([0] + [s0.data.index[-overlap] for s0 in sts[:-1]])
-            sts = [st.iloc[:-overlap] for st in sts[:-1]] + [sts[-1]]
-        elif overlap == 0:
-            offsets = np.cumsum([0] + [sec.duration + sec.dt[-1] for sec in sts[:-1]])    
-        else:
-            raise AttributeError("Overlap must be 0 or 1")
-        
-        dfs = [st.zero_index().data for st in sts]
 
-        for df, offset in zip(dfs, offsets):
-            df.index = np.array(df.index) - df.index[0] + offset
+        if label_title:
+            assert len(label_values) == len(sts)
+            sts[0] = sts[0].over_label(label_title, label_values[0])
 
-        combo = pd.concat(dfs)
-        combo.index.name = "t"
-        combo.index = combo.index + t0
-        combo["t"] = combo.index
-        labels = LabelGroups.concat(
-            *[st.labels.offset(off) for st, off in zip(sts, offsets)]
-        )
+        newst = sts[0]
+        for i, st in enumerate(sts[1:],1):
+            if overlap > 0:
+                newst = newst.iloc[:-overlap]
 
-        return Cls(combo).label(labels)
+            if label_title:
+                st = st.over_label(label_title, label_values[i])
+
+            newst = Cls.concatenate(
+                [
+                    newst,
+                    st.shift_time(newst.t_end[-1] - st.data.index[0]),
+                ]
+            )
+
+        return newst
 
     @classmethod
-    def concatenate(Cls, sts: list) -> Self:
-        """Concatenate a list of Tables"""
+    def concatenate(Cls, sts: list[Table]) -> Self:
+        """Concatenate a list of Tables and recalculate the timesteps"""
         df = pd.concat([st.data for st in sts], axis=0)
         t = Time.from_t(df.t.to_numpy())
         df.t = t.t
         df.dt = t.dt
-        return Cls(df).label(**LabelGroups.concat([st.labels for st in sts]))
+        assert df.index.is_monotonic_increasing
+        return Cls(df).label(LabelGroups.concat(*[st.labels for st in sts]))
 
     def label(
         self,
@@ -303,7 +311,7 @@ class Table:
         for key, value in kwargs.items():
             newlg: LabelGroup = None
             if isinstance(value, str):
-                newlg = LabelGroup({value: Label(self.t[0], self.t_end[-1])})
+                newlg = LabelGroup({value: Label(self.t[0], self.t[-1])})
             elif isinstance(value, LabelGroup):
                 newlg = value
             elif pd.api.types.is_list_like(value):
@@ -317,6 +325,22 @@ class Table:
                 labelgroups[key] = newlg
 
         return self.__class__(self.data, LabelGroups(labelgroups))
+
+    def over_label(
+        self, title: str, value: str, child_groups: list[str] = None
+    ) -> Self:
+        """label with the value, make existing labels sublabels of the new label
+        if child_groups is not None, only the child groups are made sublabels"""
+        child_groups = (
+            list(self.labels.keys()) if child_groups is None else child_groups
+        )
+        labels = self.labels.filter_keys(lambda k: k in child_groups)
+        newlg = LabelGroup({value: Label(self.t[0], self.t[-1], labels)})
+
+        return self.label(
+            LabelGroups({title: newlg}),
+            **self.labels.filter_keys(lambda k: k not in child_groups).lgs,
+        )
 
     def remove_labels(self) -> Self:
         return self.__class__(self.data)

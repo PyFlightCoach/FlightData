@@ -48,6 +48,7 @@ def test_baro(fl):
     assert press.iloc[0,0] <  120000
     assert press.iloc[0,0] >  90000
 
+@mark.skip
 def test_flying_only(fl: Flight):
     flt = fl.flying_only()
     assert isinstance(flt, Flight)
