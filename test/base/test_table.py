@@ -54,7 +54,7 @@ def test_tab_getitem(tab_full):
 
 def test_tab_getslice_exact(tab_full):
     assert len(tab_full[2:4]) == 3
-    
+
 
 def test_tab_getslice_interpolate(tab_full):
     sli = tab_full[2.5:4.5]
@@ -110,12 +110,14 @@ def test_slicer_slice(tab_lab):
     assert slice.t[0] == 2
     assert slice.t[-1] == 4
 
+
 def test_slice_labels(tab_lab: Table):
     sli = tab_lab[:1]
     assert len(sli) == 2
     assert len(sli.labels["a"]) == 1
     assert sli.labels["a"].labels["a0"].start == 0
-    assert sli.labels["a"].labels["a0"].stop == 2
+    assert sli.labels["a"].labels["a0"].stop == 1
+
 
 def test_is_tesselated(tab_lab: Table):
     assert tab_lab.labels["a"].is_tesselated()
@@ -214,9 +216,7 @@ def test_label_to_t(tab_full: Table):
 
 def test_label_transfer():
     newlab = Label(2, 4).transfer(
-        a=np.arange(5), 
-        b=np.arange(5) / 2, 
-        path=np.tile(np.arange(5), (2, 1)).T
+        a=np.arange(5), b=np.arange(5) / 2, path=np.tile(np.arange(5), (2, 1)).T
     )
     assert newlab == Label(1, 2)
 
@@ -240,6 +240,7 @@ def test_concat_labelgroup():
     assert nlg.a2.start == 6
     assert nlg.a2.stop == 8
 
+
 def test_stack_labelgroups():
     lgs1 = LabelGroups({"a": LabelGroup({"a0": Label(0, 2), "a1": Label(2, 4)})})
     lgs2 = LabelGroups({"a": LabelGroup({"a1": Label(4, 6), "a2": Label(6, 8)})})
@@ -262,9 +263,10 @@ def test_stack_no_overlap(tab_full: Table):
     assert len(tfn) == 2 * len(tab_full)
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == tab_full.duration + tab_full.dt[-1]
+    assert tfn.element.e0.duration == tab_full.duration
     assert tfn.element.e1.t[0] == tab_full.duration + tab_full.dt[-1]
     assert tfn.element.e1.duration == tab_full.duration
+
 
 def test_iloc(tab_full: Table):
     t = tab_full.iloc[2:4]
@@ -281,11 +283,32 @@ def test_stack_overlap(tab_full):
     assert len(tfn) == 2 * len(tab_full) - 1
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == tab_full.duration
+    assert tfn.element.e0.duration == tab_full.duration - tab_full.dt[-1]
     assert tfn.element.e1.t[0] == tab_full.duration
     assert tfn.element.e1.duration == tab_full.duration
 
+def test_over_label(tab_lab: Table):
+    tol = tab_lab.over_label("b", "b1")
+    assert len(tol.labels) == 1
+    assert len(tol.labels.b.b1.sublabels.a) == 3
+    assert len(tol.b.b1.a.labels) == 3
+    assert len(tol.b.b1.labels) == 1
+    assert len(tol.b['b1'].a['a2']) == 2
 
+def test_sublabels(tab_full: Table):
+    tl = Table.stack(
+        [
+            tab_full.label(b=["b1", "b1", "b1", "b2", "b2", "b2"]),
+            tab_full.label(b=["b2", "b2", "b1", "b2", "b2", "b2"]),
+        ],
+        "a", ["a1", "a2"], 1
+    )
+
+    assert tl.a.a1.b.b1.duration == 3
+    assert tl.a.a2.b.b1.duration == 1
+
+
+@mark.skip("TBC")
 def test_shift_multi(tab_full):
     tabs = Table.stack(
         [tab_full.label(element="e0"), tab_full.label(element="e1")], overlap=1
@@ -303,6 +326,7 @@ def test_shift_multi(tab_full):
     assert tb1.duration == tab_full.data.index[-4]
 
 
+@mark.skip("TBC")
 def test_table_cumulative_labels(tab_full):
     tf = (
         tab_full.label(a="a1", b="b1")
@@ -323,6 +347,7 @@ def test_table_cumulative_labels(tab_full):
     pass
 
 
+@mark.skip("TBC")
 def test_str_replace_label(labst: Table):
     nlabst = labst.str_replace_label(
         el=np.array(

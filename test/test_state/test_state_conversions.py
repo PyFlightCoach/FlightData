@@ -31,7 +31,7 @@ def sl_wind_axis():
     ).extrapolate(10)
     
 
-def test_to_track_sim(sl_wind_axis):
+def test_to_track_sim(sl_wind_axis: State):
     body_axis = sl_wind_axis.superimpose_angles(Point(0, np.radians(20), 0))  
     
     judging = body_axis.to_track()

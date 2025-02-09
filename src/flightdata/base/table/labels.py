@@ -13,6 +13,7 @@ from geometry.utils import get_index, get_value
 class Label:
     start: float
     stop: float
+    sublabels: LabelGroups = field(default_factory=lambda: LabelGroups({}))
 
     def intersects(self, tstart: float, tstop) -> bool:
         """Check if this label intersects the table"""
@@ -34,7 +35,11 @@ class Label:
         return Label(get_value(t, self.start), get_value(t, self.stop))
 
     def slice(self, tstart: float, tstop: float):
-        return Label(max(self.start, tstart), min(self.stop, tstop))
+        return Label(
+            max(self.start, tstart),
+            min(self.stop, tstop),
+            self.sublabels.slice(tstart, tstop),
+        )
 
     def transfer(
         self,
@@ -54,7 +59,7 @@ class Label:
         # get the time in b
         b_t = b_iloc.to_t(b)
 
-        return b_t
+        return Label(b_t.start, b_t.stop, self.sublabels.transfer(a, b, path))
 
     def __eq__(self, other: Label):
         return self.start == other.start and self.stop == other.stop
@@ -129,7 +134,7 @@ class LabelGroup:
             for k, v in lg.items():
                 if k in new_labels:
                     if new_labels[k].stop == v.start:
-                        new_labels[k].stop = v.stop 
+                        new_labels[k].stop = v.stop
                     else:
                         raise ValueError(f"Labels {k} are not contiguous")
                 else:
@@ -176,21 +181,31 @@ class LabelGroup:
         )
 
     def scale(self, factor: float):
-        return self.update(lambda v: Label(v.start * factor, v.stop * factor))
+        return self.update(
+            lambda v: Label(
+                v.start * factor, v.stop * factor, v.sublabels.scale(factor)
+            )
+        )
 
     def offset(self, offset: float):
-        return self.update(lambda v: Label(v.start + offset, v.stop + offset))
+        return self.update(
+            lambda v: Label(
+                v.start + offset, v.stop + offset, v.sublabels.offset(offset)
+            )
+        )
 
     def transfer(
         self,
-        a: Table,
-        b: Table,
+        a: npt.NDArray,
+        b: npt.NDArray,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] | None,
     ):
         if path is None:
-            return self.offset(-a.t[0]).scale(b.duration / a.duration).offset(b.t[0])
+            return (
+                self.offset(-a.t[0]).scale((b[-1] - b[0]) / (a[-1] / a[0])).offset(b[0])
+            )
         else:
-            return self.update(lambda v: v.transfer(a.t, b.t, path))
+            return self.update(lambda v: v.transfer(a, b, path))
 
 
 @dataclass
@@ -219,13 +234,16 @@ class LabelGroups:
         return self.lgs[name]
 
     def update(self, fun: Callable[[LabelGroup], LabelGroup]):
-        return LabelGroups({k: fun(v) for k, v in self.lgs.items()})
+        return LabelGroups({k: fun(v) for k, v in self.items()})
 
     def __repr__(self):
-        return f"LabelGroups({','.join([str(k) for k in self.lgs.keys()])})"
+        return f"LabelGroups({','.join([str(k) for k in self.keys()])})"
 
     def filter(self, fun: Callable[[LabelGroup], bool]):
-        return LabelGroups({k: v for k, v in self.lgs.items() if fun(v)})
+        return LabelGroups({k: v for k, v in self.items() if fun(v)})
+
+    def filter_keys(self, fun: Callable[[str], bool]):
+        return LabelGroups({k: v for k, v in self.items() if fun(k)})
 
     def __len__(self):
         return len(self.lgs)
@@ -248,8 +266,8 @@ class LabelGroups:
 
     def transfer(
         self,
-        a: Table,
-        b: Table,
+        a: npt.NDArray,
+        b: npt.NDArray,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] | None,
     ):
         return self.update(lambda v: v.transfer(a, b, path))
@@ -258,7 +276,7 @@ class LabelGroups:
     def concat(*args: list[LabelGroups]):
         newlgs: dict[str, list[LabelGroup]] = {}
         for lgs in args:
-            for k, v in lgs.lgs.items():
+            for k, v in lgs.items():
                 if k not in newlgs:
                     newlgs[k] = []
                 newlgs[k].append(v)
@@ -272,7 +290,10 @@ class Slicer:
 
     def __getattr__(self, name):
         label = self.labels[name]
-        return self.data[label.start : label.stop]
+        res = self.data[label.start : label.stop]
+        if len(label.sublabels) > 0:
+            res = res.label(label.sublabels)
+        return res
 
     def __getitem__(self, name):
         return self.__getattr__(name)

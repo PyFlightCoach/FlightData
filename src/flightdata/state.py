@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Self, Tuple, Union, ClassVar
+from typing import Literal, Self, Tuple, Union, ClassVar, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -11,8 +11,10 @@ import geometry as g
 from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from schemas import fcj
 from flightdata.kinematics import interpolate
+from dataclasses import dataclass
 
 
+@dataclass
 class State(Table):
     constructs: ClassVar[Constructs] = Table.constructs + Constructs(
         [
@@ -50,6 +52,18 @@ class State(Table):
         ]
     )
     _construct_freq: ClassVar[float] = 25
+
+    @overload
+    def __getattr__(self, name: Literal['pos']) -> g.Point: ...
+    @overload
+    def __getattr__(self, att: str) -> g.Quaternion: ...
+    @overload
+    def __getattr__(self, vel: str) -> g.Point: ...
+    @overload
+    def __getattr__(self, rvel: str) -> g.Point: ...
+    @overload
+    def __getattr__(self, acc: str) -> g.Point: ...
+
 
     @property
     def transform(self):
