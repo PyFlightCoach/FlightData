@@ -29,7 +29,7 @@ class Label:
         return res
 
     def to_iloc(self, t: npt.NDArray):
-        return Label(get_index(t, self.start), get_index(t, self.stop))
+        return Label(get_index(t, self.start)[0], get_index(t, self.stop)[-1])
 
     def to_t(self, t: npt.NDArray):
         return Label(get_value(t, self.start), get_value(t, self.stop))
@@ -73,6 +73,9 @@ class Label:
 class LabelGroup:
     labels: dict[str, Label] = field(default_factory=lambda: {})
 
+    def __eq__(self, other: LabelGroup):
+        return all([v == other[k] for k, v in self.labels.items()])
+
     def __dict__(self):
         return self.labels
 
@@ -106,8 +109,13 @@ class LabelGroup:
     def __getattr__(self, name):
         return self.labels[name]
 
-    def __getitem__(self, name):
-        return self.labels[name]
+    def __getitem__(self, name: str | int):
+        if isinstance(name, str):
+            return self.labels[name]
+        elif isinstance(name, int):
+            return list(self.labels.values())[name]
+        else:
+            raise ValueError(f"Can only index labelgroup with int or str, got {name.__class__.__name__}")
 
     @property
     def empty(self):
@@ -212,6 +220,9 @@ class LabelGroup:
 class LabelGroups:
     lgs: dict[str, LabelGroup] = field(default_factory=lambda: {})
 
+    def __eq__(self, other: LabelGroup):
+        return all([v == other[k] for k, v in self.lgs.items()])
+
     def __dict__(self):
         return self.lgs
 
@@ -230,8 +241,14 @@ class LabelGroups:
         for k in self.lgs.keys():
             yield k
 
-    def __getitem__(self, name):
-        return self.lgs[name]
+    def __getitem__(self, name: str | int):
+        if isinstance(name, str):
+            return self.lgs[name]
+        elif isinstance(name, int):
+            return list(self.lgs.values())[name]
+        else:
+            raise ValueError(f"Can only index labelgroups with int or str, got {name.__class__.__name__}")
+
 
     def update(self, fun: Callable[[LabelGroup], LabelGroup]):
         return LabelGroups({k: fun(v) for k, v in self.items()})

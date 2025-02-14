@@ -1,10 +1,11 @@
-from typing import ClassVar
+from typing import ClassVar, overload, Literal
+from dataclasses import dataclass
 
 import numpy as np
 from geometry import P0, Base, Point, Time
 
 from flightdata import Constructs, Flight, Origin, SVar, Table
-from flightdata.environment.wind import WindModel, WindModelBuilder
+from flightdata.environment.wind import WindModel
 
 R = 287.058
 GAMMA = 1.4
@@ -29,7 +30,7 @@ class Air(Base):
     def from_pt(pressure, temperature):
         return Air(pressure, temperature, get_rho(pressure, temperature))
 
-
+@dataclass(repr=False)
 class Environment(Table):
     constructs: ClassVar[Constructs] = Table.constructs + Constructs(
         [
@@ -40,6 +41,13 @@ class Environment(Table):
         ]
     )
 
+    @overload
+    def __getattr__(self, key: Literal["atm"]) -> Air: ...
+    @overload
+    def __getattr__(self, key: Literal["wind"]) -> Point: ...
+    def __getattr__(self, key):
+        return super().__getattr__(key)
+    
     @staticmethod
     def from_flight_wmodel(flight: Flight, origin: Origin, wmodel: WindModel):
         return Environment.from_constructs(

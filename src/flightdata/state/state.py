@@ -10,11 +10,12 @@ import pandas as pd
 import geometry as g
 from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from schemas import fcj
-from flightdata.kinematics import interpolate
+from flightdata.base.table.labels import LabelGroup, LabelGroups, Slicer, Label
+from flightdata.state.kinematics import interpolate
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(repr=False)
 class State(Table):
     constructs: ClassVar[Constructs] = Table.constructs + Constructs(
         [
@@ -54,16 +55,24 @@ class State(Table):
     _construct_freq: ClassVar[float] = 25
 
     @overload
-    def __getattr__(self, name: Literal['pos']) -> g.Point: ...
+    def __getattr__(self, name: str) -> Slicer: ...
     @overload
-    def __getattr__(self, att: str) -> g.Quaternion: ...
+    def __getattr__(self, name: Literal["pos"]) -> g.Point: ...
     @overload
-    def __getattr__(self, vel: str) -> g.Point: ...
+    def __getattr__(self, name: Literal["att"]) -> g.Quaternion: ...
     @overload
-    def __getattr__(self, rvel: str) -> g.Point: ...
+    def __getattr__(self, name: Literal["vel"]) -> g.Point: ...
     @overload
-    def __getattr__(self, acc: str) -> g.Point: ...
+    def __getattr__(self, name: Literal["rvel"]) -> g.Point: ...
+    @overload
+    def __getattr__(self, name: Literal["acc"]) -> g.Point: ...
+    @overload
+    def __getattr__(
+        self, name: Literal["x,y,z,rw,rx,ry,rz,u,v,w,du,dv,dw"]
+    ) -> npt.NDArray: ...
 
+    def __getattr__(self, key):
+        return super().__getattr__(key)
 
     @property
     def transform(self):
@@ -122,6 +131,28 @@ class State(Table):
         npoints = np.max([int(np.ceil(duration / self.dt[0])), min_len])
         time = g.Time.from_t(np.linspace(0, duration, npoints))
         return self.fill(time)
+
+    @staticmethod
+    def from_dict(data: dict[str, float | str]):
+        data = pd.DataFrame.from_dict(data).set_index("t", drop=False)
+
+        st = State.build(data)
+        if "manoeuvre" in data.columns:
+            st = st.label(manoeuvre=data.manoeuvre.to_numpy())
+
+            if "element" in data.columns:
+                
+                for name, label in st.labels.manoeuvre.items():
+                    el_labels = {}
+                    for element in data.loc[data.manoeuvre == name].element.unique():
+                        elt = data.loc[(data.manoeuvre==name) & (data.element==element), ["t", "dt"]]
+                        el_labels[element] = Label(elt.iloc[0, 0], elt.iloc[-1, 0] + elt.iloc[-1, 1])
+                    label.sublabels = LabelGroups(dict(element=LabelGroup(el_labels)))
+
+        elif "element" in data.columns:
+            st = st.label(manoeuvre=data.element.to_numpy())
+
+        return st
 
     @staticmethod
     def from_csv(filename) -> State:
@@ -183,38 +214,7 @@ class State(Table):
             ),
         )
 
-    @staticmethod
-    def align(
-        flown: State,
-        template: State,
-        radius=5,
-        mirror=True,
-        weights: g.Point = None,
-        tp_weights: g.Point = None,
-    ) -> Tuple[float, Self]:
-        """Perform a temporal alignment between two sections. return the flown section with labels
-        copied from the template along the warped path.
-        """
-        from fastdtw.fastdtw import fastdtw
-        from scipy.spatial.distance import euclidean
-
-        weights = weights or g.Point(1, 1.2, 0.5)
-        tp_weights = tp_weights or g.Point(0.6, 0.6, 0.6)
-
-        def get_brv(brv):
-            if mirror:
-                brv = g.Point(
-                    np.abs(brv.x), brv.y, np.abs(brv.z)
-                )  # brv.abs() * g.Point(1, 0, 1) + brv * g.Point(0, 1, 0 )
-            return brv * weights
-
-        fl = get_brv(flown.rvel)
-
-        tp = get_brv(template.rvel * tp_weights)
-
-        distance, path = fastdtw(tp.data, fl.data, radius=radius, dist=euclidean)
-
-        return distance, State.copy_labels(template, flown, path, 3)
+    
 
     @staticmethod
     def kinematic_interpolation(a: State, b: State):
@@ -246,7 +246,7 @@ class State(Table):
         i1 = self.data.index.get_indexer([t], method="bfill")[0]
         if i0 == i1:
             return self.iloc(i0)
-        return self.kinematic_interpolation(self.iloc(i0), self.iloc(i1))(t)
+        return State.kinematic_interpolation(self.iloc(i0), self.iloc(i1))(t)
 
     def splitter_labels(
         self: State,
@@ -291,30 +291,6 @@ class State(Table):
             labels.append(split_man.name)
 
         return State.stack(labelled)
-
-    def label_els(self, els: list[fcj.El]):
-        return self.splitter_labels(
-            pd.DataFrame(els).to_dict("records"), target_col="element"
-        ).str_replace_label(
-            element=np.array(
-                [
-                    ["_break", ""],
-                    ["_autorotation", ""],
-                    ["_recovery", ""],
-                    ["_nose_drop", ""],
-                ]
-            ),
-        )
-
-    def get_manoeuvre(self: State, manoeuvre: Union[str, list, int]) -> Self:
-        return self.get_label_subset(manoeuvre=manoeuvre)
-
-    def get_element(
-        self: State, element: Union[str, list, int], subels: bool = False
-    ) -> Self:
-        return self.get_label_subset(
-            test="startswith" if subels else None, element=element
-        )
 
     def body_rotate(self: State, r: g.Point) -> State:
         """Rotate body axis by an axis angle"""
@@ -593,28 +569,26 @@ class State(Table):
         if reference == "body":
             rot = g.Quaternion.from_axis_angle(angles).inverse()
             return State.from_constructs(
-                    self.time,
-                    self.pos,
-                    self.att.body_rotate(angles),
-                    vel=rot.transform_point(self.vel),
-                    rvel=rot.transform_point(self.rvel)
-                    + angles.diff(self.dt),  # need to differentiate angles and add here
-                    acc=rot.transform_point(self.acc),
-                ).label(**self.labels)
+                self.time,
+                self.pos,
+                self.att.body_rotate(angles),
+                vel=rot.transform_point(self.vel),
+                rvel=rot.transform_point(self.rvel)
+                + angles.diff(self.dt),  # need to differentiate angles and add here
+                acc=rot.transform_point(self.acc),
+            ).label(**self.labels)
         else:
             att = self.att.rotate(angles)
             return State.from_constructs(
-                    self.time,
-                    self.pos,
-                    att,
-                    att.inverse().transform_point(self.att.transform_point(self.vel)),
-                    rvel=att.inverse().transform_point(
-                        self.att.transform_point(self.rvel) + angles.diff(self.dt)
-                    ),
-                    acc=att.inverse().transform_point(
-                        self.att.transform_point(self.acc)
-                    ),
-                ).label(**self.labels)
+                self.time,
+                self.pos,
+                att,
+                att.inverse().transform_point(self.att.transform_point(self.vel)),
+                rvel=att.inverse().transform_point(
+                    self.att.transform_point(self.rvel) + angles.diff(self.dt)
+                ),
+                acc=att.inverse().transform_point(self.att.transform_point(self.acc)),
+            ).label(**self.labels)
 
     def superimpose_rotation(
         self: State, axis: g.Point, angle: float, reference: str = "body"

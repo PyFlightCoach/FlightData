@@ -28,6 +28,11 @@ def tab_full(df):
 def test_table_init(tab_full: Table):
     np.testing.assert_array_equal(tab_full.data.columns, ["t", "dt"])
 
+def test_table_init_junk_cols(df: pd.DataFrame):
+    df = df.assign(junk=6)
+    tab = Table.build(df)
+    assert len(tab.data.columns) == 2
+    assert "junk" not in tab.data.columns
 
 def test_table_get_svar(tab_full: Table):
     assert isinstance(tab_full.time, Time)

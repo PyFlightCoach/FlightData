@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from numbers import Number
 from time import time
-from typing import Annotated, ClassVar, Literal, Self, Tuple
+from typing import Annotated, ClassVar, Literal, Self, Tuple, overload
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from geometry import Base, Time
+from geometry import Base, Time, Point
 
 from flightdata.base.table.constructs import Constructs, SVar
 
@@ -28,10 +28,8 @@ class Table:
     data: pd.DataFrame
     labels: LabelGroups = field(default_factory=lambda: LabelGroups())
 
-
     @overload
-    def __getattr__(self, pos: str) -> g.Point: ...
-
+    def __getattr__(self, name: Literal["time"]) -> Time: ...
 
     @property
     def t_end(self):
@@ -58,11 +56,13 @@ class Table:
 
         base_cols = [c for c in data.columns if c in Cls.constructs.cols()]
         # label_cols = [c for c in data.columns if c not in Cls.constructs.cols()]
+        
+        data = data.drop(columns=set(data.columns) - set(base_cols), errors="ignore")
 
         bcs = base_cols
         if data.loc[:, bcs].isnull().values.any():
             raise ValueError("nan values in data")
-
+        
         return Cls(data, labels).populate() if fill else Cls(data, labels)
 
     def populate(self):
@@ -97,7 +97,8 @@ class Table:
     def from_dict(Cls, data):
         if "data" in data:
             data = data["data"]
-        return Cls.build(pd.DataFrame.from_dict(data).set_index("t", drop=False))
+        
+        return Cls.build(data)
 
     def __len__(self):
         return len(self.data)
@@ -182,8 +183,11 @@ class Table:
     def iloc(self):
         @dataclass
         class ILocer:
-            def __getitem__(_, sli):
-                new_table = self.__class__(self.data.iloc[sli])
+            def __getitem__(_, sli: Number | slice) -> Table:
+                df = self.data.iloc[sli]
+                if isinstance(df, pd.Series):
+                    df = pd.DataFrame(df).T
+                new_table = self.__class__(df)
                 return new_table.label(
                     self.labels.slice(new_table.t[0], new_table.t[-1])
                 )
@@ -215,7 +219,7 @@ class Table:
     def __repr__(self):
         return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs.keys()])},duration={self.duration})"
 
-    def copy(self, *args, **kwargs) -> Table:
+    def copy(self, *args, **kwargs) -> Self:
         kwargs = dict(
             kwargs,
             **{list(self.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
@@ -276,7 +280,7 @@ class Table:
             sts[0] = sts[0].over_label(label_title, label_values[0])
 
         newst = sts[0]
-        for i, st in enumerate(sts[1:],1):
+        for i, st in enumerate(sts[1:], 1):
             if overlap > 0:
                 newst = newst.iloc[:-overlap]
 
@@ -305,6 +309,7 @@ class Table:
     def label(
         self,
         lgs: LabelGroups = None,
+        inplace=False,
         **kwargs: dict[str, LabelGroup | str | npt.NDArray],
     ) -> Self:
         labelgroups: dict[str, LabelGroup] = {} if lgs is None else lgs.lgs
@@ -323,8 +328,11 @@ class Table:
                 if key in labelgroups:
                     raise ValueError(f"Label {key} already exists")
                 labelgroups[key] = newlg
-
-        return self.__class__(self.data, LabelGroups(labelgroups))
+        new_lgs = LabelGroups(labelgroups)
+        if inplace:
+            self.labels = new_lgs
+        return self.__class__(self.data, new_lgs)
+        
 
     def over_label(
         self, title: str, value: str, child_groups: list[str] = None
@@ -365,165 +373,6 @@ class Table:
         else:
             return data.loc[sel]
 
-    def get_label_id(self, test: str = None, **kwargs) -> int | float:
-        dfo = Table.labselect(self.unique_labels(), test, **kwargs)
-        return dfo.index[0] if len(dfo) > 0 else list(dfo.index)
-
-    def get_subset_df(
-        self, test: str | None = None, offset: bool = True, **kwargs
-    ) -> pd.DataFrame:
-        return Table.labselect(self.data, test, offset, **kwargs)
-
-    def get_label_subset(self, min_len=1, test: str | None = None, **kwargs) -> Self:
-        return self.__class__(self.get_subset_df(test, **kwargs), min_len=min_len)
-
-    def get_label_len(self, test: str = None, offset=False, **kwargs) -> int:
-        try:
-            return len(self.get_subset_df(test, offset, **kwargs))
-        except Exception:
-            return 0
-
-    def unique_labels(self, cols=None) -> pd.DataFrame:
-        if cols is None:
-            cols = self.label_cols
-        elif isinstance(cols, str):
-            cols = [cols]
-        return (
-            self.data.loc[:, cols]
-            .reset_index(drop=True)
-            .drop_duplicates()
-            .reset_index(drop=True)
-        )
-
-    def shift_label(self, offset: int, min_len=None, test=None, **kwargs) -> Self:
-        """Shift the end of a label forwards or backwards by offset rows
-        Do not allow a label to be reduced to less than min_len"""
-        if min_len is None:
-            min_len = 1
-        ranges = self.label_ranges()
-
-        i = self.get_label_id(test, **kwargs)
-        labels: pd.DataFrame = self.labels.copy()
-        labcols = [labels.columns.get_loc(c) for c in kwargs.keys()]
-        if offset > 0 and i < len(ranges):
-            offset = min(offset, ranges.iloc[i + 1, -1] - min_len)
-            if offset > 0:
-                labels.iloc[
-                    ranges.iloc[i + 1].start : ranges.iloc[i + 1].start + offset,
-                    labcols,
-                ] = pd.Series(kwargs)
-        elif offset < 0:
-            offset = max(offset, -ranges.iloc[i, -1] + min_len)
-            if offset < 0:
-                labels.iloc[
-                    ranges.iloc[i].end + offset : ranges.iloc[i].end + 1, labcols
-                ] = ranges.iloc[i + 1].loc[kwargs.keys()]
-        return self.label(**labels.to_dict(orient="list"))
-
-    @classmethod
-    def shift_multi(
-        Cls, steps: int, tb1: Self, tb2: Self, min_len=1
-    ) -> Tuple[Self, Self]:
-        """Take datapoints off the start of tb2 and add to the end tb1"""
-        # if (steps>0 and len(tb2)-min_len<steps) or (steps<0 and min_len - len(tb1) > steps):
-        #    raise ValueError(f'Cannot Squash a Table to less than {min_len} datapoints')
-        tj = Cls.stack([tb1, tb2]).shift_label(
-            steps, min_len, **dict(tb1.labels.iloc[0])
-        )
-
-        return Cls(tj.get_subset_df(**dict(tb1.labels.iloc[0]))), Cls(
-            tj.get_subset_df(**dict(tb2.labels.iloc[0]))
-        )
-
-    def shift_label_ratio(self, ratio: float, min_len=None, **kwargs) -> Self:
-        """shift a label within its allowable bounds, with a ratio of
-        1 representing the maximum allowabe movement forwards or backwards
-        without squashing a label"""
-        ranges = self.label_ranges()
-        i = self.get_label_id(**kwargs)
-        if ratio > 0:
-            limit = ranges.iloc[i + 1, -1] - 2
-        else:
-            limit = ranges.iloc[i, -1] - 2
-
-        return self.shift_label(int(limit * ratio), min_len, **kwargs)
-
-    def shift_labels_ratios(self, ratios: list[float], min_len: int) -> Self:
-        assert len(ratios) == len(self.unique_labels()) - 1
-        res = self
-        for lab, ratio in zip(
-            [r[1] for r in self.unique_labels()[:-1].iterrows()], ratios
-        ):
-            res = res.shift_label_ratio(ratio, min_len, **lab)
-        return res
-
-    def label_range(self, t=False, **kwargs) -> tuple[int]:
-        """Get the first and last index of a label.
-        If t is True this gives the time, if False it gives the index"""
-        labs = self.get_subset_df(**kwargs)
-        if not t:
-            return self.data.index.get_indexer([labs.index[0]])[
-                0
-            ], self.data.index.get_indexer([labs.index[-1]])[0]
-        else:
-            return labs.index[0], labs.index[-1]
-
-    def label_ranges(self, cols: list[str] = None, t=False) -> pd.DataFrame:
-        """get the first and last index for each unique label"""
-        if cols is None:
-            cols = self.label_cols
-        df: pd.DataFrame = self.unique_labels(cols)
-        res = []
-        for row in df.iterrows():
-            res.append(list(self.label_range(t=t, **row[1].to_dict())))
-        df = pd.concat([df, pd.DataFrame(res, columns=["start", "end"])], axis=1)
-        df["length"] = df.end - df.start
-        return df
-
-    def single_labels(self) -> list[str]:
-        return ["_".join(r[1]) for r in self.data.loc[:, self.label_cols].iterrows()]
-
-    def label_lens(self) -> dict[str, int]:
-        return {k: len(v) for k, v in self.split_labels().items()}
-
-    def extract_single_label(self, lab) -> Self:
-        labs = np.array(self.single_labels())
-        return self.__class__(self.data[labs == lab])
-
-    def split_labels(self, cols: list[str] | str = None) -> dict[str, Self]:
-        """Split into multiple tables based on the labels"""
-        res = {}
-        for label in self.unique_labels(cols).iterrows():
-            ld = label[1].to_dict()
-            res["_".join(ld.values())] = self.get_label_subset(**ld)
-        return res
-
-    def cumulative_labels(self, *cols) -> Self:
-        """Return a string concatenation of the requested labels. append an indexer to the end
-        of the string for repeat descrete groups of the same label."""
-        cols = self.label_cols if len(cols) == 0 else cols
-        labs = self.data.loc[:, cols].stack().groupby(level=0).apply("_".join)
-
-        changes = labs.shift() != labs
-        new_labels = labs.loc[changes]
-        uls = []
-        for i, nl in enumerate(new_labels):
-            uls.append(sum(new_labels.iloc[:i] == nl))
-
-        df = pd.DataFrame(labs).assign(indexer=np.array(uls)[changes.cumsum() - 1])
-        strdf = df.copy()
-        strdf["indexer"] = strdf["indexer"].astype(int).astype(str)
-        strdf = strdf.stack().groupby(level=0).apply("_".join)
-        return strdf.values
-
-    def str_replace_label(self, **kwargs: dict[str, npt.NDArray[np.str_]]) -> Self:
-        """perform a string replace for labels"""
-        dfo = self.data.copy()
-        for k, v in kwargs.items():
-            for rep in v:
-                dfo[k] = dfo[k].str.replace(*rep)
-        return self.__class__(dfo)
-
     @staticmethod
     def copy_labels(
         template: Table,
@@ -539,5 +388,5 @@ class Table:
         """
 
         return flown.label(
-            **{k: v.transfer(template, flown, path) for k, v in template.labels.items()}
+            **{k: v.transfer(template.t, flown.t, path) for k, v in template.labels.items()}
         )
