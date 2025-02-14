@@ -113,18 +113,35 @@ class State(Table):
             return self.back_transform.point(pin)
 
     def fill(self, time: g.Time) -> State:
-        """Project forward through time assuming small angles and uniform circular motion"""
+        """Project forward through time assuming uniform circular motion"""
         st = self[-1]
         vel = st.vel.tile(len(time))
-        rvel = st.rvel.tile(len(time))
+        rvel = g.point.vector_rejection(self.rvel, self.vel).tile(len(time))
         att = st.att.body_rotate(rvel * time.t)
-        pos = (
-            g.Point.concatenate(
-                [g.P0(), (att.transform_point(vel) * time.dt).cumsum()[:-1]]
-            )
-            + st.pos
+
+        wvel = att.transform_point(self.vel)
+        wrvel = att.transform_point(rvel)
+        theta = wrvel * time.t
+
+        r = (
+            g.point.cross(wrvel[0], wvel[0]).unit()
+            * abs(wvel[0])[0]
+            / abs(g.point.vector_rejection(wrvel[0], wvel[0]))[0]
         )
-        return State.from_constructs(time, pos, att, vel, rvel)
+
+        center = self.pos + r
+
+        pos = center + g.Quaternion.from_axis_angle(theta).transform_point(-r)
+
+        return State.from_constructs(time, pos, att, vel, rvel).superimpose_angles(
+            g.point.vector_projection(self.rvel, self.vel).tile(len(time)).cumsum()
+            * time.dt
+        )
+
+    def plot(self, **kwargs):
+        from plotting import plotsec
+
+        return plotsec(self, **(dict(nmodels=10, ribb=True) | kwargs))
 
     def extrapolate(self, duration: float, min_len=3) -> State:
         """Extrapolate the input state assuming uniform circular motion and small angles"""
@@ -141,12 +158,16 @@ class State(Table):
             st = st.label(manoeuvre=data.manoeuvre.to_numpy())
 
             if "element" in data.columns:
-                
                 for name, label in st.labels.manoeuvre.items():
                     el_labels = {}
                     for element in data.loc[data.manoeuvre == name].element.unique():
-                        elt = data.loc[(data.manoeuvre==name) & (data.element==element), ["t", "dt"]]
-                        el_labels[element] = Label(elt.iloc[0, 0], elt.iloc[-1, 0] + elt.iloc[-1, 1])
+                        elt = data.loc[
+                            (data.manoeuvre == name) & (data.element == element),
+                            ["t", "dt"],
+                        ]
+                        el_labels[element] = Label(
+                            elt.iloc[0, 0], elt.iloc[-1, 0] + elt.iloc[-1, 1]
+                        )
                     label.sublabels = LabelGroups(dict(element=LabelGroup(el_labels)))
 
         elif "element" in data.columns:
@@ -214,11 +235,10 @@ class State(Table):
             ),
         )
 
-    
-
     @staticmethod
     def kinematic_interpolation(a: State, b: State):
-        def interp(t):
+        def interp(fac: float):
+            t = a.t[0] + fac * (b.t[0] - a.t[0])
             pos, vel, acc = interpolate(
                 a.t[0],
                 b.t[0],
@@ -227,16 +247,17 @@ class State(Table):
                 a.att.transform_point(a.vel)[0],
                 b.att.transform_point(b.vel)[0],
             )(t)
-            att = g.Quaternion.slerp(a.att[0], b.att[0])(t)
-            rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(t)
+            att = g.Quaternion.slerp(a.att[0], b.att[0])(fac)
+            rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(fac)
 
+            
             return State.from_constructs(
                 g.Time(t, b.t[0] - t),
                 pos,
                 att,
-                a.att.inverse().transform_point(vel),
+                att.inverse().transform_point(vel),
                 rvel,
-                a.att.inverse().transform_point(acc),
+                att.inverse().transform_point(acc),
             )
 
         return interp
@@ -245,8 +266,10 @@ class State(Table):
         i0 = self.data.index.get_indexer([t], method="ffill")[0]
         i1 = self.data.index.get_indexer([t], method="bfill")[0]
         if i0 == i1:
-            return self.iloc(i0)
-        return State.kinematic_interpolation(self.iloc(i0), self.iloc(i1))(t)
+            return self.iloc[i0]
+        return State.kinematic_interpolation(self.iloc[i0], self.iloc[i1])(
+            (t - self.t[i0]) / (self.t[i1] - self.t[i0])
+        )
 
     def splitter_labels(
         self: State,

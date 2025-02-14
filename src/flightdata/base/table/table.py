@@ -66,17 +66,17 @@ class Table:
         return Cls(data, labels).populate() if fill else Cls(data, labels)
 
     def populate(self):
-        data = self.data.copy()
+        newtab = self.__class__(self.data.copy(), self.labels)
         missing = self.__class__.constructs.missing(self.data.columns)
         for svar in missing:
             newdata = (
-                svar.builder(self)
-                .to_pandas(columns=svar.keys, index=self.data.index)
-                .loc[:, [key for key in svar.keys if key not in self.data.columns]]
+                svar.builder(newtab)
+                .to_pandas(columns=svar.keys, index=newtab.data.index)
+                .loc[:, [key for key in svar.keys if key not in newtab.data.columns]]
             )
-            data = pd.concat([data, newdata], axis=1)
+            newtab = self.__class__(pd.concat([newtab.data, newdata], axis=1), self.labels)
 
-        return self.__class__(data, self.labels)
+        return newtab
 
     def __getattr__(self, name: str) -> npt.NDArray | Base:
         if name in self.data.columns:
@@ -119,7 +119,7 @@ class Table:
         i0 = self.data.index.get_indexer([t], method="ffill")[0]
         i1 = self.data.index.get_indexer([t], method="bfill")[0]
         if i0 == i1:
-            return self.iloc(i0)
+            return self.iloc[i0]
         if i0 == -1 or i1 == -1:
             raise ValueError(f"Interpolation time {t} is outside the table range")
         t0 = self.data.index[i0]

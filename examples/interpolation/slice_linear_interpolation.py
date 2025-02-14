@@ -44,8 +44,10 @@ fig = plotsec(
 fig.show()
 
 
+st3 = State.from_constructs(st2.time, st2.pos, st2.att)
+
 accfig = go.Figure()
-for k, v in dict(base=st, linear=st1, kinematic=st2).items():
+for k, v in dict(base=st, linear=st1, kinematic=st2, derived=st3).items():
     accfig.add_trace(go.Scatter(x=v.t, y=v.dw, name=k, mode="lines"))
 # px.scatter(st.data).show()
 accfig.show()
