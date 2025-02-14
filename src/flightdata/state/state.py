@@ -119,19 +119,22 @@ class State(Table):
         rvel = g.point.vector_rejection(self.rvel, self.vel).tile(len(time))
         att = st.att.body_rotate(rvel * time.t)
 
-        wvel = att.transform_point(self.vel)
-        wrvel = att.transform_point(rvel)
-        theta = wrvel * time.t
+        if self.rvel != 0  and self.vel != 0:
+            wvel = att.transform_point(self.vel)
+            wrvel = att.transform_point(rvel)
+            theta = wrvel * time.t
 
-        r = (
-            g.point.cross(wrvel[0], wvel[0]).unit()
-            * abs(wvel[0])[0]
-            / abs(g.point.vector_rejection(wrvel[0], wvel[0]))[0]
-        )
+            r = (
+                g.point.cross(wrvel[0], wvel[0]).unit()
+                * abs(wvel[0])[0]
+                / abs(g.point.vector_rejection(wrvel[0], wvel[0]))[0]
+            )
 
-        center = self.pos + r
+            center = self.pos + r
 
-        pos = center + g.Quaternion.from_axis_angle(theta).transform_point(-r)
+            pos = center + g.Quaternion.from_axis_angle(theta).transform_point(-r)
+        else:
+            pos = self.pos + self.vel * time.t
 
         return State.from_constructs(time, pos, att, vel, rvel).superimpose_angles(
             g.point.vector_projection(self.rvel, self.vel).tile(len(time)).cumsum()

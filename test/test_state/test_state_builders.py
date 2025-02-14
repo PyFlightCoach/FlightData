@@ -29,7 +29,6 @@ def test_extrapolate_rot():
     )
 
     extrapolated = initial.extrapolate(10)
-    extrapolated.plot().show()
     checks.assert_almost_equal(extrapolated.pos[-1], g.P0(), 0)
 
 #    checkst = State.from_constructs(
@@ -77,9 +76,9 @@ def test_stack_singles():
 
 
 def test_fill():
-    _t = g.Time.from_t(np.linspace(0, 1, 11))
-    st0 = State.from_transform(g.Transformation.zero(), vel=g.PX(10))
-    st = st0.fill(_t)
+    t = g.Time.from_t(np.linspace(0, 1, 11))
+    st0 = State.from_transform(vel=g.PX(10))
+    st = st0.fill(t)
     assert len(st) == 11
     assert st.pos.x[0] == approx(0)
     assert st.pos.x[-1] == approx(10)
