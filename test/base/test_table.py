@@ -59,6 +59,7 @@ def test_tab_getitem(tab_full):
 
 def test_tab_getslice_exact(tab_full):
     assert len(tab_full[2:4]) == 3
+    assert tab_full[2:4].t[-1] == 4
 
 
 def test_tab_getslice_interpolate(tab_full):
@@ -288,7 +289,7 @@ def test_stack_overlap(tab_full):
     assert len(tfn) == 2 * len(tab_full) - 1
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == tab_full.duration - tab_full.dt[-1]
+    assert tfn.element.e0.duration == tab_full.duration
     assert tfn.element.e1.t[0] == tab_full.duration
     assert tfn.element.e1.duration == tab_full.duration
 

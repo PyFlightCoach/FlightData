@@ -282,7 +282,7 @@ class Table:
         newst = sts[0]
         for i, st in enumerate(sts[1:], 1):
             if overlap > 0:
-                newst = newst.iloc[:-overlap]
+                newst = Cls(newst.data.iloc[:-overlap, :]).label(newst.labels)
 
             if label_title:
                 st = st.over_label(label_title, label_values[i])
