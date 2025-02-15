@@ -1,6 +1,5 @@
 from __future__ import annotations
 import numpy as np
-import pandas as pd
 import numpy.typing as npt
 from geometry import Time
 from numbers import Number
@@ -29,7 +28,7 @@ class Label:
         return res
 
     def to_iloc(self, t: npt.NDArray):
-        return Label(get_index(t, self.start)[0], get_index(t, self.stop)[-1])
+        return Label(get_index(t, self.start)[0], get_index(t, self.stop)[0])
 
     def to_t(self, t: npt.NDArray):
         return Label(get_value(t, self.start), get_value(t, self.stop))
@@ -83,16 +82,13 @@ class LabelGroup:
         return self.values()
 
     def items(self):
-        for k, v in self.labels.items():
-            yield k, v
+        return self.labels.items()
 
     def values(self):
-        for v in self.labels.values():
-            yield v
+        self.labels.values()
 
     def keys(self):
-        for k in self.labels.keys():
-            yield k
+        return self.labels.keys()
 
     def update(self, fun: Callable[[Label], Label]):
         return LabelGroup({k: fun(v) for k, v in self.labels.items()})
@@ -230,16 +226,13 @@ class LabelGroups:
         return self.values()
 
     def items(self):
-        for k, v in self.lgs.items():
-            yield k, v
+        return self.lgs.items()
 
     def values(self):
-        for v in self.lgs.values():
-            yield v
+        return self.lgs.values()
 
     def keys(self):
-        for k in self.lgs.keys():
-            yield k
+        return self.lgs.keys()
 
     def __getitem__(self, name: str | int):
         if isinstance(name, str):

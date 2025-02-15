@@ -118,11 +118,12 @@ class State(Table):
         vel = st.vel.tile(len(time))
         rvel = g.point.vector_rejection(self.rvel, self.vel).tile(len(time))
         att = st.att.body_rotate(rvel * time.t)
+        wvel = att.transform_point(self.vel)
+        wrvel = att.transform_point(rvel)
+        t = time.t - time.t[0]
 
-        if self.rvel != 0  and self.vel != 0:
-            wvel = att.transform_point(self.vel)
-            wrvel = att.transform_point(rvel)
-            theta = wrvel * time.t
+        if self.rvel != 0  and self.vel != 0:    
+            theta = wrvel * t
 
             r = (
                 g.point.cross(wrvel[0], wvel[0]).unit()
@@ -134,17 +135,19 @@ class State(Table):
 
             pos = center + g.Quaternion.from_axis_angle(theta).transform_point(-r)
         else:
-            pos = self.pos + self.vel * time.t
+            pos = self.pos + wvel[0] * t
 
-        return State.from_constructs(time, pos, att, vel, rvel).superimpose_angles(
-            g.point.vector_projection(self.rvel, self.vel).tile(len(time)).cumsum()
-            * time.dt
-        )
+        return State.from_constructs(time, pos, att, vel, rvel)
 
     def plot(self, **kwargs):
         from plotting import plotsec
 
         return plotsec(self, **(dict(nmodels=10, ribb=True) | kwargs))
+
+    def plotlabels(self, label: str):
+        from plotting import plot_regions
+
+        return plot_regions(self, label)
 
     def extrapolate(self, duration: float, min_len=3) -> State:
         """Extrapolate the input state assuming uniform circular motion and small angles"""
