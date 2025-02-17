@@ -41,6 +41,15 @@ def test_from_old_dict():
     assert len(st.manoeuvre.hSqL.element.entry_line) == 4
 
 
+def test_to_old_dict():
+    st = State.from_transform(vel=g.PX(20)).extrapolate(0.5).label(element="e1")
+    data = st.to_dict()
+    st2 = State.from_dict(data)
+
+    pd.testing.assert_frame_equal(st.data, st2.data)
+    assert st.labels == st2.labels
+
+
 def test_align():
     st0 = State.from_transform(g.Transformation(g.Euler(np.pi, 0, 0)), vel=g.PX(30)).extrapolate(2)
     st1 = st0[-1].copy(rvel=g.PY(0.5)).extrapolate(2)

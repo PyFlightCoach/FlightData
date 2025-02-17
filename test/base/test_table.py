@@ -137,7 +137,7 @@ def test_label_intersects(tab_lab: Table):
 
 def test_label_contains():
     assert Label(7, 9).contains(8)
-    assert not Label(7, 9).contains(9)
+    assert Label(7, 9).contains(9)
     assert not Label(7, 9).contains(9.1)
     assert not Label(7, 9).contains(6.9)
     assert Label(7, 9).contains(7)
@@ -192,7 +192,7 @@ def test_shift_labels_ratios(tab_full: Table):
 
 
 def test_labels_dump_array(tab_lab: Table):
-    arr = tab_lab.labels["a"].to_array(tab_lab.time)
+    arr = tab_lab.labels.a.to_array(tab_lab.time)
     assert all(arr == ["a0", "a0", "a1", "a1", "a2", "a2"])
 
 
@@ -314,6 +314,25 @@ def test_sublabels(tab_full: Table):
     assert tl.a.a2.b.b1.duration == 1
 
 
+
+def test_set_boundaries(tab_lab: Table):
+    boundaries = tab_lab.labels.a.boundaries
+    np.testing.assert_array_equal(boundaries, [2, 4, 6])
+    newlabs = tab_lab.labels.a.set_boundaries([3,4,6])
+    assert newlabs.a0.stop == 3
+    assert newlabs.a1.start == 3
+ 
+    
+def test_set_boundary(tab_lab: Table):
+    assert tab_lab.labels.a.a0.stop == 2
+    assert tab_lab.labels.a.a1.start == 2
+    newlabs = tab_lab.labels.a.set_boundary("a0", 3, 1)
+    assert newlabs.a0.stop == 3
+    assert newlabs.a1.start == 3
+    with pytest.raises(ValueError):
+        newlabs = tab_lab.labels.a.set_boundary("a0", 4, 1)
+
+
 @mark.skip("TBC")
 def test_shift_multi(tab_full):
     tabs = Table.stack(
@@ -365,3 +384,4 @@ def test_str_replace_label(labst: Table):
     )
     assert sum(nlabst.data.el == "e1__") == sum(labst.data.el == "e1")
     assert sum(nlabst.data.el == "e2__") == sum(labst.data.el == "e2")
+

@@ -155,10 +155,14 @@ class State(Table):
         time = g.Time.from_t(np.linspace(0, duration, npoints))
         return self.fill(time)
 
+    def to_dict(self) -> dict[str, float | str]:
+        df = pd.concat([self.data, self.labels.to_df(self.time)], axis=1)
+        return df.to_dict(orient="records")
+
     @staticmethod
     def from_dict(data: dict[str, float | str]):
         data = pd.DataFrame.from_dict(data).set_index("t", drop=False)
-
+        data.index.name=None
         st = State.build(data)
         if "manoeuvre" in data.columns:
             st = st.label(manoeuvre=data.manoeuvre.to_numpy())
@@ -172,12 +176,12 @@ class State(Table):
                             ["t", "dt"],
                         ]
                         el_labels[element] = Label(
-                            elt.iloc[0, 0], elt.iloc[-1, 0] + elt.iloc[-1, 1]
+                            elt.iloc[0, 0], elt.iloc[-1, 0]
                         )
                     label.sublabels = LabelGroups(dict(element=LabelGroup(el_labels)))
 
         elif "element" in data.columns:
-            st = st.label(manoeuvre=data.element.to_numpy())
+            st = st.label(element=data.element.to_numpy())
 
         return st
 
