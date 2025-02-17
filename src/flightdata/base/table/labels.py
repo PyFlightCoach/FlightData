@@ -1,5 +1,7 @@
 from __future__ import annotations
+import enum
 import numpy as np
+import pandas as pd
 import numpy.typing as npt
 from geometry import Time
 from numbers import Number
@@ -8,8 +10,12 @@ from typing import Annotated, Literal, Callable
 from geometry.utils import get_index, get_value
 
 
+
 @dataclass
 class Label:
+    """Indicates the range where a label is active.
+    The range is inclusive
+    """
     start: float
     stop: float
     sublabels: LabelGroups = field(default_factory=lambda: LabelGroups({}))
@@ -18,13 +24,16 @@ class Label:
         """Check if this label intersects the table"""
         return self.start <= tstop and self.stop > tstart
 
-    def contains(self, t: npt.NDArray | Number | list[Number]) -> npt.NDArray:
+    def contains(self, t: npt.NDArray | Number | list[Number], inclusive: bool=True) -> npt.NDArray:
         if isinstance(t, Number):
             t = [t]
         t = np.array(t)
         res = np.full(t.shape, True)
         res[t < self.start] = False
-        res[t >= self.stop] = False
+        if inclusive:
+            res[t > self.stop] = False
+        else:
+            res[t >= self.stop] = False
         return res
 
     def to_iloc(self, t: npt.NDArray):
@@ -70,6 +79,9 @@ class Label:
 
 @dataclass
 class LabelGroup:
+    """Contains a dict of labels
+    They should be tesselated, so the stop of one label is the start of the next
+    """
     labels: dict[str, Label] = field(default_factory=lambda: {})
 
     def __eq__(self, other: LabelGroup):
@@ -85,7 +97,7 @@ class LabelGroup:
         return self.labels.items()
 
     def values(self):
-        self.labels.values()
+        return self.labels.values()
 
     def keys(self):
         return self.labels.keys()
@@ -111,7 +123,9 @@ class LabelGroup:
         elif isinstance(name, int):
             return list(self.labels.values())[name]
         else:
-            raise ValueError(f"Can only index labelgroup with int or str, got {name.__class__.__name__}")
+            raise ValueError(
+                f"Can only index labelgroup with int or str, got {name.__class__.__name__}"
+            )
 
     @property
     def empty(self):
@@ -156,7 +170,7 @@ class LabelGroup:
         if t:
             if not (lvs[0].start is None or lvs[0].start <= t.t[0]):
                 return False
-            if not (lvs[-1].stop is None or lvs[-1].stop >= t.t[-1] + t.dt[-1]):
+            if not (lvs[-1].stop is None or lvs[-1].stop >= t.t[-1]):
                 return False
 
         for v0, v1 in zip(lvs[:-1], lvs[1:]):
@@ -181,7 +195,7 @@ class LabelGroup:
     def to_array(self, data: Table):
         assert self.is_tesselated(data)
         return np.concatenate(
-            [np.full(sum(v.contains(data.t)), k) for k, v in self.labels.items()]
+            [np.full(sum(v.contains(data.t, False)), k) for k, v in self.labels.items()]
         )
 
     def scale(self, factor: float):
@@ -203,6 +217,7 @@ class LabelGroup:
         a: npt.NDArray,
         b: npt.NDArray,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] | None,
+        min_len: int = 1,
     ):
         if path is None:
             return (
@@ -210,6 +225,55 @@ class LabelGroup:
             )
         else:
             return self.update(lambda v: v.transfer(a, b, path))
+
+    @property
+    def boundaries(self) -> dict[str, float]:
+        return [v.stop for v in self.values()]
+
+    def set_boundaries(self, stops: list[float]):
+        """set the start and stop times of the labels, assumes tesselated"""
+        newlabels = {}
+        for i, (k, v) in enumerate(self.items()):
+            start = stops[i - 1] if i > 0 else v.start
+            stop = stops[i] if i < len(stops) else v.stop
+            newlabels[k] = Label(start, stop)
+        return LabelGroup(newlabels)
+
+    def set_boundary(self, key: str | int, value: float, min_duration: int=0):
+        """Set the stop time of a label, and the start of the next label"""
+        index = list(self.keys()).index(key) if isinstance(key, str) else key
+        if (
+            index <= len(self) - 1 - min_duration
+            and self[index].start + min_duration < value
+            and self[index + 1].stop - min_duration > value
+        ):
+            boundaries = self.boundaries
+            boundaries[index] = value
+            return self.set_boundaries(boundaries)
+        else:
+            raise ValueError(f"Cannot set boundary to {value} for label {key}")
+
+    def step_boundary(self, key: str | int, steps: int, t: npt.NDArray, min_len: int):
+        """Step the stop time of a label, and the start of the next label by steps timesteps"""
+        index = list(self.keys()).index(key) if isinstance(key, str) else key
+        new_iloc = t.index(self[index].stop) + steps
+        if new_iloc < len(t) - min_len and new_iloc > min_len:
+            return self.set_boundary(key, t[new_iloc], min_len)
+        else:
+            raise ValueError(f"Cannot step boundary for label {key}")
+
+
+    def unsquash(self, min_len: int, t: npt.NDArray):
+        ilocs = self.update(lambda v: v.to_iloc(t))
+
+        unsquashed = {}
+        shift_start = 0
+        shift_end = 0
+        for k, v in ilocs.items():
+            if v.stop - v.start < min_len:
+                shift_end += min_len - v.stop + v.start
+            
+
 
 
 @dataclass
@@ -240,8 +304,9 @@ class LabelGroups:
         elif isinstance(name, int):
             return list(self.lgs.values())[name]
         else:
-            raise ValueError(f"Can only index labelgroups with int or str, got {name.__class__.__name__}")
-
+            raise ValueError(
+                f"Can only index labelgroups with int or str, got {name.__class__.__name__}"
+            )
 
     def update(self, fun: Callable[[LabelGroup], LabelGroup]):
         return LabelGroups({k: fun(v) for k, v in self.items()})
@@ -291,6 +356,16 @@ class LabelGroups:
                     newlgs[k] = []
                 newlgs[k].append(v)
         return LabelGroups({k: LabelGroup.concat(*v) for k, v in newlgs.items()})
+
+    def to_df(self, time: Time):
+        return pd.DataFrame(
+            {k: v.to_array(time) for k, v in self.items()}, index=time.t
+        )
+
+    def step_boundary(self, group: str, key: str, steps: int, t: npt.NDArray, min_len: int):
+        return {
+            k: v.step_boundary(key, steps, t, min_len) if k == group else v for k, v in self.items()
+        }
 
 
 @dataclass

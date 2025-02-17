@@ -388,5 +388,9 @@ class Table:
         """
 
         return flown.label(
-            **{k: v.transfer(template.t, flown.t, path) for k, v in template.labels.items()}
+            **{k: v.transfer(template.t, flown.t, path, min_len) for k, v in template.labels.items()}
         )
+
+    def shift_label(self, group: str, name: str, steps: int, t: npt.NDArray, min_len: int) -> Self:
+        """Shift the label by steps rows"""
+        return self.__class__(self.data).label(self.labels.step_boundary(group, name, steps, t, min_len))
