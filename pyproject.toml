@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.1.3",
     "pandas>=2.2.3",
-    "pfc-geometry>=0.2.13",
+    "pfc-geometry",
 ]
 
 [project.scripts]
@@ -21,7 +21,7 @@ build-backend = "hatchling.build"
 
 
 [project.optional-dependencies]
-dataflash = ["ardupilot_log_reader>=0.3.5"]
+dataflash = ["ardupilot_log_reader"]
 
 [dependency-groups]
 dev = ["pytest>=8.3.3"]
