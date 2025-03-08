@@ -76,6 +76,12 @@ class Label:
     def is_valid(self):
         return self.start < self.stop
 
+    def to_dict(self):
+        return {"start": self.start, "stop": self.stop, "sublabels": self.sublabels.to_dict()}
+
+    @staticmethod
+    def from_dict(data):
+        return Label(data['start'], data['stop'], LabelGroups.from_dict(data['sublabels']))
 
 @dataclass
 class LabelGroup:
@@ -135,13 +141,16 @@ class LabelGroup:
     def read_array(t: Time, labels: npt.NDArray):
         if len(labels.shape) > 1:
             raise ValueError("Label data must be 1D")
-
+        if len(labels) == len(t):
+            labels= labels[:-1]
+        assert len(labels) == len(t) - 1
+        labnames = pd.unique(labels)
         data = {}
-        for label_name in np.unique(labels):
+        for i, label_name in enumerate(labnames):
             indeces = np.argwhere(labels == label_name)
             tstart = t[indeces[0]]
-            tstop = t[indeces[-1]]
-            data[label_name] = Label(tstart.t[0], tstop.t[0] + tstop.dt[0])
+            tstop = t[indeces[-1] + 1]
+            data[label_name] = Label(tstart.t[0], tstop.t[0])
 
         return LabelGroup(data)
 
@@ -195,7 +204,7 @@ class LabelGroup:
     def to_array(self, data: Table):
         assert self.is_tesselated(data)
         return np.concatenate(
-            [np.full(sum(v.contains(data.t, False)), k) for k, v in self.labels.items()]
+            [np.full(sum(v.contains(data.t, i == len(self.labels) - 1)), k) for i, (k, v) in enumerate(self.labels.items())]
         )
 
     def scale(self, factor: float):
@@ -245,7 +254,7 @@ class LabelGroup:
         if (
             index <= len(self) - 1 - min_duration
             and self[index].start + min_duration < value
-            and self[index + 1].stop - min_duration > value
+            and self[index + 1].stop - min_duration >= value
         ):
             boundaries = self.boundaries
             boundaries[index] = value
@@ -256,9 +265,9 @@ class LabelGroup:
     def step_boundary(self, key: str | int, steps: int, t: npt.NDArray, min_len: int):
         """Step the stop time of a label, and the start of the next label by steps timesteps"""
         index = list(self.keys()).index(key) if isinstance(key, str) else key
-        new_iloc = t.index(self[index].stop) + steps
+        new_iloc = np.where(t==self[index].stop)[0][0] + steps
         if new_iloc < len(t) - min_len and new_iloc > min_len:
-            return self.set_boundary(key, t[new_iloc], min_len)
+            return self.set_boundary(key, t[new_iloc], min_len * np.gradient(t).mean())
         else:
             raise ValueError(f"Cannot step boundary for label {key}")
 
@@ -274,7 +283,12 @@ class LabelGroup:
                 shift_end += min_len - v.stop + v.start
             
 
+    def to_dict(self):
+        return {k: v.to_dict() for k, v in self.labels.items()}
 
+    @staticmethod
+    def from_dict(data: dict[str, dict]):
+        return LabelGroup({k: Label.from_dict(v) for k, v in data.items()})
 
 @dataclass
 class LabelGroups:
@@ -363,9 +377,26 @@ class LabelGroups:
         )
 
     def step_boundary(self, group: str, key: str, steps: int, t: npt.NDArray, min_len: int):
-        return {
+        return LabelGroups({
             k: v.step_boundary(key, steps, t, min_len) if k == group else v for k, v in self.items()
-        }
+        })
+
+    def set_boundary(self, group: str, key: str, new_t: float, min_duration: float):
+        return LabelGroups({
+            k: v.set_boundary(key, new_t, min_duration) if k == group else v for k, v in self.items()
+        })
+
+    def set_boundaries(self, group: str, boundaries: npt.NDArray):
+        return LabelGroups({
+            k: v.set_boundaries(boundaries) if k == group else v for k, v in self.items()
+        })
+
+    def to_dict(self):
+        return {k: v.to_dict() for k, v in self.lgs.items()}
+    
+    @staticmethod
+    def from_dict(data: dict[str, dict]):
+        return LabelGroups({k: LabelGroup.from_dict(v) for k, v in data.items()})
 
 
 @dataclass

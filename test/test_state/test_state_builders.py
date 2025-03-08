@@ -83,15 +83,23 @@ def test_fill():
     assert st.pos.x[0] == approx(0)
     assert st.pos.x[-1] == approx(10)
 
+def test_fill_zero_v():
+    t = g.Time.from_t(np.linspace(0, 1, 11))
+    st0 = State.from_transform(vel=g.P0(), rvel=g.P0())
+    st = st0.fill(t)
+    assert len(st) == 11
+    assert st.pos.x[0] == approx(0)
+    assert st.pos.x[-1] == approx(0)
 
 def test_fill_vart():
     _dt = np.full(11, 0.1)
-    _dt[::2] = 0.11
+    _dt[::2] = 0.2
     _t = g.Time.from_t(np.cumsum(_dt))
     q = 2 * np.pi / 10
     st0 = State.from_transform(g.Transformation.zero(), vel=g.PX(10), rvel=g.PY(q))
     st = st0.fill(_t)
     np.testing.assert_array_equal(st.q, np.full(11, q))
+    assert st.zero_g_acc().z == approx(-6.28318531)
 
 
 @fixture(scope="session")

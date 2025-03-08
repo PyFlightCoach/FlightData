@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from ast import Num
 from dataclasses import dataclass, field
+from hmac import new
 from numbers import Number
 from time import time
 from typing import Annotated, ClassVar, Literal, Self, Tuple, overload
@@ -8,8 +10,8 @@ from typing import Annotated, ClassVar, Literal, Self, Tuple, overload
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from geometry import Base, Time, Point
-
+from geometry import Base, Time
+from geometry.utils import get_value
 from flightdata.base.table.constructs import Constructs, SVar
 
 from .labels import Label, LabelGroup, Slicer, LabelGroups
@@ -56,14 +58,24 @@ class Table:
 
         base_cols = [c for c in data.columns if c in Cls.constructs.cols()]
         # label_cols = [c for c in data.columns if c not in Cls.constructs.cols()]
+        lab_cols = list(set(data.columns) - set(base_cols))
+        labdf = data.loc[:, lab_cols]
         
-        data = data.drop(columns=set(data.columns) - set(base_cols), errors="ignore")
-
-        bcs = base_cols
-        if data.loc[:, bcs].isnull().values.any():
+#        if lab_cols:
+#            labdf = data.loc[:, lab_cols]
+#            data = data.drop(columns=lab_cols, errors="ignore")
+#            if labels is None:
+#                labels = LabelGroups({k: LabelGroup.read_array(data.t, v) for k, v in labdf.items()})
+        
+        if data.loc[:, base_cols].isnull().values.any():
             raise ValueError("nan values in data")
-        
-        return Cls(data, labels).populate() if fill else Cls(data, labels)
+
+        instance = Cls(data.loc[:, base_cols], labels).populate() if fill else Cls(data.loc[:, base_cols], labels)
+
+        if len(labdf.columns) and not len(labels):
+            return instance.nest_labels(**labdf.to_dict(orient="list"))
+        else:
+            return instance
 
     def populate(self):
         newtab = self.__class__(self.data.copy(), self.labels)
@@ -74,7 +86,9 @@ class Table:
                 .to_pandas(columns=svar.keys, index=newtab.data.index)
                 .loc[:, [key for key in svar.keys if key not in newtab.data.columns]]
             )
-            newtab = self.__class__(pd.concat([newtab.data, newdata], axis=1), self.labels)
+            newtab = self.__class__(
+                pd.concat([newtab.data, newdata], axis=1), self.labels
+            )
 
         return newtab
 
@@ -89,16 +103,23 @@ class Table:
         else:
             raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dict(self):
-        # TODO - add labels
-        return self.data.to_dict(orient="records")
-
+    def to_dict(self) -> dict[str, dict]:
+        return dict(
+            data=self.data.to_dict(orient="list"),
+            labels=self.labels.to_dict(),
+        )
+    
     @classmethod
-    def from_dict(Cls, data):
-        if "data" in data:
-            data = data["data"]
-        
-        return Cls.build(data)
+    def from_dict(Cls, data: dict | list[dict]) -> Self:
+        if not isinstance(data, list):
+            df = pd.DataFrame.from_dict(data["data"]).set_index("t",drop=False)
+            labels = LabelGroups.from_dict(data["labels"])
+            return Cls.build(df, labels, True)
+        else:
+            if "data" in data:
+                data = data["data"]
+            df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
+            return Cls.build(df)
 
     def __len__(self):
         return len(self.data)
@@ -184,19 +205,26 @@ class Table:
         @dataclass
         class ILocer:
             def __getitem__(_, sli: Number | slice) -> Table:
-                df = self.data.iloc[sli]
-                if isinstance(df, pd.Series):
-                    df = pd.DataFrame(df).T
-                new_table = self.__class__(df)
-                return new_table.label(
-                    self.labels.slice(new_table.t[0], new_table.t[-1])
-                )
+
+                return self[get_value(self.t, sli)]
+#                if isinstance(sli, Number):
+#                    pass
+#                df = self.data.iloc[sli]
+#                if isinstance(df, pd.Series):
+#                    df = pd.DataFrame(df).T
+#                new_table = self.__class__(df)
+#                return new_table.label(
+#                    self.labels.slice(new_table.t[0], new_table.t[-1])
+#                )
 
         return ILocer()
 
     def __iter__(self):
         for t in list(self.data.index):
             yield self[t]
+
+    def __eq__(self, other: Self):
+        return self.data.equals(other.data) and self.labels == other.labels
 
     @classmethod
     def from_constructs(Cls, *args, **kwargs) -> Self:
@@ -262,7 +290,7 @@ class Table:
     @classmethod
     def stack(
         Cls,
-        sts: list[Table],
+        sts: list[Table] | dict[str, Table],
         label_title: str = None,
         label_values: list[str] = None,
         overlap: Literal[0, 1] = 1,
@@ -272,6 +300,9 @@ class Table:
         Existing labels will be moved to sublabels if label_title is not None
         otherwise they will be concatenated.
         """
+        if isinstance(sts, dict):
+            label_values = list(sts.keys())
+            sts = list(sts.values())
         if len(sts) == 1:
             return sts[0]
 
@@ -282,7 +313,10 @@ class Table:
         newst = sts[0]
         for i, st in enumerate(sts[1:], 1):
             if overlap > 0:
+                next_t = newst.t[-overlap]
                 newst = Cls(newst.data.iloc[:-overlap, :]).label(newst.labels)
+            else:
+                next_t = newst.t[-1] + newst.dt[-1]
 
             if label_title:
                 st = st.over_label(label_title, label_values[i])
@@ -290,7 +324,7 @@ class Table:
             newst = Cls.concatenate(
                 [
                     newst,
-                    st.shift_time(newst.t_end[-1] - st.data.index[0]),
+                    st.shift_time(next_t - st.data.index[0]),
                 ]
             )
 
@@ -332,7 +366,22 @@ class Table:
         if inplace:
             self.labels = new_lgs
         return self.__class__(self.data, new_lgs)
+
+    def nest_labels(self, **kwargs: dict[str, npt.NDArray]) -> Self:
+        first_key = list(kwargs.keys())[0]
+        first_values = list(kwargs.values())[0]
+        newst=self.label(**{first_key: first_values})
         
+        if len(kwargs) == 1:
+            return newst
+        else:
+            sts = []
+            for name, label in newst.labels[first_key].items():
+                iloc = label.to_iloc(newst.t)
+                sublabels = {k: v[iloc.start: iloc.stop] for k, v in kwargs.items() if k != first_key}
+                sts.append(getattr(newst, first_key)[name].nest_labels(**sublabels))
+
+            return self.__class__.stack(sts, first_key, pd.unique(first_values))     
 
     def over_label(
         self, title: str, value: str, child_groups: list[str] = None
@@ -388,9 +437,26 @@ class Table:
         """
 
         return flown.label(
-            **{k: v.transfer(template.t, flown.t, path, min_len) for k, v in template.labels.items()}
+            **{
+                k: v.transfer(template.t, flown.t, path, min_len)
+                for k, v in template.labels.items()
+            }
         )
 
-    def shift_label(self, group: str, name: str, steps: int, t: npt.NDArray, min_len: int) -> Self:
+    def step_label(
+        self, group: str, name: str, steps: int, t: npt.NDArray, min_len: int
+    ) -> Self:
         """Shift the label by steps rows"""
-        return self.__class__(self.data).label(self.labels.step_boundary(group, name, steps, t, min_len))
+        return self.__class__(self.data).label(
+            self.labels.step_boundary(group, name, steps, t, min_len)
+        )
+
+    def move_label(self, group: str, name: str, t: float, min_duration: float=0) -> Self:
+        return self.__class__(self.data).label(
+            self.labels.set_boundary(group, name, t, min_duration)
+        )
+
+    def set_boundaries(self, group: str, boundaries: npt.NDArray) -> Self:
+        return self.__class__(self.data).label(
+            self.labels.set_boundaries(group, boundaries)
+        )

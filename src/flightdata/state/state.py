@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Self, Tuple, Union, ClassVar, overload
+from typing import Literal, ClassVar, overload
 
+from matplotlib.pyplot import cla
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -112,32 +113,53 @@ class State(Table):
         else:
             return self.back_transform.point(pin)
 
+    @property
+    def wvel(self) -> g.Point:
+        return self.att.transform_point(self.vel)
+
+    @property
+    def wacc(self) -> g.Point:
+        return self.att.transform_point(self.acc)
+
+    @property
+    def wrvel(self) -> g.Point:
+        return self.att.transform_point(self.rvel)
+
     def fill(self, time: g.Time) -> State:
         """Project forward through time assuming uniform circular motion"""
         st = self[-1]
-        vel = st.vel.tile(len(time))
-        rvel = g.point.vector_rejection(self.rvel, self.vel).tile(len(time))
-        att = st.att.body_rotate(rvel * time.t)
-        wvel = att.transform_point(self.vel)
-        wrvel = att.transform_point(rvel)
         t = time.t - time.t[0]
 
-        if self.rvel != 0  and self.vel != 0:    
+        vel: g.Point = st.vel.tile(len(time))
+        rvel = (
+            g.point.vector_rejection(self.rvel, self.vel).tile(len(time))
+            if self.vel != 0
+            else self.rvel.tile(len(time))
+        )
+        att: g.Quaternion = st.att.body_rotate(rvel * t)
+        wvel = att.transform_point(self.vel)
+        wrvel = att.transform_point(rvel)
+
+        if self.rvel != 0 and self.vel != 0:
             theta = wrvel * t
 
-            r = (
+            r0 = (
                 g.point.cross(wrvel[0], wvel[0]).unit()
                 * abs(wvel[0])[0]
                 / abs(g.point.vector_rejection(wrvel[0], wvel[0]))[0]
             )
 
-            center = self.pos + r
-
-            pos = center + g.Quaternion.from_axis_angle(theta).transform_point(-r)
+            center = self.pos + r0
+            radius = g.Quaternion.from_axis_angle(theta).transform_point(-r0)
+            acc = -radius.unit() * abs(wvel[0]) ** 2 / abs(radius) + g.PZ(9.81, len(time))
+            pos = center + radius
         else:
             pos = self.pos + wvel[0] * t
+            acc = g.PZ(9.81, len(time))
 
-        return State.from_constructs(time, pos, att, vel, rvel)
+        return State.from_constructs(
+            time, pos, att, vel, rvel, att.inverse().transform_point(acc)
+        )
 
     def plot(self, **kwargs):
         from plotting import plotsec
@@ -155,36 +177,46 @@ class State(Table):
         time = g.Time.from_t(np.linspace(0, duration, npoints))
         return self.fill(time)
 
-    def to_dict(self) -> dict[str, float | str]:
-        df = pd.concat([self.data, self.labels.to_df(self.time)], axis=1)
-        return df.to_dict(orient="records")
 
-    @staticmethod
-    def from_dict(data: dict[str, float | str]):
-        data = pd.DataFrame.from_dict(data).set_index("t", drop=False)
-        data.index.name=None
-        st = State.build(data)
-        if "manoeuvre" in data.columns:
-            st = st.label(manoeuvre=data.manoeuvre.to_numpy())
-
-            if "element" in data.columns:
-                for name, label in st.labels.manoeuvre.items():
-                    el_labels = {}
-                    for element in data.loc[data.manoeuvre == name].element.unique():
-                        elt = data.loc[
-                            (data.manoeuvre == name) & (data.element == element),
-                            ["t", "dt"],
-                        ]
-                        el_labels[element] = Label(
-                            elt.iloc[0, 0], elt.iloc[-1, 0]
-                        )
-                    label.sublabels = LabelGroups(dict(element=LabelGroup(el_labels)))
-
-        elif "element" in data.columns:
-            st = st.label(element=data.element.to_numpy())
-
-        return st
-
+    @classmethod
+    def from_dict(Cls, data: list[dict[str, float | str]] | dict[str, dict]) -> State:
+        if isinstance(data, list):
+            # need to reorder the label columns to make sure the labels are nested correctly
+            df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
+            iman = df.columns.get_loc("manoeuvre")
+            iel = df.columns.get_loc("element")
+            if iman != -1 and iel != -1:
+                cols = df.columns.to_list()
+                cols[min(iman, iel)] = "manoeuvre"
+                cols[max(iman, iel)] = "element"
+                df = df.reindex(cols, axis=1)
+                data = df.to_dict("records")
+        return super().from_dict(data)  
+    
+#    @staticmethod
+#    def from_dict(data: dict[str, float | str]):
+#        data = pd.DataFrame.from_dict(data).set_index("t", drop=False)
+#        data.index.name = None
+#        st = State.build(data)
+#        if "manoeuvre" in data.columns:
+#            st = st.label(manoeuvre=data.manoeuvre.to_numpy())
+#
+#            if "element" in data.columns:
+#                for name, label in st.labels.manoeuvre.items():
+#                    el_labels = {}
+#                    for element in data.loc[data.manoeuvre == name].element.unique():
+#                        elt = data.loc[
+#                            (data.manoeuvre == name) & (data.element == element),
+#                            ["t", "dt"],
+#                        ]
+#                        el_labels[element] = Label(elt.iloc[0, 0], elt.iloc[-1, 0])
+#                    label.sublabels = LabelGroups(dict(element=LabelGroup(el_labels)))
+#
+#        elif "element" in data.columns:
+#            st = st.label(element=data.element.to_numpy())
+#
+#        return st
+#
     @staticmethod
     def from_csv(filename) -> State:
         df = pd.read_csv(filename)
@@ -244,7 +276,28 @@ class State(Table):
                 else None
             ),
         )
+    
 
+    def interpolate(self, t: float):
+        """This overrides the default linear interpolation on the base class"""
+        i0 = self.data.index.get_indexer([t], method="ffill")[0]
+        i1 = self.data.index.get_indexer([t], method="bfill")[0]
+        if i0 == i1:
+            return self.iloc[i0]
+        if i0 == -1 or i1 == -1:
+            raise ValueError(f"Interpolation time {t} is outside the table range")
+        t0 = self.data.index[i0]
+        t1 = self.data.index[i1]
+        loc = i0 + (t - t0) / (t1 - t0)
+        return State.from_constructs(
+            self.time.interpolate(loc, "linterp"),
+            self.pos.spline_interp(self.time.t)(t),
+            g.Quaternion.slerp(self.att[i0], self.att[i1])(loc),
+            self.vel.spline_interp(self.time.t)(t),
+            self.rvel.spline_interp(self.time.t)(t),
+            self.acc.spline_interp(self.time.t)(t),
+        )
+    
     @staticmethod
     def kinematic_interpolation(a: State, b: State):
         def interp(fac: float):
@@ -260,7 +313,6 @@ class State(Table):
             att = g.Quaternion.slerp(a.att[0], b.att[0])(fac)
             rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(fac)
 
-            
             return State.from_constructs(
                 g.Time(t, b.t[0] - t),
                 pos,
@@ -705,8 +757,10 @@ class State(Table):
             ),
             axis,
         )
-        po.data[-1, :] = np.nan
-        return po.ffill()
+        return po
+
+    #        po.data[-1, :] = np.nan
+    #        return po.ffill()
 
     def F_gravity(self, mass: g.Mass):
         """Returns the gravitational force in N"""

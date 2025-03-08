@@ -28,11 +28,13 @@ def tab_full(df):
 def test_table_init(tab_full: Table):
     np.testing.assert_array_equal(tab_full.data.columns, ["t", "dt"])
 
+
 def test_table_init_junk_cols(df: pd.DataFrame):
     df = df.assign(junk=6)
     tab = Table.build(df)
     assert len(tab.data.columns) == 2
     assert "junk" not in tab.data.columns
+
 
 def test_table_get_svar(tab_full: Table):
     assert isinstance(tab_full.time, Time)
@@ -85,7 +87,7 @@ def test_labelgroup_read_array(tab_full, label_array):
     assert lg.a1.start == tab_full.data.index[2]
     assert lg.a1.stop == tab_full.data.index[4]
     assert lg.a2.start == tab_full.data.index[4]
-    assert lg.a2.stop == tab_full.data.index[-1] + tab_full.data.dt[4]
+    assert lg.a2.stop == tab_full.data.index[-1]
 
 
 @fixture
@@ -196,6 +198,17 @@ def test_labels_dump_array(tab_lab: Table):
     assert all(arr == ["a0", "a0", "a1", "a1", "a2", "a2"])
 
 
+def test_labels_dump_array_full(tab_full: Table):
+    tlab = tab_full.label(a="a0")
+    arr = tlab.labels.a.to_array(tab_full.time)
+    assert all(arr == ["a0", "a0", "a0", "a0", "a0", "a0"])
+
+
+def test_labelgroupss_to_df(tab_lab: Table):
+    df = tab_lab.labels.to_df(tab_lab.time)
+    assert len(df) == 6
+
+
 def test_label_to_iloc(tab_full: Table):
     lab = Label(2, 4).to_iloc(tab_full.t)
     assert lab.start == 2
@@ -293,13 +306,15 @@ def test_stack_overlap(tab_full):
     assert tfn.element.e1.t[0] == tab_full.duration
     assert tfn.element.e1.duration == tab_full.duration
 
+
 def test_over_label(tab_lab: Table):
     tol = tab_lab.over_label("b", "b1")
     assert len(tol.labels) == 1
     assert len(tol.labels.b.b1.sublabels.a) == 3
     assert len(tol.b.b1.a.labels) == 3
     assert len(tol.b.b1.labels) == 1
-    assert len(tol.b['b1'].a['a2']) == 2
+    assert len(tol.b["b1"].a["a2"]) == 2
+
 
 def test_sublabels(tab_full: Table):
     tl = Table.stack(
@@ -307,22 +322,23 @@ def test_sublabels(tab_full: Table):
             tab_full.label(b=["b1", "b1", "b1", "b2", "b2", "b2"]),
             tab_full.label(b=["b2", "b2", "b1", "b2", "b2", "b2"]),
         ],
-        "a", ["a1", "a2"], 1
+        "a",
+        ["a1", "a2"],
+        1,
     )
 
     assert tl.a.a1.b.b1.duration == 3
     assert tl.a.a2.b.b1.duration == 1
 
 
-
 def test_set_boundaries(tab_lab: Table):
     boundaries = tab_lab.labels.a.boundaries
-    np.testing.assert_array_equal(boundaries, [2, 4, 6])
-    newlabs = tab_lab.labels.a.set_boundaries([3,4,6])
+    np.testing.assert_array_equal(boundaries, [2, 4, 5])
+    newlabs = tab_lab.labels.a.set_boundaries([3, 4, 6])
     assert newlabs.a0.stop == 3
     assert newlabs.a1.start == 3
- 
-    
+
+
 def test_set_boundary(tab_lab: Table):
     assert tab_lab.labels.a.a0.stop == 2
     assert tab_lab.labels.a.a1.start == 2
@@ -331,6 +347,28 @@ def test_set_boundary(tab_lab: Table):
     assert newlabs.a1.start == 3
     with pytest.raises(ValueError):
         newlabs = tab_lab.labels.a.set_boundary("a0", 4, 1)
+
+
+def test_nest_labels_single():
+    table = Table.from_constructs(Time.from_t(np.arange(10)))
+    a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
+    tlab = table.nest_labels(a=a)
+    assert tlab.labels.a.a1 == Label(0, 5)
+    assert tlab.labels.a.a2 == Label(5, 9)
+
+def test_nest_labels_multi():
+    table = Table.from_constructs(Time.from_t(np.arange(10)))
+    a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
+
+    b=np.concatenate([np.full(2, "b1"), np.full(3, "b2"), np.full(2, "b1"), np.full(3, "b2")])
+    tlab = table.nest_labels(a=a, b=b)
+    assert tlab.labels.a.a1 == Label(0, 5)
+    assert tlab.labels.a.a2 == Label(5, 9)
+    assert tlab.a.a1.labels.b.b1 == Label(0, 2)
+    assert tlab.a.a1.labels.b.b2 == Label(2, 5)
+    assert tlab.a.a2.labels.b.b1 == Label(5, 7)
+    assert tlab.a.a2.labels.b.b2 == Label(7, 9)
+    
 
 
 @mark.skip("TBC")
@@ -384,4 +422,3 @@ def test_str_replace_label(labst: Table):
     )
     assert sum(nlabst.data.el == "e1__") == sum(labst.data.el == "e1")
     assert sum(nlabst.data.el == "e2__") == sum(labst.data.el == "e2")
-
