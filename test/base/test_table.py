@@ -289,9 +289,9 @@ def test_stack_no_overlap(tab_full: Table):
 
 def test_iloc(tab_full: Table):
     t = tab_full.iloc[2:4]
-    assert len(t) == 2
+    assert len(t) == 3
     assert t.t[0] == 2
-    assert t.t[-1] == 3
+    assert t.t[-1] == 4
 
 
 def test_stack_overlap(tab_full):

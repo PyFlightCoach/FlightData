@@ -31,7 +31,7 @@ def test_from_old_dict():
 
     st = State.from_dict(data)
 
-    assert len(st.manoeuvre.sql) == len(df.loc[df.manoeuvre == "sql"])
+    assert len(st.manoeuvre.sql) == len(df.loc[df.manoeuvre == "sql"]) 
     assert len(st.manoeuvre.hSqL) == len(df.loc[df.manoeuvre == "hSqL"]) + 1
 
     assert len(st.labels) == 1

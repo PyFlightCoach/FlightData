@@ -37,7 +37,7 @@ class Label:
         return res
 
     def to_iloc(self, t: npt.NDArray):
-        return Label(get_index(t, self.start)[0], get_index(t, self.stop)[0])
+        return Label(get_index(t, self.start), get_index(t, self.stop))
 
     def to_t(self, t: npt.NDArray):
         return Label(get_value(t, self.start), get_value(t, self.stop))

@@ -16,6 +16,7 @@ from flightdata.base.table.constructs import Constructs, SVar
 
 from .labels import Label, LabelGroup, Slicer, LabelGroups
 
+pd.options.mode.copy_on_write = True
 
 @dataclass
 class Table:
@@ -58,7 +59,7 @@ class Table:
 
         base_cols = [c for c in data.columns if c in Cls.constructs.cols()]
         # label_cols = [c for c in data.columns if c not in Cls.constructs.cols()]
-        lab_cols = list(set(data.columns) - set(base_cols))
+        lab_cols = [c for c in data.columns if c not in base_cols]
         labdf = data.loc[:, lab_cols]
         
 #        if lab_cols:
@@ -381,7 +382,7 @@ class Table:
                 sublabels = {k: v[iloc.start: iloc.stop] for k, v in kwargs.items() if k != first_key}
                 sts.append(getattr(newst, first_key)[name].nest_labels(**sublabels))
 
-            return self.__class__.stack(sts, first_key, pd.unique(first_values))     
+            return self.__class__.stack(sts, first_key, pd.unique(np.array(first_values)))     
 
     def over_label(
         self, title: str, value: str, child_groups: list[str] = None
