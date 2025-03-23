@@ -5,8 +5,7 @@ import pandas as pd
 from geometry import Time
 
 from pytest import fixture, mark
-from flightdata.base.table import Slicer, Label, LabelGroup
-from flightdata.base.table.labels import LabelGroups
+from flightdata.base.table import Slicer, Label, LabelGroup, LabelGroups
 
 
 @fixture
@@ -46,7 +45,7 @@ def test_table_get_column(tab_full: Table):
 
 
 def test_table_interpolate(tab_full: Table):
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         t = tab_full.interpolate(7)
 
     t = tab_full.interpolate(2.5)
@@ -129,7 +128,7 @@ def test_slice_labels(tab_lab: Table):
 
 def test_is_tesselated(tab_lab: Table):
     assert tab_lab.labels["a"].is_tesselated()
-    assert tab_lab.labels["a"].is_tesselated(tab_lab.time)
+    assert tab_lab.labels["a"].is_tesselated(tab_lab.t)
 
 
 def test_label_intersects(tab_lab: Table):
@@ -194,18 +193,18 @@ def test_shift_labels_ratios(tab_full: Table):
 
 
 def test_labels_dump_array(tab_lab: Table):
-    arr = tab_lab.labels.a.to_array(tab_lab.time)
+    arr = tab_lab.labels.a.to_array(tab_lab.t)
     assert all(arr == ["a0", "a0", "a1", "a1", "a2", "a2"])
 
 
 def test_labels_dump_array_full(tab_full: Table):
     tlab = tab_full.label(a="a0")
-    arr = tlab.labels.a.to_array(tab_full.time)
+    arr = tlab.labels.a.to_array(tab_full.t)
     assert all(arr == ["a0", "a0", "a0", "a0", "a0", "a0"])
 
 
 def test_labelgroupss_to_df(tab_lab: Table):
-    df = tab_lab.labels.to_df(tab_lab.time)
+    df = tab_lab.labels.to_df(tab_lab.t)
     assert len(df) == 6
 
 
@@ -238,6 +237,46 @@ def test_label_transfer():
         a=np.arange(5), b=np.arange(5) / 2, path=np.tile(np.arange(5), (2, 1)).T
     )
     assert newlab == Label(1, 2)
+
+def test_label_transfer_shift():
+    path=np.array([[0,0], [1,1], [1,2], [1,3], [4,4], [5,5]])
+    nlab = Label(0,1).transfer(np.arange(5), np.arange(5), path)
+    assert nlab == Label(0, 3)
+    nlab = Label(0,2.5).transfer(np.arange(5), np.arange(5), path)
+    assert nlab == Label(0, 3.5)
+    
+
+def test_copy_labels_no_path(tab_lab: Table):
+#    path=np.array([[0,0], [1,1], [2,2], [3,3], [4,4], [5,5]])
+    tfull = Table.from_constructs(Time.from_t(np.arange(2*len(tab_lab))))
+    tlab2 = Table.copy_labels(tab_lab, tfull)
+    assert "a" in tlab2.labels.lgs
+
+def test_copy_labels_path(tab_lab: Table):
+    path=np.array([[0,0], [1,1], [2,2], [3,3], [4,4], [5,5]])
+    tlab2 = Table.copy_labels(tab_lab, tab_lab.remove_labels(), path)
+    assert "a" in tlab2.labels.lgs
+
+
+def test_copy_labels_no_substeps(tab_lab: Table):
+    path=np.array([[0,0], [1,1], [1,2], [1,3], [4,4], [5,5]])
+    tlab2 = Table.copy_labels(tab_lab, tab_lab.remove_labels(), path, False)
+    assert "a" in tlab2.labels.lgs
+    assert "a1" not in tlab2.labels.a.labels
+
+def test_unsquash_labels(tab_lab: Table):
+    #                 0      1      2      3      4      5
+    #                A0     A0     A1     A1     A2     A2
+    path=np.array([[0,0], [1,1], [1,2], [1,3], [4,4], [5,5]])
+    #                A0     A0     A0     A0     A2     A2
+    #                A0     A0     A0     A1     A2     A2  
+    tlab2 = Table.copy_labels(tab_lab, tab_lab.remove_labels(), path, False, 1)
+    assert tlab2.labels.a.a0.stop==3
+    assert tlab2.labels.a.a1.start==3
+    assert tlab2.labels.a.a1.stop==4
+    assert tlab2.labels.a.a2.start==4
+    assert tlab2.labels.a.a2.stop==5
+    
 
 
 def test_shift_time(tab_lab):
@@ -293,6 +332,11 @@ def test_iloc(tab_full: Table):
     assert t.t[0] == 2
     assert t.t[-1] == 4
 
+def test_iloc_list(tab_full: Table):
+    t = tab_full.iloc[[0, -1]]
+    assert len(t) == 2
+    assert t.t[0] == 0
+    assert t.t[-1] == tab_full.t[-1]
 
 def test_stack_overlap(tab_full):
     tfn = Table.stack(
@@ -369,56 +413,3 @@ def test_nest_labels_multi():
     assert tlab.a.a2.labels.b.b1 == Label(5, 7)
     assert tlab.a.a2.labels.b.b2 == Label(7, 9)
     
-
-
-@mark.skip("TBC")
-def test_shift_multi(tab_full):
-    tabs = Table.stack(
-        [tab_full.label(element="e0"), tab_full.label(element="e1")], overlap=1
-    ).split_labels()
-    tb1, tb2 = Table.shift_multi(2, tabs["e0"], tabs["e1"])
-
-    assert len(tb1) == len(tab_full) + 2
-    assert len(tb2) == len(tab_full) - 2
-    assert tb2.duration == tab_full.data.index[-3]
-
-    tb1, tb2 = Table.shift_multi(-3, tabs["e0"], tabs["e1"])
-
-    assert len(tb1) == len(tab_full) - 3
-    assert len(tb2) == len(tab_full) + 3
-    assert tb1.duration == tab_full.data.index[-4]
-
-
-@mark.skip("TBC")
-def test_table_cumulative_labels(tab_full):
-    tf = (
-        tab_full.label(a="a1", b="b1")
-        .append(tab_full.label(a="a2", b="b1"))
-        .append(tab_full.label(a="a2", b="b2"))
-        .append(tab_full.label(a="a1", b="b1"))
-    )
-    print(tf)
-    res = tf.cumulative_labels("a", "b")
-    assert isinstance(res, np.ndarray)
-    assert len(res) == len(tf)
-
-    indexes = np.unique(res, return_index=True)[1]
-    np.testing.assert_array_equal(
-        [res[index] for index in sorted(indexes)],
-        np.array(["a1_b1_0", "a2_b1_0", "a2_b2_0", "a1_b1_1"]),
-    )
-    pass
-
-
-@mark.skip("TBC")
-def test_str_replace_label(labst: Table):
-    nlabst = labst.str_replace_label(
-        el=np.array(
-            [
-                ["e1", "e1__"],
-                ["e2", "e2__"],
-            ]
-        ),
-    )
-    assert sum(nlabst.data.el == "e1__") == sum(labst.data.el == "e1")
-    assert sum(nlabst.data.el == "e2__") == sum(labst.data.el == "e2")

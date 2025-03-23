@@ -64,3 +64,7 @@ def test_align():
     assert flown.labels == res.aligned.labels
 
     pass
+
+def test_resample():
+    st = State.from_transform(vel=g.PX(30)).extrapolate(1)
+    

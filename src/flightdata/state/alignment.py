@@ -53,7 +53,7 @@ def align(
     weights: g.Point = None,
     tp_weights: g.Point = None,
 ) -> Alignment:
-    """Perform a temporal alignment between two sections. return the flown section with labels
+    """Perform a temporal alignment between two states. return the flown state with labels
     copied from the template along the warped path.
     """
     from fastdtw.fastdtw import fastdtw

@@ -146,7 +146,7 @@ class Flight:
         elif isinstance(sli, slice):
             return Flight(
                 self.data.loc[slice(sli.start, sli.stop, sli.step)],
-                self.parameters[:sli.stop] if self.parameters is not None else None,
+                self.parameters.loc[:sli.stop] if self.parameters is not None else None,
                 self.origin,
                 self.primary_pos_source,
             )
@@ -567,6 +567,7 @@ class Flight:
                     battery_totalcurrent="CurrTot",
                     battery_totalenergy="EnrgTot",
                 ),
+                "Inst",
             )
 
         if "ESC" in parser.dfs:

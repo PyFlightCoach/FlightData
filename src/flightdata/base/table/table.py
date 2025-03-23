@@ -1,22 +1,32 @@
 from __future__ import annotations
 
-from ast import Num
 from dataclasses import dataclass, field
-from hmac import new
 from numbers import Number
 from time import time
-from typing import Annotated, ClassVar, Literal, Self, Tuple, overload
+from typing import Annotated, ClassVar, Literal, Self, overload
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from geometry import Base, Time
+import geometry as g
 from geometry.utils import get_value
 from flightdata.base.table.constructs import Constructs, SVar
 
-from .labels import Label, LabelGroup, Slicer, LabelGroups
+from .label import Label
+from .labelgroup import LabelGroup
+from .labelgroups import LabelGroups
+from .slicer import Slicer
 
 pd.options.mode.copy_on_write = True
+
+default_interpolators = dict(
+    Time="linterp",
+    Point="linterp",
+    Quaternion="slerp",
+    Air="linterp",
+    Attack="linterp",
+)
+
 
 @dataclass
 class Table:
@@ -26,13 +36,13 @@ class Table:
     """
 
     constructs: ClassVar[Constructs] = Constructs(
-        [SVar("time", Time, ["t", "dt"], lambda tab: Time.from_t(tab.t))]
+        [SVar("time", g.Time, ["t", "dt"], lambda tab: g.Time.from_t(tab.t))]
     )
     data: pd.DataFrame
     labels: LabelGroups = field(default_factory=lambda: LabelGroups())
 
     @overload
-    def __getattr__(self, name: Literal["time"]) -> Time: ...
+    def __getattr__(self, name: Literal["time"]) -> g.Time: ...
 
     @property
     def t_end(self):
@@ -58,20 +68,17 @@ class Table:
             )
 
         base_cols = [c for c in data.columns if c in Cls.constructs.cols()]
-        # label_cols = [c for c in data.columns if c not in Cls.constructs.cols()]
         lab_cols = [c for c in data.columns if c not in base_cols]
         labdf = data.loc[:, lab_cols]
-        
-#        if lab_cols:
-#            labdf = data.loc[:, lab_cols]
-#            data = data.drop(columns=lab_cols, errors="ignore")
-#            if labels is None:
-#                labels = LabelGroups({k: LabelGroup.read_array(data.t, v) for k, v in labdf.items()})
-        
+
         if data.loc[:, base_cols].isnull().values.any():
             raise ValueError("nan values in data")
 
-        instance = Cls(data.loc[:, base_cols], labels).populate() if fill else Cls(data.loc[:, base_cols], labels)
+        instance = (
+            Cls(data.loc[:, base_cols], labels).populate()
+            if fill
+            else Cls(data.loc[:, base_cols], labels)
+        )
 
         if len(labdf.columns) and not len(labels):
             return instance.nest_labels(**labdf.to_dict(orient="list"))
@@ -93,7 +100,7 @@ class Table:
 
         return newtab
 
-    def __getattr__(self, name: str) -> npt.NDArray | Base:
+    def __getattr__(self, name: str) -> npt.NDArray | g.Time | g.Point | g.Quaternion:
         if name in self.data.columns:
             return self.data[name].to_numpy()
         elif name in self.__class__.constructs.data.keys():
@@ -109,11 +116,11 @@ class Table:
             data=self.data.to_dict(orient="list"),
             labels=self.labels.to_dict(),
         )
-    
+
     @classmethod
     def from_dict(Cls, data: dict | list[dict]) -> Self:
         if not isinstance(data, list):
-            df = pd.DataFrame.from_dict(data["data"]).set_index("t",drop=False)
+            df = pd.DataFrame.from_dict(data["data"]).set_index("t", drop=False)
             labels = LabelGroups.from_dict(data["labels"])
             return Cls.build(df, labels, True)
         else:
@@ -129,34 +136,39 @@ class Table:
     def duration(self):
         return self.t[-1] - self.t[0]
 
-    def interpolate(self, t: float):
-        interpolators = dict(
-            Time="linterp",
-            Point="linterp",
-            Quaternion="slerp",
-            Air="linterp",
-            Attack="linterp",
-        )
-
-        i0 = self.data.index.get_indexer([t], method="ffill")[0]
-        i1 = self.data.index.get_indexer([t], method="bfill")[0]
-        if i0 == i1:
-            return self.iloc[i0]
-        if i0 == -1 or i1 == -1:
-            raise ValueError(f"Interpolation time {t} is outside the table range")
-        t0 = self.data.index[i0]
-        t1 = self.data.index[i1]
-        loc = i0 + (t - t0) / (t1 - t0)
+    def interpolate(self, t: npt.NDArray | float):
+        if isinstance(t, Number):
+            t = np.array([t])
         new_table = self.__class__.from_constructs(
             *[
                 getattr(self, con.name).interpolate(
-                    loc, interpolators[con.obj.__name__]
-                )
+                    self.t, default_interpolators[con.obj.__name__]
+                )(t)
                 for con in self.constructs
             ]
         )
 
         return new_table.label(self.labels)
+
+    #    def resample(self, new_t: g.Time) -> State:
+    #        return State.from_constructs(
+    #            *[
+    #                getattr(self, con.name).interpolate(self.t)(new_t)
+    #                for con in self.__class__.constructs
+    #            ]
+    #        )
+
+    def resample(self, dt: float = 1 / 25, sli: slice = None):
+        if sli is None or sli.start is None:
+            start = self.t[0]
+        else:
+            start = sli.start
+        if sli is None or sli.stop is None:
+            stop = self.t[-1]
+        else:
+            stop = sli.stop
+
+        return self.interpolate(np.linspace(start, stop, int((stop - start) / dt)))
 
     def __getitem__(self, sli: Number | slice) -> Self:
         if isinstance(sli, slice):
@@ -196,6 +208,8 @@ class Table:
                 res = self.interpolate(sli)
             else:
                 res = self.__class__(pd.DataFrame(self.data.iloc[i, :]).T)
+        elif pd.api.types.is_list_like(sli):
+            res = self.__class__(self.data.loc[sli])
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
 
@@ -206,17 +220,17 @@ class Table:
         @dataclass
         class ILocer:
             def __getitem__(_, sli: Number | slice) -> Table:
-
                 return self[get_value(self.t, sli)]
-#                if isinstance(sli, Number):
-#                    pass
-#                df = self.data.iloc[sli]
-#                if isinstance(df, pd.Series):
-#                    df = pd.DataFrame(df).T
-#                new_table = self.__class__(df)
-#                return new_table.label(
-#                    self.labels.slice(new_table.t[0], new_table.t[-1])
-#                )
+
+        #                if isinstance(sli, Number):
+        #                    pass
+        #                df = self.data.iloc[sli]
+        #                if isinstance(df, pd.Series):
+        #                    df = pd.DataFrame(df).T
+        #                new_table = self.__class__(df)
+        #                return new_table.label(
+        #                    self.labels.slice(new_table.t[0], new_table.t[-1])
+        #                )
 
         return ILocer()
 
@@ -269,9 +283,9 @@ class Table:
             t = np.array([time()]) if timeoption == "now" else other.t
             dt = other.dt
             dt[0] = t[0] - self.t[-1]
-            new_time = Time(t, dt)
+            new_time = g.Time(t, dt)
         elif timeoption == "dt":
-            new_time = Time(other.t + self[-1].t - other[0].t + other[0].dt, other.dt)
+            new_time = g.Time(other.t + self[-1].t - other[0].t + other[0].dt, other.dt)
 
         return self.__class__(
             pd.concat(
@@ -335,7 +349,7 @@ class Table:
     def concatenate(Cls, sts: list[Table]) -> Self:
         """Concatenate a list of Tables and recalculate the timesteps"""
         df = pd.concat([st.data for st in sts], axis=0)
-        t = Time.from_t(df.t.to_numpy())
+        t = g.Time.from_t(df.t.to_numpy())
         df.t = t.t
         df.dt = t.dt
         assert df.index.is_monotonic_increasing
@@ -371,18 +385,24 @@ class Table:
     def nest_labels(self, **kwargs: dict[str, npt.NDArray]) -> Self:
         first_key = list(kwargs.keys())[0]
         first_values = list(kwargs.values())[0]
-        newst=self.label(**{first_key: first_values})
-        
+        newst = self.label(**{first_key: first_values})
+
         if len(kwargs) == 1:
             return newst
         else:
             sts = []
             for name, label in newst.labels[first_key].items():
                 iloc = label.to_iloc(newst.t)
-                sublabels = {k: v[iloc.start: iloc.stop] for k, v in kwargs.items() if k != first_key}
+                sublabels = {
+                    k: v[iloc.start : iloc.stop]
+                    for k, v in kwargs.items()
+                    if k != first_key
+                }
                 sts.append(getattr(newst, first_key)[name].nest_labels(**sublabels))
 
-            return self.__class__.stack(sts, first_key, pd.unique(np.array(first_values)))     
+            return self.__class__.stack(
+                sts, first_key, pd.unique(np.array(first_values))
+            )
 
     def over_label(
         self, title: str, value: str, child_groups: list[str] = None
@@ -428,6 +448,7 @@ class Table:
         template: Table,
         flown: Table,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] = None,
+        allow_substep: bool = False,
         min_len=0,
     ) -> Self:
         """Copy the labels from template to flown along the index warping path
@@ -437,12 +458,25 @@ class Table:
         will be preserved.
         """
 
-        return flown.label(
+        newtab = flown.label(
             **{
                 k: v.transfer(template.t, flown.t, path, min_len)
                 for k, v in template.labels.items()
             }
         )
+        if not allow_substep:
+            newtab = newtab.remove_labels().label(newtab.labels.whole(newtab.time))
+
+        if min_len > 0:
+            newtab = newtab.remove_labels().label(
+                LabelGroups(
+                    {
+                        k: v.unsquash(list(template.labels[k].keys()), newtab.t)
+                        for k, v in newtab.labels.items()
+                    }
+                )
+            )
+        return newtab
 
     def step_label(
         self, group: str, name: str, steps: int, t: npt.NDArray, min_len: int
@@ -452,7 +486,9 @@ class Table:
             self.labels.step_boundary(group, name, steps, t, min_len)
         )
 
-    def move_label(self, group: str, name: str, t: float, min_duration: float=0) -> Self:
+    def move_label(
+        self, group: str, name: str, t: float, min_duration: float = 0
+    ) -> Self:
         return self.__class__(self.data).label(
             self.labels.set_boundary(group, name, t, min_duration)
         )

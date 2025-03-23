@@ -11,7 +11,7 @@ import pandas as pd
 import geometry as g
 from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from schemas import fcj
-from flightdata.base.table.labels import LabelGroup, LabelGroups, Slicer, Label
+from flightdata.base.table.slicer import Slicer
 from flightdata.state.kinematics import interpolate
 from dataclasses import dataclass
 
@@ -151,7 +151,9 @@ class State(Table):
 
             center = self.pos + r0
             radius = g.Quaternion.from_axis_angle(theta).transform_point(-r0)
-            acc = -radius.unit() * abs(wvel[0]) ** 2 / abs(radius) + g.PZ(9.81, len(time))
+            acc = -radius.unit() * abs(wvel[0]) ** 2 / abs(radius) + g.PZ(
+                9.81, len(time)
+            )
             pos = center + radius
         else:
             pos = self.pos + wvel[0] * t
@@ -177,7 +179,6 @@ class State(Table):
         time = g.Time.from_t(np.linspace(0, duration, npoints))
         return self.fill(time)
 
-
     @classmethod
     def from_dict(Cls, data: list[dict[str, float | str]] | dict[str, dict]) -> State:
         if isinstance(data, list):
@@ -191,32 +192,8 @@ class State(Table):
                 cols[max(iman, iel)] = "element"
                 df = df.reindex(cols, axis=1)
                 data = df.to_dict("records")
-        return super().from_dict(data)  
-    
-#    @staticmethod
-#    def from_dict(data: dict[str, float | str]):
-#        data = pd.DataFrame.from_dict(data).set_index("t", drop=False)
-#        data.index.name = None
-#        st = State.build(data)
-#        if "manoeuvre" in data.columns:
-#            st = st.label(manoeuvre=data.manoeuvre.to_numpy())
-#
-#            if "element" in data.columns:
-#                for name, label in st.labels.manoeuvre.items():
-#                    el_labels = {}
-#                    for element in data.loc[data.manoeuvre == name].element.unique():
-#                        elt = data.loc[
-#                            (data.manoeuvre == name) & (data.element == element),
-#                            ["t", "dt"],
-#                        ]
-#                        el_labels[element] = Label(elt.iloc[0, 0], elt.iloc[-1, 0])
-#                    label.sublabels = LabelGroups(dict(element=LabelGroup(el_labels)))
-#
-#        elif "element" in data.columns:
-#            st = st.label(element=data.element.to_numpy())
-#
-#        return st
-#
+        return super().from_dict(data)
+
     @staticmethod
     def from_csv(filename) -> State:
         df = pd.read_csv(filename)
@@ -276,28 +253,8 @@ class State(Table):
                 else None
             ),
         )
-    
 
-    def interpolate(self, t: float):
-        """This overrides the default linear interpolation on the base class"""
-        i0 = self.data.index.get_indexer([t], method="ffill")[0]
-        i1 = self.data.index.get_indexer([t], method="bfill")[0]
-        if i0 == i1:
-            return self.iloc[i0]
-        if i0 == -1 or i1 == -1:
-            raise ValueError(f"Interpolation time {t} is outside the table range")
-        t0 = self.data.index[i0]
-        t1 = self.data.index[i1]
-        loc = i0 + (t - t0) / (t1 - t0)
-        return State.from_constructs(
-            self.time.interpolate(loc, "linterp"),
-            self.pos.spline_interp(self.time.t)(t),
-            g.Quaternion.slerp(self.att[i0], self.att[i1])(loc),
-            self.vel.spline_interp(self.time.t)(t),
-            self.rvel.spline_interp(self.time.t)(t),
-            self.acc.spline_interp(self.time.t)(t),
-        )
-    
+
     @staticmethod
     def kinematic_interpolation(a: State, b: State):
         def interp(fac: float):

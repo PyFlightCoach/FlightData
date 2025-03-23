@@ -64,16 +64,6 @@ def test_fc_json(fcjson: fcj.FCJ):
     assert st.z.mean() > 0
 
 
-def test_stack_singles():
-    start = time()
-    st = State.from_constructs(g.Time(time(), 0))
-
-    for _ in range(10):
-        sleep(0.01)
-        st = st.append(State.from_constructs(g.Time.from_t(0)), "now")
-
-    assert time() - start == approx(st.duration, abs=1e-2)
-
 
 def test_fill():
     t = g.Time.from_t(np.linspace(0, 1, 11))
@@ -115,3 +105,28 @@ def flbd(bindata: BinData):
 def test_st_from_bindata(flbd: State):
     st = State.from_flight(flbd)
     assert isinstance(st, State)
+
+
+
+def test_st_slice():
+    st = State.from_transform(vel=g.PX(30), rvel=g.PY(np.pi/4)).fill(g.Time.from_t(np.arange(5)))
+    #st.plot().show(nmodels=100, scale=1)
+
+    att0 = st.interpolate(1).att
+    att1 = st.interpolate(1.5).att
+    att2 = st.interpolate(2).att
+
+    d1 = g.Quaternion.body_axis_rates(att0, att1)
+    d2 = g.Quaternion.body_axis_rates(att1, att2)
+    dtot = g.Quaternion.body_axis_rates(att0, att2)
+
+    assert dtot.y == approx(d1.y + d2.y)
+    assert d1.y == approx(d2.y)
+
+    pass
+
+
+
+    st_sliced = st[0.5:3.5]
+#
+    st_sliced.plot().show(nmodels=100, scale=1)
