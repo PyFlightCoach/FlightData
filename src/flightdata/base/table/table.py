@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from numbers import Number
 from time import time
 from typing import Annotated, ClassVar, Literal, Self, overload
+from xmlrpc.client import boolean
 
 import numpy as np
 import numpy.typing as npt
@@ -111,11 +112,15 @@ class Table:
         else:
             raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dict(self) -> dict[str, dict]:
-        return dict(
-            data=self.data.to_dict(orient="list"),
-            labels=self.labels.to_dict(),
-        )
+    def to_dict(self, legacy: boolean=False) -> dict[str, dict]:
+        if legacy:
+            df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)  
+            return df.to_dict(orient="records")
+        else:
+            return dict(
+                data=self.data.to_dict(orient="list"),
+                labels=self.labels.to_dict(),
+            )
 
     @classmethod
     def from_dict(Cls, data: dict | list[dict]) -> Self:
