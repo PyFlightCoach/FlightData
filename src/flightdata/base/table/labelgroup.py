@@ -63,7 +63,7 @@ class LabelGroup:
         return len(self) == 0
 
     @staticmethod
-    def read_array(t: Time, labels: npt.NDArray):
+    def read_array(t: npt.NDArray, labels: npt.NDArray):
         if len(labels.shape) > 1:
             raise ValueError("Label data must be 1D")
         if len(labels) == len(t):
@@ -75,7 +75,7 @@ class LabelGroup:
             indeces = np.argwhere(labels == label_name)
             tstart = t[indeces[0]]
             tstop = t[indeces[-1] + 1]
-            data[label_name] = Label(tstart.t[0], tstop.t[0])
+            data[label_name] = Label(tstart[0], tstop[0])
 
         return LabelGroup(data)
 
@@ -151,14 +151,26 @@ class LabelGroup:
         a: npt.NDArray,
         b: npt.NDArray,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] | None,
-        min_len: int = 1,
     ):
         if path is None:
             return (
                 self.offset(-a[0]).scale((b[-1] - b[0]) / (a[-1] - a[0])).offset(b[0])
             )
         else:
-            return self.update(lambda v: v.transfer(a, b, path))
+            
+            mans = (
+                pd.DataFrame(path, columns=["a", "b"])
+                .set_index("a")
+                .join(pd.Series(self.to_array(a), name="a"))
+                .groupby(["b"])
+                .last()
+                .reset_index()
+                .set_index("b")
+            )
+            
+            #st: Self = flown.__class__(flown.data).label(**mans.to_dict(orient="list"))
+            return LabelGroup.read_array(b, mans.a)
+#            return self.update(lambda v: v.transfer(a, b, path))
 
     @property
     def boundaries(self) -> dict[str, float]:
@@ -192,7 +204,7 @@ class LabelGroup:
         index = list(self.keys()).index(key) if isinstance(key, str) else key
         new_iloc = np.where(t==self[index].stop)[0][0] + steps
         if new_iloc < len(t) - min_len and new_iloc > min_len:
-            return self.set_boundary(key, t[new_iloc], min_len * np.gradient(t).mean())
+            return self.set_boundary(key, t[new_iloc], 0)
         else:
             raise ValueError(f"Cannot step boundary for label {key}")
 

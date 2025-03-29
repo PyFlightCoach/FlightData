@@ -11,7 +11,7 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations
-from typing import Self, Union, IO
+from typing import Self, Union
 import numpy as np
 import pandas as pd
 from .fields import fields, Field
@@ -29,7 +29,7 @@ from datetime import datetime
 
 def filter(data, cutoff=25, order=5, fs=25):
     return filtfilt(
-        *butter(order, cutoff, fs=fs, btype="low", analog=False),
+        *butter(order, min(cutoff, np.trunc(fs/2)), fs=fs, btype="low", analog=False),
         data,
         padlen=len(data) - 1,
     )

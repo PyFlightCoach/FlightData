@@ -79,7 +79,7 @@ def label_array(tab_full):
 
 
 def test_labelgroup_read_array(tab_full, label_array):
-    lg = LabelGroup.read_array(tab_full.time, label_array)
+    lg = LabelGroup.read_array(tab_full.t, label_array)
     assert len(lg) == 3
     assert lg.a0.start == tab_full.data.index[0]
     assert lg.a0.stop == tab_full.data.index[2]
@@ -270,7 +270,7 @@ def test_unsquash_labels(tab_lab: Table):
     path=np.array([[0,0], [1,1], [1,2], [1,3], [4,4], [5,5]])
     #                A0     A0     A0     A0     A2     A2
     #                A0     A0     A0     A1     A2     A2  
-    tlab2 = Table.copy_labels(tab_lab, tab_lab.remove_labels(), path, False, 1)
+    tlab2 = Table.copy_labels(tab_lab, tab_lab.remove_labels(), path, 1)
     assert tlab2.labels.a.a0.stop==3
     assert tlab2.labels.a.a1.start==3
     assert tlab2.labels.a.a1.stop==4

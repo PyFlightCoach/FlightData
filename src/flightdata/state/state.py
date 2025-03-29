@@ -56,8 +56,6 @@ class State(Table):
     _construct_freq: ClassVar[float] = 25
 
     @overload
-    def __getattr__(self, name: str) -> Slicer: ...
-    @overload
     def __getattr__(self, name: Literal["pos"]) -> g.Point: ...
     @overload
     def __getattr__(self, name: Literal["att"]) -> g.Quaternion: ...
@@ -71,6 +69,8 @@ class State(Table):
     def __getattr__(
         self, name: Literal["x,y,z,rw,rx,ry,rz,u,v,w,du,dv,dw"]
     ) -> npt.NDArray: ...
+    @overload
+    def __getattr__(self, name: str) -> Slicer: ...
 
     def __getattr__(self, key):
         return super().__getattr__(key)
@@ -184,14 +184,15 @@ class State(Table):
         if isinstance(data, list):
             # need to reorder the label columns to make sure the labels are nested correctly
             df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
-            iman = df.columns.get_loc("manoeuvre")
-            iel = df.columns.get_loc("element")
-            if iman != -1 and iel != -1:
-                cols = df.columns.to_list()
-                cols[min(iman, iel)] = "manoeuvre"
-                cols[max(iman, iel)] = "element"
-                df = df.reindex(cols, axis=1)
-                data = df.to_dict("records")
+            if "manoeuvre" in df.columns and "element" in df.columns:
+                iman = df.columns.get_loc("manoeuvre")
+                iel = df.columns.get_loc("element")
+                if iman != -1 and iel != -1:
+                    cols = df.columns.to_list()
+                    cols[min(iman, iel)] = "manoeuvre"
+                    cols[max(iman, iel)] = "element"
+                    df = df.reindex(cols, axis=1)
+                    data = df.to_dict("records")
         return super().from_dict(data)
 
     @staticmethod

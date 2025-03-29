@@ -374,10 +374,10 @@ class Table:
             elif isinstance(value, LabelGroup):
                 newlg = value
             elif pd.api.types.is_list_like(value):
-                newlg = LabelGroup.read_array(self.time, np.array(value))
+                newlg = LabelGroup.read_array(self.t, np.array(value))
             else:
                 raise ValueError(f"Unknown type for label {key}")
-            newlg = newlg.intersect(self)
+            newlg = newlg.intersect(self.time)
             if not newlg.empty:
                 if key in labelgroups:
                     raise ValueError(f"Label {key} already exists")
@@ -453,7 +453,6 @@ class Table:
         template: Table,
         flown: Table,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] = None,
-        allow_substep: bool = False,
         min_len=0,
     ) -> Self:
         """Copy the labels from template to flown along the index warping path
@@ -465,18 +464,16 @@ class Table:
 
         newtab = flown.label(
             **{
-                k: v.transfer(template.t, flown.t, path, min_len)
+                k: v.transfer(template.t, flown.t, path)
                 for k, v in template.labels.items()
             }
         )
-        if not allow_substep:
-            newtab = newtab.remove_labels().label(newtab.labels.whole(newtab.time))
 
         if min_len > 0:
             newtab = newtab.remove_labels().label(
                 LabelGroups(
                     {
-                        k: v.unsquash(list(template.labels[k].keys()), newtab.t)
+                        k: v.unsquash(list(template.labels[k].keys()), newtab.t, min_len)
                         for k, v in newtab.labels.items()
                     }
                 )
