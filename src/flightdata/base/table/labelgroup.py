@@ -201,10 +201,20 @@ class LabelGroup:
 
     def step_boundary(self, key: str | int, steps: int, t: npt.NDArray, min_len: int):
         """Step the stop time of a label, and the start of the next label by steps timesteps"""
+        ilg = self.to_iloc(t)
+        iboundaries = [0] + ilg.boundaries
+        lengths = [b1-b0 for b0, b1 in zip(iboundaries[:-1], iboundaries[1:])]
         index = list(self.keys()).index(key) if isinstance(key, str) else key
-        new_iloc = np.where(t==self[index].stop)[0][0] + steps
-        if new_iloc < len(t) - min_len and new_iloc > min_len:
-            return self.set_boundary(key, t[new_iloc], 0)
+#        new_iloc = np.where(t==self[index].stop)[0][0] + steps
+        
+        
+        if lengths[index] >= -steps + min_len -1  and lengths[index+1] >= steps + min_len - 1:
+            
+            ilg[index].stop = ilg[index].stop + steps
+            if index < len(ilg) - 1:
+                ilg[index+1].start = ilg[index+1].start + steps
+            return ilg.to_t(t)
+#            return self.set_boundary(key, t[new_iloc], 0)
         else:
             raise ValueError(f"Cannot step boundary for label {key}")
 
@@ -217,6 +227,9 @@ class LabelGroup:
 
     def to_iloc(self, t: npt.NDArray):
         return self.update(lambda v: v.to_iloc(t))
+
+    def to_t(self, t: npt.NDArray):
+        return self.update(lambda v: v.to_t(t))
 
     def split_label(self, key: str, new_k: str, prop: float, pos: Literal["start", "end"], t: npt.NDArray, minl: int):
         """Split a label at the propotion prop (between 0 and 1). give the new label the key new_k. 

@@ -21,6 +21,10 @@ class Slicer:
     @property
     def value(self):
         return self.labels.active(self.data.t[0])
+    
+    def __iter__(self):
+        for k in self.labels.keys():
+            yield self[k]
 
 
 from .table import Table
