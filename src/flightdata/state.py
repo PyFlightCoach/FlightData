@@ -9,12 +9,17 @@ import pandas as pd
 
 import geometry as g
 from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table, fcj
+from pudb import set_trace
+import csv
 
 
 class State(Table):
     constructs = Table.constructs + Constructs(
         [
-            SVar("pos", g.Point, ["x", "y", "z"], lambda self: g.P0(len(self))),
+            SVar("pos",
+                g.Point,
+                ["x", "y", "z"],
+                lambda self: g.P0(len(self))),
             SVar(
                 "att",
                 g.Quaternion,
@@ -88,7 +93,7 @@ class State(Table):
             return self.back_transform.point(pin)
 
     def fill(self, time: g.Time) -> State:
-        """Project forward through time assuming small angles and uniform circular motion"""
+        """Project forward through time assuming small angles and uniform circular motion"""       
         st = self[-1]
         vel = st.vel.tile(len(time))
         rvel = st.rvel.tile(len(time))
@@ -98,14 +103,14 @@ class State(Table):
                 [g.P0(), (att.transform_point(vel) * time.dt).cumsum()[:-1]]
             )
             + st.pos
-        )
+        )       
         return State.from_constructs(time, pos, att, vel, rvel)
 
     def extrapolate(self, duration: float, min_len=3) -> State:
         """Extrapolate the input state assuming uniform circular motion and small angles"""
         npoints = np.max([int(np.ceil(duration / self.dt[0])), min_len])
         time = g.Time.from_t(np.linspace(0, duration, npoints))
-        return self.fill(time)
+        return self.fill(time)        
 
     @staticmethod
     def from_csv(filename) -> State:
@@ -295,16 +300,40 @@ class State(Table):
             ),
         )
 
+    def set_velocity(self: State, speed: float, exit_speed: float, n: float) -> State:
+    
+        # set_trace()
+        speed_space = np.linspace(speed, exit_speed, n)
+        vel = g.PX(speed_space, 1)
+        att = self.att.body_rotate(self.rvel * self.time.t)
+        pos1 = (att.transform_point(vel) * self.time.dt).cumsum()[:-1]
+        pos2 = g.Point.concatenate( [ g.P0(), pos1 ] )
+        pos = pos2 + self.pos
+        
+        return State.copy_labels(
+            self,
+            State.from_constructs(
+                time=self.time,
+                pos=pos,
+                att=att,
+                vel=vel,
+                rvel=self.rvel,
+                acc=self.acc
+            ),
+        )        
+
     def mirror_zy(self: State) -> State:
-        att = g.Quaternion.from_euler(
-            (self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1)
+        att = g.Quaternion.from_euler(  # z,y,x
+            # (self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1)
+            (self.att.to_euler() + g.Point(0, 0, 0)) * g.Point(-1, 1, 1)
         )
         return State.copy_labels(
             self,
             State.from_constructs(
                 time=self.time,
-                pos=self.pos * g.Point(-1, 1, 1),
-                att=att,  # g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
+                #                      z  y  x
+                pos=self.pos * g.Point(1, 1, 1),
+                att=att,
                 vel=self.vel,
             ),
         )
@@ -435,7 +464,7 @@ class State(Table):
         self: State,
         kfactors: list[int],
         schedule_name: str,
-        schedule_category: str = "F3A",
+        schedule_category: str = "F3A FAI",
     ):
         fcdata = self._create_json_data()
         fcmans = self._create_json_mans(kfactors)
