@@ -89,4 +89,7 @@ class Label:
         ilab.stop += steps
         return ilab.to_t(t)
     
+    def copy(self):
+        return Label(self.start, self.stop, self.sublabels.copy())
+
 from .labelgroups import LabelGroups

@@ -76,6 +76,9 @@ class LabelGroups:
     def offset(self, offset: float | npt.NDArray):
         return self.update(lambda v: v.offset(offset))
 
+    def copy(self): 
+        return LabelGroups({k: v.copy() for k, v in self.items()})
+
     def transfer(
         self,
         a: npt.NDArray,

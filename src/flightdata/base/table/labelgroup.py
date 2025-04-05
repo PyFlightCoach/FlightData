@@ -6,6 +6,7 @@ from geometry import Time
 from dataclasses import field, dataclass
 from typing import Annotated, Literal, Callable
 from .label import Label
+from numbers import Number
 
 
 @dataclass
@@ -51,12 +52,15 @@ class LabelGroup:
     def __getitem__(self, name: str | int):
         if isinstance(name, str):
             return self.labels[name]
-        elif isinstance(name, int):
-            return list(self.labels.values())[name]
+        elif isinstance(name, Number):
+            return list(self.labels.values())[int(name)]
         else:
             raise ValueError(
                 f"Can only index labelgroup with int or str, got {name.__class__.__name__}"
             )
+
+    def copy(self):
+        return LabelGroup({k: v.copy() for k, v in self.labels.items()})
 
     @property
     def empty(self):
@@ -171,10 +175,17 @@ class LabelGroup:
             #st: Self = flown.__class__(flown.data).label(**mans.to_dict(orient="list"))
             return LabelGroup.read_array(b, mans.a)
 #            return self.update(lambda v: v.transfer(a, b, path))
+    @property
+    def widths(self):
+        return [v.width for v in self.labels.values()]
 
     @property
-    def boundaries(self) -> dict[str, float]:
+    def boundaries(self) -> list[float]:
         return [v.stop for v in self.values()]
+
+    @property
+    def boundary_dict(self) -> dict[str, float]:
+        return {k: v.stop for k, v in self.items()}
 
     def set_boundaries(self, stops: list[float]):
         """set the start and stop times of the labels, assumes tesselated"""
@@ -184,6 +195,13 @@ class LabelGroup:
             stop = stops[i] if i < len(stops) else v.stop
             newlabels[k] = Label(start, stop)
         return LabelGroup(newlabels)
+
+    @staticmethod
+    def from_boundaries(t0: Number, bdict: dict[str, Number]):
+        labs = {}
+        for i, (k, v) in enumerate(bdict.items()):
+            labs[k] = Label(t0 if i==0 else list(bdict.values())[i-1], v)
+        return LabelGroup(labs)
 
     def set_boundary(self, key: str | int, value: float, min_duration: int=0):
         """Set the stop time of a label, and the start of the next label"""
@@ -251,31 +269,24 @@ class LabelGroup:
                 new_labs[k]=v
         return LabelGroup(new_labs)
 
-    def insert(self, loc: int, names: list[str], t: npt.NDArray, minl: int) -> LabelGroup:
-        """Insert one or more keys at the given location.
-        key will be inserted into the longer of the preceding and following labels.
-        raise Exception if both preceding and following labels are too short to accept new label.
+    def insert(self, loc: int, names: list[str]) -> LabelGroup:
+        """Insert one or more zero width labels at the given location.
         function is called recursively if more than one name provided 
         """
 
         if len(names) > 1:
-            return self.insert(names[:-1], loc, t, minl)
+            return self.insert(names[:-1], loc)
 
-        name = names[0]
+        new_labels = {}
+        for i, (k, v) in enumerate(self.items()):
+            if i==loc:
+                new_labels[names[0]] = Label(v.start, v.start)
+            new_labels[k] = v
+        if loc == len(self):
+            new_labels[names[0]] = Label(v.stop, v.stop)
+        return LabelGroup(new_labels)
 
-        lab0 = self[loc-1] if loc>0 else None
-        l0 = lab0.to_iloc(t).width if lab0 else 0
-        lab1 = self[loc] if loc<len(self) else None
-        l1 = lab1.to_iloc(t).width if lab1 else 0
-        
-        if l0 > l1 and l0 > 2*minl:
-            return self.split_label(list(self.keys())[loc-1], name, 1, "end", t, minl)
-        elif l1 > l0 and l1 > 2*minl:
-            return self.split_label(list(self.keys())[loc], name, 0, "start", t, minl)
-        else:
-            raise Exception(f"Cannot insert missing label {name} here")
-
-    def unsquash(self, keys: list[str], t: npt.NDArray, minl: int=1):
+    def insert_list(self, keys: list[str]):
         """update self based on the provided list of keys. 
         Where missing keys are found they will be inserted with minl timesteps.
         bounding labels will be shifted to accomodate."""
@@ -296,5 +307,52 @@ class LabelGroup:
                 inserts.append(keys[ii])
                 ii += 1
         for loc in list(new_labs.keys())[::-1]:
-            self=self.insert(loc, new_labs[loc], t, minl)
+            self=self.insert(loc, new_labs[loc])
         return self
+
+    def expand_one(self, name: str | Number, min_len=0):
+        """make the selected label one step longer"""
+        if isinstance(name, Number):
+            index = name
+        else:    
+            index = list(self.keys()).index(name)
+        boundaries = self.boundaries
+        widths = self.widths
+
+        if index == 0:
+            side = "stop"
+        elif index == len(self) - 1:
+            side = "start"
+        else:
+            next_space_fwd = np.argwhere(np.array(widths[index+1:]) > min_len)
+            next_space_fwd = next_space_fwd[0][0] if len(next_space_fwd) and len(next_space_fwd[0]) else None
+            next_space_bck = np.argwhere(np.array(widths[:index][::-1]) > min_len)
+            next_space_bck = next_space_bck[0][0] if len(next_space_bck) and len(next_space_bck[0]) else None
+            
+            if next_space_fwd is None and next_space_bck is None:
+                raise ValueError(f"Cannot expand label {name}")
+            elif next_space_fwd is None:
+                side = "start"
+            elif next_space_bck is None:
+                side= "stop"
+            elif next_space_fwd > next_space_bck:
+                side = "stop"
+            elif next_space_bck < next_space_fwd:
+                side = "start"
+            else:
+                #either next_space_fwd == next_space_bck
+                side = "stop" if widths[:index][::-1][next_space_bck] < widths[index+1:][next_space_fwd] else "start"
+       
+        if side=="start":
+            boundaries[index-1] -= 1
+        else:
+            boundaries[index] += 1
+        return self.set_boundaries(boundaries)
+        
+    def expand(self, minl: int=1):
+        """expand short labels to minl"""
+        
+        new = self.copy()   
+        while min(new.widths) < minl:
+            new = new.expand_one(np.argmin(new.widths), minl)    
+        return new

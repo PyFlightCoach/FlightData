@@ -75,4 +75,4 @@ def align(
 
     distance, path = fastdtw(tp.data, fl.data, radius=radius, dist=euclidean)
     path = np.array(path)
-    return Alignment(distance, path, State.copy_labels(template, flown, path, 1))
+    return Alignment(distance, path, State.copy_labels(template, flown, path, 3))

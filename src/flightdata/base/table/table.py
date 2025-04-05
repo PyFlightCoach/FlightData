@@ -112,9 +112,9 @@ class Table:
         else:
             raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dict(self, legacy: boolean=False) -> dict[str, dict]:
+    def to_dict(self, legacy: boolean = False) -> dict[str, dict]:
         if legacy:
-            df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)  
+            df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
             return df.to_dict(orient="records")
         else:
             return dict(
@@ -453,7 +453,7 @@ class Table:
         template: Table,
         flown: Table,
         path: Annotated[npt.NDArray[np.integer], Literal["N", 2]] = None,
-        min_len=0,
+        min_len=None,
     ) -> Self:
         """Copy the labels from template to flown along the index warping path
         If path is None, the labels are copied directly from the template to the flown
@@ -469,11 +469,14 @@ class Table:
             }
         )
 
-        if min_len > 0:
+        if min_len is not None:
             newtab = newtab.remove_labels().label(
                 LabelGroups(
                     {
-                        k: v.unsquash(list(template.labels[k].keys()), newtab.t, min_len)
+                        k: v.to_iloc(flown.t)
+                        .insert_list(list(template.labels[k].keys()))
+                        .expand(min_len)
+                        .to_t(flown.t)
                         for k, v in newtab.labels.items()
                     }
                 )
