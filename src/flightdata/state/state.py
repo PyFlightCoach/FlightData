@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, ClassVar, overload
 
-from matplotlib.pyplot import cla
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
