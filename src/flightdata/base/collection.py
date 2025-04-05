@@ -1,8 +1,9 @@
-from typing import Union, Any, Self, TypeVar, Iterable
+from typing import Union, Any, Self, TypeVar, Iterable, Callable
 import pandas as pd
 
 
 T = TypeVar('T')
+
 
 class Collection:
     VType: T = None
@@ -45,13 +46,33 @@ class Collection:
     def subset(self, keys: list[str]) -> Self:
         return self.__class__([getattr(self, k) for k in keys])
 
+    def keys(self):
+        return self.data.keys()
+    
+    def items(self):
+        return self.data.items()
+    
+    def values(self):
+        return self.data.values()
+
     def __iter__(self) -> Iterable[T]:
         for v in self.data.values():
             yield v
 
+    def update(self, fun: Callable[[T], T]):
+        return self.__class__({k: fun(v) for k, v in self.items()})
+
+    def filter_values(self, fun: Callable[[T], bool]):
+        return self.__class__({k: v for k, v in self.items() if fun(v)})
+
+    def filter_keys(self, fun: Callable[[str], bool]):
+        return self.__class__({k: v for k, v in self.items() if fun(k)})
+
+    def filter_items(self, fun: Callable[[str, T], bool]):
+        return self.__class__({k: v for k, v in self.items() if fun(k, v)})
+
     def to_list(self) -> list[T]:
-        return list(self.data.values())
-    
+        return list(self.values())
 
     def to_dicts(self, *args, **kwargs) -> list[dict[str, Any]]:
         return [v.to_dict(*args, **kwargs) for v in self.data.values()]

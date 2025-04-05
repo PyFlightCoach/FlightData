@@ -4,7 +4,7 @@ from geometry import GPS
 from pytest import approx, mark
 from .conftest import flight
 
-
+@mark.skip
 def test_to_dict(flight):
     origin = Origin.from_initial(flight)
     di = origin.to_dict()

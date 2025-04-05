@@ -11,13 +11,12 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations
-from typing import Self, Union, IO
+from typing import Self, Union
 import numpy as np
 import pandas as pd
 from .fields import fields, Field
 from geometry import GPS, Point, P0
 from geometry.checks import assert_almost_equal
-from time import time
 from json import load, dump
 from flightdata.base.numpy_encoder import NumpyEncoder
 from .ardupilot import flightmodes
@@ -30,7 +29,7 @@ from datetime import datetime
 
 def filter(data, cutoff=25, order=5, fs=25):
     return filtfilt(
-        *butter(order, cutoff, fs=fs, btype="low", analog=False),
+        *butter(order, min(cutoff, np.trunc(fs/2)), fs=fs, btype="low", analog=False),
         data,
         padlen=len(data) - 1,
     )
@@ -137,7 +136,7 @@ class Flight:
             if sli < 0:
                 return self.data.iloc[sli]
             else:
-                gl = self.data.index.get_indexer([sli], method="nearest")
+                gl = self.data.index.get_indexer([sli], method="nearest")                    
                 return Flight(
                     self.data.iloc[gl],
                     self.parameters[:sli] if self.parameters else None,
@@ -147,7 +146,7 @@ class Flight:
         elif isinstance(sli, slice):
             return Flight(
                 self.data.loc[slice(sli.start, sli.stop, sli.step)],
-                self.parameters[:sli.stop] if self.parameters else None,
+                self.parameters.loc[:sli.stop] if self.parameters is not None else None,
                 self.origin,
                 self.primary_pos_source,
             )
@@ -568,6 +567,7 @@ class Flight:
                     battery_totalcurrent="CurrTot",
                     battery_totalenergy="EnrgTot",
                 ),
+                "Inst",
             )
 
         if "ESC" in parser.dfs:

@@ -1,22 +1,31 @@
 
+from typing import ClassVar, overload, Literal
 from flightdata import Table, SVar, Constructs, SVar, Flight, Origin
 from geometry import Point, Base, PX, Euler, Time
 import numpy as np
-
+from dataclasses import dataclass
 
 class Attack(Base):
     cols = ['alpha', 'beta', 'q']
 
 
+@dataclass(repr=False)
 class Flow(Table):
-    constructs = Table.constructs + Constructs([
+    constructs: ClassVar[Constructs] = Table.constructs + Constructs([
         SVar("aspd", Point, ["asx", "asy", "asz"], None),
         SVar("flow", Attack, ["alpha", "beta", "q"], None)
     ])
 
+    @overload
+    def __getattr__(self, key: Literal["aspd"]) -> Point: ...
+    @overload
+    def __getattr__(self, key: Literal["flow"]) -> Attack: ...
+
+    def __getattr__(self, key):
+        return super().__getattr__(key)
 
     @staticmethod
-    def build(body, env):
+    def from_body(body, env):
 
         airspeed = body.vel - body.att.inverse().transform_point(env.wind)
 
