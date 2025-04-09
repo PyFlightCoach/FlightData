@@ -167,10 +167,10 @@ class State(Table):
 
         return plotsec(self, **(dict(nmodels=10, ribb=True) | kwargs))
 
-    def plotlabels(self, label: str):
+    def plotlabels(self, label: str, **kwargs):
         from plotting import plot_regions
 
-        return plot_regions(self, label)
+        return plot_regions(self, label, **kwargs)
 
     def extrapolate(self, duration: float, min_len=3) -> State:
         """Extrapolate the input state assuming uniform circular motion and small angles"""
