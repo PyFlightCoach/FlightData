@@ -324,24 +324,24 @@ class LabelGroup:
         elif index == len(self) - 1:
             side = "start"
         else:
-            next_space_fwd = np.argwhere(np.array(widths[index+1:]) > min_len)
-            next_space_fwd = next_space_fwd[0][0] if len(next_space_fwd) and len(next_space_fwd[0]) else None
-            next_space_bck = np.argwhere(np.array(widths[:index][::-1]) > min_len)
-            next_space_bck = next_space_bck[0][0] if len(next_space_bck) and len(next_space_bck[0]) else None
+            next_space_stop = np.argwhere(np.array(widths[index+1:]) > min_len)
+            next_space_stop = next_space_stop[0][0] if len(next_space_stop) and len(next_space_stop[0]) else None
+            next_space_start = np.argwhere(np.array(widths[:index][::-1]) > min_len)
+            next_space_start = next_space_start[0][0] if len(next_space_start) and len(next_space_start[0]) else None
             
-            if next_space_fwd is None and next_space_bck is None:
+            if next_space_stop is None and next_space_start is None:
                 raise ValueError(f"Cannot expand label {name}")
-            elif next_space_fwd is None:
+            elif next_space_stop is None:
                 side = "start"
-            elif next_space_bck is None:
+            elif next_space_start is None:
                 side= "stop"
-            elif next_space_fwd > next_space_bck:
-                side = "stop"
-            elif next_space_bck < next_space_fwd:
+            elif next_space_stop > 0 and next_space_start == 0:
                 side = "start"
+            elif next_space_start > 0 and next_space_stop == 0:
+                side = "stop"
             else:
-                #either next_space_fwd == next_space_bck
-                side = "stop" if widths[:index][::-1][next_space_bck] < widths[index+1:][next_space_fwd] else "start"
+                #either next_space_stop == next_space_start
+                side = "stop" if widths[:index][::-1][next_space_start] < widths[index+1:][next_space_stop] else "start"
        
         if side=="start":
             boundaries[index-1] -= 1
