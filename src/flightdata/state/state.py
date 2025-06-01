@@ -586,6 +586,7 @@ class State(Table):
         )
 
     def move(self: State, transform: g.Transformation) -> State:
+        """Move the state by a transformation"""
         return State.from_constructs(
             time=self.time,
             pos=transform.point(self.pos),

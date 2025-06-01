@@ -70,6 +70,11 @@ class Collection:
 
     def filter_items(self, fun: Callable[[str, T], bool]):
         return self.__class__({k: v for k, v in self.items() if fun(k, v)})
+    
+    def index(self, key: str) -> int:
+        if key in self.data:
+            return list(self.data.keys()).index(key)
+        raise KeyError(f"{key} not found in {self.__class__}")
 
     def to_list(self) -> list[T]:
         return list(self.values())
@@ -93,17 +98,18 @@ class Collection:
         if isinstance(v, self.VType):
             odata[getattr(v, self.uid)] = v
         elif isinstance(v, self.__class__):
-            odata = dict(**odata, **v.data)
+            odata = odata | v.data #dict(**odata, **v.data)
         elif isinstance(v, list):
-            odata = dict(**odata, **{getattr(d, self.uid): d for d in v})
+            odata = odata | {getattr(d, self.uid): d for d in v}
         if inplace:
             self.data = odata
             return v
         else:
             return self.__class__(odata) 
     
-    def concat(self, vs: list[Self]) -> Self:
-        coll = self.__class__([])
+    @classmethod
+    def concat(Cls, vs: list) -> Self:
+        coll = Cls([])
         for v in vs:
             coll.add(v)
         return coll
@@ -144,6 +150,27 @@ class Collection:
     def __len__(self) -> int:
         return len(self.data)
     
+    def remove(self, key_or_id: str | int) -> Self:
+        if isinstance(key_or_id, int):
+            key_or_id = list(self.data.keys())[key_or_id]
+        return self.__class__({k: v for k, v in self.data.items() if k != key_or_id})
+
+    def replace(self, key_or_id: str | int, v: T, inplace=False) -> Self:
+        if isinstance(key_or_id, int):
+            key_or_id = list(self.data.keys())[key_or_id]
+        if not hasattr(v, self.uid):
+            raise ValueError(f"Value {v} does not have a {self.uid} attribute")
+        if not inplace:
+            new_data = self.data.copy()
+            new_data[key_or_id] = v
+            return self.__class__(new_data)
+        else:
+            if key_or_id in self.data:
+                self.data[key_or_id] = v
+            else:
+                raise KeyError(f"{key_or_id} not found in {self.__class__}")
+            return self
+
     @property
     def uids(self) -> list[str]:
         return list(self.data.keys())

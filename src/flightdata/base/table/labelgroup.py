@@ -73,6 +73,20 @@ class LabelGroup:
         if len(labels) == len(t):
             labels= labels[:-1]
         assert len(labels) == len(t) - 1
+        labels=labels.astype(object)
+        change_ids = np.where(labels[:-1] != labels[1:])[0] + 1
+        
+        newlabnames = [labels[0]]
+        for i, oldlabname in enumerate(labels[change_ids]):
+            newlabname = oldlabname
+            suffix=1
+            while newlabname in newlabnames:
+                newlabname = f"{oldlabname}_{suffix}"
+                suffix+=1
+            newlabnames.append(newlabname)
+            if not newlabname == oldlabname:
+                labels[change_ids[i]:change_ids[i+1] if i+1<len(change_ids) else None] = newlabname
+
         labnames = pd.unique(labels)
         data = {}
         for i, label_name in enumerate(labnames):
@@ -173,7 +187,7 @@ class LabelGroup:
             )
             
             #st: Self = flown.__class__(flown.data).label(**mans.to_dict(orient="list"))
-            return LabelGroup.read_array(b, mans.a)
+            return LabelGroup.read_array(b, mans.a.values)
 #            return self.update(lambda v: v.transfer(a, b, path))
     @property
     def widths(self):
@@ -181,7 +195,7 @@ class LabelGroup:
 
     @property
     def boundaries(self) -> list[float]:
-        return [v.stop for v in self.values()]
+        return np.array([v.stop for v in self.values()])
 
     @property
     def boundary_dict(self) -> dict[str, float]:

@@ -45,6 +45,11 @@ def test_labelgroup_read_array(tab_full, label_array):
     assert lg.a2.stop == tab_full.data.index[-1]
 
 
+def test_labelgroup_read_array_repeats(tab_full):
+    label_array = np.array(["a0", "a0", "a1", "a1", "a0", "a0"])
+    lg = LabelGroup.read_array(tab_full.t, label_array)
+    assert len(lg) == 3
+
 def test_label_array(tab_lab):
     assert len(tab_lab.labels) == 1
     assert isinstance(tab_lab.labels.a, LabelGroup)
