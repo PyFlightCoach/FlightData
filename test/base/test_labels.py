@@ -50,6 +50,7 @@ def test_labelgroup_read_array_repeats(tab_full):
     lg = LabelGroup.read_array(tab_full.t, label_array)
     assert len(lg) == 3
 
+
 def test_label_array(tab_lab):
     assert len(tab_lab.labels) == 1
     assert isinstance(tab_lab.labels.a, LabelGroup)
@@ -186,26 +187,47 @@ def test_from_boundaries():
     lg = LabelGroup.from_boundaries(0, dict(a=2, b=5))
     assert lg.a.start == 0
     assert lg.a.stop == 2
-    assert lg.b.start==2
+    assert lg.b.start == 2
     assert lg.b.stop == 5
     assert lg.is_tesselated(np.arange(5))
 
+
 def test_expand_one():
     lg = LabelGroup.from_boundaries(0, dict(a=2, b=2, c=6))
-    lg = lg.expand_one('b', 1)
-    np.testing.assert_array_equal(lg.boundaries, [2,3,6])
+    lg = lg.expand_one("b", 1)
+    np.testing.assert_array_equal(lg.boundaries, [2, 3, 6])
+
 
 def test_expand():
     lg = LabelGroup.from_boundaries(0, dict(a=2, b=2, c=6))
     lg = lg.expand(2)
     np.testing.assert_array_equal(lg.boundaries, [2, 4, 6])
 
+
 def test_expand_difficult():
     lg = LabelGroup.from_boundaries(0, dict(a=0, b=1, c=7))
-    
+
     np.testing.assert_array_equal(lg.expand(1).boundaries, [1, 2, 7])
     np.testing.assert_array_equal(lg.expand(2).boundaries, [2, 4, 7])
+
 
 def test_expand_infinite_loop():
     lg = LabelGroup.from_boundaries(0, dict(a=1, b=5, c=6, d=8))
     np.testing.assert_array_equal(lg.expand(2).boundaries, [2, 4, 6, 8])
+
+
+def test_labelgroup_insert_list(tab_lab: Table):
+    np.testing.assert_array_equal(
+        list(tab_lab.labels.a.insert_list(["a0", "a1", "new", "a2"]).keys()),
+        ["a0", "a1", "new", "a2"],
+    )
+
+    np.testing.assert_array_equal(
+        list(tab_lab.labels.a.insert_list(["a0", "a1", "a2", "new"]).keys()),
+        ["a0", "a1", "a2", "new"],
+    )
+
+    np.testing.assert_array_equal(
+        list(tab_lab.labels.a.insert_list(["a0", "a1", "a2", "new", "new2"]).keys()),
+        ["a0", "a1", "a2", "new", "new2"],
+    )

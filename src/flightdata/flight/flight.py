@@ -11,20 +11,25 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from __future__ import annotations
+
+from datetime import datetime
+from json import dump, load
+from numbers import Number
 from typing import Self, Union
+
+from pathlib import Path
 import numpy as np
 import pandas as pd
-from .fields import fields, Field
-from geometry import GPS, Point, P0
+from geometry import GPS, P0, Point
 from geometry.checks import assert_almost_equal
-from json import load, dump
-from flightdata.base.numpy_encoder import NumpyEncoder
-from .ardupilot import flightmodes
-from flightdata import Origin
 from schemas import fcj
-from numbers import Number
-from scipy.signal import filtfilt, butter
-from datetime import datetime
+from scipy.signal import butter, filtfilt
+
+from flightdata import Origin
+from flightdata.base.numpy_encoder import NumpyEncoder
+
+from .ardupilot import flightmodes
+from .fields import Field, fields
 
 
 def filter(data, cutoff=25, order=5, fs=25):
@@ -311,13 +316,13 @@ class Flight:
             return False
 
     def boot_time(self):
-        timestamp = self.time_actual.iloc[0]
+        timestamp = self.time_actual.iloc[0] 
         return datetime.fromtimestamp(timestamp) if not np.isnan(timestamp) else None
 
     @staticmethod
     def from_log(
-        log: str,
-        extra_types: list[str] = None,
+        log: str | Path,
+        extra_types: list[str] | None = None,
         ppsource: str = "pos",
         imu_instance=0,
         **kwargs,

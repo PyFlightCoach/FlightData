@@ -1,4 +1,5 @@
 from __future__ import annotations
+import enum
 import numpy as np
 import pandas as pd
 import numpy.typing as npt
@@ -289,7 +290,10 @@ class LabelGroup:
         """
 
         if len(names) > 1:
-            return self.insert(names[:-1], loc)
+            new = self.copy()
+            for i, name in enumerate(names):
+                new = new.insert(loc+i, [name])
+            return new
 
         new_labels = {}
         for i, (k, v) in enumerate(self.items()):
@@ -311,7 +315,7 @@ class LabelGroup:
         inserts = []
         new_labs = {}
         while ii < len(keys):
-            if labs[il] == keys[ii]:
+            if il<len(labs) and labs[il] == keys[ii]:
                 if len(inserts):
                     new_labs[il] = inserts                
                 inserts = []
@@ -320,6 +324,9 @@ class LabelGroup:
             else:
                 inserts.append(keys[ii])
                 ii += 1
+        else:
+            if len(inserts):
+                new_labs[il] = inserts
         for loc in list(new_labs.keys())[::-1]:
             self=self.insert(loc, new_labs[loc])
         return self
