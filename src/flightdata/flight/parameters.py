@@ -7,6 +7,6 @@ from dataclasses import dataclass
 class Parameters:
     parms: dict[str, pd.DataFrame]
 
-    def __getattr(self, name: str) -> np.Any:
+    def __getattr(self, name: str):
         return self.parms[name]
     

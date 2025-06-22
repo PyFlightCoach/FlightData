@@ -235,13 +235,13 @@ class LabelGroup:
     def step_boundary(self, key: str | int, steps: int, t: npt.NDArray, min_len: int):
         """Step the stop time of a label, and the start of the next label by steps timesteps"""
         ilg = self.to_iloc(t)
-        iboundaries = [0] + ilg.boundaries
+        iboundaries = np.concatenate([np.array([0]), ilg.boundaries])
         lengths = [b1-b0 for b0, b1 in zip(iboundaries[:-1], iboundaries[1:])]
         index = list(self.keys()).index(key) if isinstance(key, str) else key
 #        new_iloc = np.where(t==self[index].stop)[0][0] + steps
         
         
-        if lengths[index] >= -steps + min_len -1  and lengths[index+1] >= steps + min_len - 1:
+        if lengths[index] + steps + 1 >=  min_len  and lengths[index+1] - steps + 1>= min_len :
             
             ilg[index].stop = ilg[index].stop + steps
             if index < len(ilg) - 1:
