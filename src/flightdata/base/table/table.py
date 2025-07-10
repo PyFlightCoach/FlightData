@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import geometry as g
+
 from geometry.utils import get_value
 from flightdata.base.table.constructs import Constructs, SVar
 
