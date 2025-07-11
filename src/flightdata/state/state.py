@@ -435,7 +435,7 @@ class State(Table):
 
         fcd = pd.DataFrame(
             data=dict(
-                time=self.t * 1e6,
+                time=(self.t * 1e6).astype(int),
                 N=self.x,
                 E=-self.y,
                 D=-self.z,
@@ -458,7 +458,7 @@ class State(Table):
     def _create_json_mans(self: State, kfactors: list[int]) -> list[fcj.Man]:
         mans = []
         for i, (k, label) in enumerate(self.labels.manoeuvre.items()):
-            label: Label
+            lab: Label = label.to_iloc(self.t)
             mans.append(
                 fcj.Man(
                     name = k,
@@ -466,8 +466,8 @@ class State(Table):
                     id = f"sp_{i}",
                     sp = i,
                     wd = 100 * label.width / self.duration,
-                    start = label.start,
-                    stop = label.stop,
+                    start = lab.start,
+                    stop = lab.stop,
                     sel = False,
                     background = ""
                 )
