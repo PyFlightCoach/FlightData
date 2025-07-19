@@ -26,5 +26,8 @@ class Slicer:
         for k in self.labels.keys():
             yield self[k]
 
+    def items(self):
+        for k in self.labels.keys():
+            yield k, self[k]
 
 from .table import Table
