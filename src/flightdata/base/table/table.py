@@ -352,9 +352,9 @@ class Table:
         return newst
 
     @classmethod
-    def concatenate(Cls, sts: list[Table]) -> Self:
+    def concatenate(Cls, sts: list[Table] | dict[Table]) -> Self:
         """Concatenate a list of Tables and recalculate the timesteps"""
-        df = pd.concat([st.data for st in sts], axis=0)
+        df = pd.concat([st.data for st in (sts if isinstance(sts, list) else sts.values())], axis=0)
         t = g.Time.from_t(df.t.to_numpy())
         df.t = t.t
         df.dt = t.dt
