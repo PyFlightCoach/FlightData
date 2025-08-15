@@ -479,6 +479,7 @@ class State(Table):
         kfactors: list[int],
         schedule_name: str,
         schedule_category: str = "F3A",
+        scores: list[float] | None = None,
     ) -> fcj.FCJ:
         fcmans = self._create_json_mans(kfactors)
         return fcj.FCJ(
@@ -509,8 +510,8 @@ class State(Table):
                 centerAlt = "0.00",
                 schedule = [schedule_category, schedule_name],
             ),
-            scored= False,
-            scores= [0,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,600,],
+            scored= scores is not None,
+            scores= [0,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,600,] if scores is None else scores,
             mans= fcmans,
             data= self._create_json_data(),
         )
