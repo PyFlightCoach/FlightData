@@ -1,9 +1,11 @@
 
 from typing import ClassVar, overload, Literal
-from flightdata import Table, SVar, Constructs, SVar, Flight, Origin
-from geometry import Point, Base, PX, Euler, Time
+from flightdata import Table, SVar, Constructs, SVar
+from geometry import Point, Base, PX, Euler
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass 
+from flightdata.coefficients import Coefficients
+from flightdata.environment import Environment
 
 class Attack(Base):
     cols = ['alpha', 'beta', 'q']
@@ -25,7 +27,7 @@ class Flow(Table):
         return super().__getattr__(key)
 
     @staticmethod
-    def from_body(body, env):
+    def from_state(body, env: Environment):
 
         airspeed = body.vel - body.att.inverse().transform_point(env.wind)
 
@@ -54,7 +56,7 @@ class Flow(Table):
         )
     
 
-    def rotate(self, coefficients, dclda, dcydb):
+    def rotate(self, coefficients: Coefficients, dclda: float, dcydb: float):
         new_flow = Attack(-coefficients.cz / dclda, -coefficients.cy / dcydb, self.flow.q)
         return Flow.from_constructs(coefficients.time, flow=new_flow, aspd=self.aspd)
 

@@ -1,26 +1,27 @@
 from flightdata import State, Environment
-from geometry import Transformation, P0, Euldeg, PY, PX, Point, Time
-from flightplotting import plotsec
+import geometry as g
+from plotting import plotsec
 import numpy as np
 from flightdata import Coefficients, Environment, Flow
-from flightdata.model import cold_draft as constants
+from flightdata.constants import Constants, F3APlane
 import plotly.express as px
 
-
 track = State.from_transform(
-    Transformation(P0(), Euldeg(180,0,0)), 
-    vel=PX(20), rvel=np.pi * Point(0.25, 0.25, 0)
+    g.Transformation(g.Euldeg(180,0,0)), 
+    vel=g.PX(20), rvel=np.pi * g.Point(0.25, 0.25, 0)
 ).extrapolate(6, 3)
 
-env = Environment.from_constructs(Time.now(), wind=PY(5))
+env = Environment.from_constructs(g.Time.now(), wind=g.PY(5))
 
 wind = track.track_to_wind(env)
 
+flow = Flow.from_state(wind, env)
+coeffs = Coefficients.from_state(wind, flow.q, F3APlane)
 
-
-flow = Flow.build(wind, env)
-coeffs = Coefficients.build(wind, flow.q, constants)
 flow = flow.rotate(coeffs, 10, 5)
+
+flow.flow.plot().show()
+
 px.line(np.degrees(flow.flow.to_pandas().iloc[:,:-1])).show()
 
 body = wind.wind_to_body(flow)

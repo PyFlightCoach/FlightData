@@ -337,15 +337,22 @@ class State(Table):
         return State.stack(labelled)
 
     def body_rotate(self: State, r: g.Point) -> State:
-        """Rotate body axis by an axis angle"""
+        """Rotate by an axis angle"""
         att = self.att.body_rotate(r)
         q = att.inverse() * self.att
+        
+        #TODO axis rates need to update, not just rotate
+        rvel = q.transform_point(self.rvel)
+        if len(r) == len(self):
+            rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")])
+
+        
         return State.from_constructs(
             time=self.time,
             pos=self.pos,
             att=att,
             vel=q.transform_point(self.vel),
-            rvel=q.transform_point(self.rvel),
+            rvel=rvel,
             acc=q.transform_point(self.acc),
         ).label(**self.labels)
 
