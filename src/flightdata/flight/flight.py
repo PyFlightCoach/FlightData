@@ -607,6 +607,7 @@ class Flight:
                 tolerance=min(max(dt, df.time_actual.diff().max()), 0.1),
             )
 
+        #TODO need to reverse engineer the origin if no origin in file.
         origin = Origin("ekf_origin", GPS(parser.ORGN.iloc[:, -3:]), 0)
 
         return Flight(

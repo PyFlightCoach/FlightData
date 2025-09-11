@@ -99,7 +99,7 @@ class Collection:
             odata[getattr(v, self.uid)] = v
         elif isinstance(v, self.__class__):
             odata = odata | v.data #dict(**odata, **v.data)
-        elif isinstance(v, list):
+        elif pd.api.types.is_list_like(v):
             odata = odata | {getattr(d, self.uid): d for d in v}
         if inplace:
             self.data = odata

@@ -227,18 +227,9 @@ class Table:
         class ILocer:
             def __getitem__(_, sli: Number | slice) -> Table:
                 return self[get_value(self.t, sli)]
-
-        #                if isinstance(sli, Number):
-        #                    pass
-        #                df = self.data.iloc[sli]
-        #                if isinstance(df, pd.Series):
-        #                    df = pd.DataFrame(df).T
-        #                new_table = self.__class__(df)
-        #                return new_table.label(
-        #                    self.labels.slice(new_table.t[0], new_table.t[-1])
-        #                )
-
         return ILocer()
+
+
 
     def __iter__(self):
         for t in list(self.data.index):
