@@ -21,6 +21,8 @@ class SVar:
         self.keys = obj.cols if keys is None else keys
         self.builder = builder
 
+    def __repr__(self):
+        return f"SVar({self.name}, {self.obj.__name__}, {self.keys})"
 
 class Constructs(Collection):
     VType=SVar

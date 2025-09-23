@@ -384,13 +384,13 @@ class State(Table):
     def body_to_stability(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
-            flow = Flow.from_body(self, env)
+            flow = Flow.from_state(self, env)
         return self.body_rotate(-g.Point(0, 1, 0) * flow.alpha)
 
     def stability_to_wind(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
-            flow = Flow.from_body(self, env)
+            flow = Flow.from_state(self, env)
         return self.body_rotate(g.Point(0, 0, 1) * flow.beta)
 
     def body_to_wind(self: State, flow: Flow = None) -> State:
@@ -675,14 +675,10 @@ class State(Table):
         """Returns the curvature of the path in 1/m, axis is the desired axial direction
         in the world frame"""
         trfl = self.to_track()
+        body_curvature = g.point.cross((-trfl.zero_g_acc() / trfl.u ** 2), g.PX())
+        world_curvature = trfl.att.transform_point(body_curvature)
 
-        po = g.point.vector_rejection(
-            trfl.att.transform_point(
-                trfl.zero_g_acc() * g.Point(0, 1, 1) / abs(trfl.u) ** 2
-            ),
-            axis,
-        )
-        return po
+        return g.point.scalar_projection(world_curvature, axis) 
 
     #        po.data[-1, :] = np.nan
     #        return po.ffill()
