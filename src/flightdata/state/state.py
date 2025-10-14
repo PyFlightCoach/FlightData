@@ -604,11 +604,11 @@ class State(Table):
         self: State, axis: g.Point, angle: float, reference: str = "body"
     ) -> State:
         """Generate a new section, identical to self, but with a continous rotation integrated"""
-        t = self.time.t - self.time.t[0]
-        rate = angle / self.time.t[-1]
-        superimposed_rotation = t * rate
+        
+        
+        superimposed_rotation = (self.t - self.t[0]) * angle / (self.duration if self.duration > 0 else self.dt[0])
 
-        angles = axis.unit().tile(len(t)) * superimposed_rotation
+        angles = axis.unit().tile(len(self)) * superimposed_rotation
 
         return self.superimpose_angles(angles, reference)
 

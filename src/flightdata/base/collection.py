@@ -174,3 +174,18 @@ class Collection:
     @property
     def uids(self) -> list[str]:
         return list(self.data.keys())
+
+    @property
+    def first(self) -> T:
+        return list(self.data.values())[0]
+
+    @property
+    def last(self) -> T:
+        return list(self.data.values())[-1]
+    
+    @property
+    def only(self) -> T:
+        if len(self.data) != 1:
+            raise ValueError(f"Collection has {len(self.data)} items, expected exactly one")
+        return list(self.data.values())[0]
+    
