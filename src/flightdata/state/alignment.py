@@ -71,6 +71,7 @@ class Alignment:
         weights: g.Point = None,
         tp_weights: g.Point = None,
         norm: bool = False,  # TODO This is not Z norm
+        resample: bool=False
     ) -> Alignment:
         """Perform a temporal alignment between two states. return the flown state with labels
         copied from the template along the warped path.
@@ -81,10 +82,6 @@ class Alignment:
         weights = weights or g.Point(1, 1.2, 0.5)
         tp_weights = tp_weights or g.Point(0.6, 0.6, 0.6)
 
-        fl = flown.rvel
-        tp = template.rvel
-
-                
         def get_brv(brv):
             if mirror:
                 brv = g.Point(
@@ -93,8 +90,14 @@ class Alignment:
             return brv * weights
 
         fl = get_brv(flown.rvel)
-
         tp = get_brv(template.rvel * tp_weights)
+
+        if resample:
+            raise NotImplementedError("Resample not implemented yet")
+            n = int(np.clip(len(fl) // len(tp), 1, 5))
+            fl = g.Point(fl.data[::n, :]) if n > 1 else fl
+        else:
+            n=1
 
         distance, path = fastdtw(
             *Alignment.norm(tp.data, fl.data),            
@@ -102,4 +105,9 @@ class Alignment:
             dist=euclidean,
         )
         path = np.array(path)
+        
+        if n > 1:
+            path[:,1] = 2 * path[:,1]
+        
+        
         return Alignment(distance, path, State.copy_labels(template, flown, path, 3))

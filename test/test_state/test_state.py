@@ -5,8 +5,7 @@ from pathlib import Path
 from json import load
 import pandas as pd
 import numpy as np
-
-from flightdata.state import align
+from flightdata.state.alignment import Alignment
 
 def test_from_constructs():
     st = State.from_constructs(
@@ -73,12 +72,26 @@ def test_align():
     st1b = st0[-1].copy(rvel=g.PY(0.5)).extrapolate(4)
     st2b = st1b[-1].copy(rvel=g.P0()).extrapolate(3)
     flown = State.stack([st0, st1b, st2b], "element", ["e1", "e2", "e3"])
-    res = align(flown.remove_labels(), template)
+    res = Alignment.align(flown.remove_labels(), template)
 
 
     assert flown.labels == res.aligned.labels
 
     pass
+
+
+def test_align_resample():
+    from flightanalysis.elements import Line, Loop, Elements
+    itrans = g.Transformation()
+    tp = Elements([Line("l1", 30, 30, 0), Line("l2", 30, 30, np.pi), Line("l3", 30, 30, 0)]).create_templates(itrans)
+    fl = Elements([Line("l1", 30, 70, 0), Line("l2", 30, 70, np.pi), Line("l3", 30, 70, 0)]).create_templates(itrans)
+    tp = State.stack(tp, "element")
+    fl = State.stack(fl, "element").remove_labels()
+    aligmnent = Alignment.align(fl, tp, resample=True)
+
+    assert len(aligmnent.aligned) == len(fl)
+
+
 
 def test_resample():
     st = State.from_transform(vel=g.PX(30)).extrapolate(1)
