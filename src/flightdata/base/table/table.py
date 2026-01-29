@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import geometry as g
+
 from geometry.utils import get_value
 from flightdata.base.table.constructs import Constructs, SVar
 
@@ -226,18 +227,9 @@ class Table:
         class ILocer:
             def __getitem__(_, sli: Number | slice) -> Table:
                 return self[get_value(self.t, sli)]
-
-        #                if isinstance(sli, Number):
-        #                    pass
-        #                df = self.data.iloc[sli]
-        #                if isinstance(df, pd.Series):
-        #                    df = pd.DataFrame(df).T
-        #                new_table = self.__class__(df)
-        #                return new_table.label(
-        #                    self.labels.slice(new_table.t[0], new_table.t[-1])
-        #                )
-
         return ILocer()
+
+
 
     def __iter__(self):
         for t in list(self.data.index):
@@ -351,9 +343,9 @@ class Table:
         return newst
 
     @classmethod
-    def concatenate(Cls, sts: list[Table]) -> Self:
+    def concatenate(Cls, sts: list[Table] | dict[Table]) -> Self:
         """Concatenate a list of Tables and recalculate the timesteps"""
-        df = pd.concat([st.data for st in sts], axis=0)
+        df = pd.concat([st.data for st in (sts if isinstance(sts, list) else sts.values())], axis=0)
         t = g.Time.from_t(df.t.to_numpy())
         df.t = t.t
         df.dt = t.dt

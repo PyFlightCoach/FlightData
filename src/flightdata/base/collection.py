@@ -99,7 +99,7 @@ class Collection:
             odata[getattr(v, self.uid)] = v
         elif isinstance(v, self.__class__):
             odata = odata | v.data #dict(**odata, **v.data)
-        elif isinstance(v, list):
+        elif pd.api.types.is_list_like(v):
             odata = odata | {getattr(d, self.uid): d for d in v}
         if inplace:
             self.data = odata
@@ -174,3 +174,18 @@ class Collection:
     @property
     def uids(self) -> list[str]:
         return list(self.data.keys())
+
+    @property
+    def first(self) -> T:
+        return list(self.data.values())[0]
+
+    @property
+    def last(self) -> T:
+        return list(self.data.values())[-1]
+    
+    @property
+    def only(self) -> T:
+        if len(self.data) != 1:
+            raise ValueError(f"Collection has {len(self.data)} items, expected exactly one")
+        return list(self.data.values())[0]
+    

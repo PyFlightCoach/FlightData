@@ -1,4 +1,4 @@
-from .environment import Environment, Air
+from .environment import Environment
 from .wind import WindModel, WindModelBuilder
 
 

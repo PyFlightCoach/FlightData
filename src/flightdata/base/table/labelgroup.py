@@ -6,6 +6,7 @@ import numpy.typing as npt
 from geometry import Time
 from dataclasses import field, dataclass
 from typing import Annotated, Literal, Callable
+
 from .label import Label
 from numbers import Number
 
@@ -55,6 +56,10 @@ class LabelGroup:
             return self.labels[name]
         elif isinstance(name, Number):
             return list(self.labels.values())[int(name)]
+        elif isinstance(name, slice):
+            start = self.labels[0] if name.start is None else self.labels[name.start]
+            stop = self.labels[-1] if name.stop is None else self.labels[name.stop]
+            return [start, stop]
         else:
             raise ValueError(
                 f"Can only index labelgroup with int or str, got {name.__class__.__name__}"

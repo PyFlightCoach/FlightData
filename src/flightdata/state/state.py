@@ -11,6 +11,7 @@ import geometry as g
 from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from schemas import fcj
 from flightdata.base.table.slicer import Slicer
+from flightdata.base.table.label import Label
 from flightdata.state.kinematics import interpolate
 from dataclasses import dataclass
 
@@ -335,15 +336,22 @@ class State(Table):
         return State.stack(labelled)
 
     def body_rotate(self: State, r: g.Point) -> State:
-        """Rotate body axis by an axis angle"""
+        """Rotate by an axis angle"""
         att = self.att.body_rotate(r)
         q = att.inverse() * self.att
+        
+        #TODO axis rates need to update, not just rotate
+        rvel = q.transform_point(self.rvel)
+        if len(r) == len(self):
+            rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")])
+
+        
         return State.from_constructs(
             time=self.time,
             pos=self.pos,
             att=att,
             vel=q.transform_point(self.vel),
-            rvel=q.transform_point(self.rvel),
+            rvel=rvel,
             acc=q.transform_point(self.acc),
         ).label(**self.labels)
 
@@ -375,13 +383,13 @@ class State(Table):
     def body_to_stability(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
-            flow = Flow.from_body(self, env)
+            flow = Flow.from_state(self, env)
         return self.body_rotate(-g.Point(0, 1, 0) * flow.alpha)
 
     def stability_to_wind(self: State, flow: Flow = None) -> State:
         if not flow:
             env = Environment.from_constructs(self.time)
-            flow = Flow.from_body(self, env)
+            flow = Flow.from_state(self, env)
         return self.body_rotate(g.Point(0, 0, 1) * flow.beta)
 
     def body_to_wind(self: State, flow: Flow = None) -> State:
@@ -422,7 +430,7 @@ class State(Table):
 
         return body_axis
 
-    def _create_json_data(self: State) -> pd.DataFrame:
+    def _create_json_data(self: State) -> list[fcj.Data]:
         wvels = self.transform.rotate(self.vel)
 
         transform = g.Transformation.from_coords(
@@ -433,7 +441,7 @@ class State(Table):
 
         fcd = pd.DataFrame(
             data=dict(
-                time=self.t * 1e6,
+                time=(self.t * 1e6).astype(int),
                 N=self.x,
                 E=-self.y,
                 D=-self.z,
@@ -451,43 +459,25 @@ class State(Table):
             ),
         )
 
-        return fcd
+        return [fcj.Data(**row) for row in fcd.to_dict("records")]
 
-    def _create_json_mans(self: State, kfactors: list[int]) -> pd.DataFrame:
-        mans = pd.DataFrame(
-            columns=[
-                "name",
-                "id",
-                "sp",
-                "wd",
-                "start",
-                "stop",
-                "sel",
-                "background",
-                "k",
-            ]
-        )
-        mnames = self.data.manoeuvre.unique()
-        mans["name"] = mnames
-        mans["k"] = kfactors
-        mans["id"] = ["sp_{}".format(i) for i in range(len(mnames))]
-
-        mans["sp"] = list(range(len(mnames)))
-
-        itsecs = [self.get_manoeuvre(mn) for mn in mnames]
-
-        mans["wd"] = [100 * st.duration / self.duration for st in itsecs]
-
-        dat = self.data.reset_index(drop=True)
-
-        mans["start"] = [dat.loc[dat.manoeuvre == mn].index[0] for mn in mnames]
-
-        mans["stop"] = [dat.loc[dat.manoeuvre == mn].index[-1] + 1 for mn in mnames]
-
-        mans["sel"] = np.full(len(mnames.data), False)
-        mans.loc[1, "sel"] = True
-        mans["background"] = np.full(len(mnames), "")
-
+    def _create_json_mans(self: State, kfactors: list[int]) -> list[fcj.Man]:
+        mans = []
+        for i, (k, label) in enumerate(self.labels.manoeuvre.items()):
+            lab: Label = label.to_iloc(self.t)
+            mans.append(
+                fcj.Man(
+                    name = k,
+                    k = kfactors[i],
+                    id = f"sp_{i}",
+                    sp = i,
+                    wd = 100 * label.width / self.duration,
+                    start = lab.start,
+                    stop = lab.stop,
+                    sel = False,
+                    background = ""
+                )
+            )
         return mans
 
     def create_fc_json(
@@ -495,66 +485,42 @@ class State(Table):
         kfactors: list[int],
         schedule_name: str,
         schedule_category: str = "F3A",
-    ):
-        fcdata = self._create_json_data()
+        scores: list[float] | None = None,
+    ) -> fcj.FCJ:
         fcmans = self._create_json_mans(kfactors)
-        return {
-            "version": "1.3",
-            "comments": "DO NOT EDIT\n",
-            "name": schedule_name,
-            "view": {
-                "position": {
-                    "x": -120,
-                    "y": 130.50000000000003,
-                    "z": 264.99999999999983,
-                },
-                "target": {"x": -22, "y": 160, "z": -204},
-            },
-            "parameters": {
-                "rotation": -1.5707963267948966,
-                "start": int(fcmans.iloc[1].start),
-                "stop": int(fcmans.iloc[1].stop),
-                "moveEast": 0.0,
-                "moveNorth": 0.0,
-                "wingspan": 3,
-                "modelwingspan": 25,
-                "elevate": 0,
-                "originLat": 0.0,
-                "originLng": 0.0,
-                "originAlt": 0.0,
-                "pilotLat": "0.0",
-                "pilotLng": "0.0",
-                "pilotAlt": "0.00",
-                "centerLat": "0.0",
-                "centerLng": "-0.1",
-                "centerAlt": "0.00",
-                "schedule": [schedule_category, schedule_name],
-            },
-            "scored": False,
-            "scores": [
-                0,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                10,
-                600,
-            ],
-            "mans": fcmans.to_dict("records"),
-            "data": fcdata.to_dict("records"),
-        }
+        return fcj.FCJ(
+            version = "1.3",
+            comments= "DO NOT EDIT\n",
+            name= schedule_name,
+            view= fcj.View(
+                position= {"x": -120,"y": 130.5,"z": 265.0},
+                target= {"x": -22, "y": 160, "z": -204},
+            ),
+            parameters= fcj.Parameters(
+                rotation = -1.5707963267948966,
+                start = int(fcmans[1].start),
+                stop = int(fcmans[1].stop),
+                moveEast = 0.0,
+                moveNorth = 0.0,
+                wingspan = 3,
+                modelwingspan = 25,
+                elevate = 0,
+                originLat = 0.0,
+                originLng = 0.0,
+                originAlt = 0.0,
+                pilotLat = "0.0",
+                pilotLng = "0.0",
+                pilotAlt = "0.00",
+                centerLat = "0.0",
+                centerLng = "-0.1",
+                centerAlt = "0.00",
+                schedule = [schedule_category, schedule_name],
+            ),
+            scored= scores is not None,
+            scores= [0,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,600,] if scores is None else scores,
+            mans= fcmans,
+            data= self._create_json_data(),
+        )
 
     def direction(self):
         """returns 1 for going right, -1 for going left"""
@@ -637,11 +603,11 @@ class State(Table):
         self: State, axis: g.Point, angle: float, reference: str = "body"
     ) -> State:
         """Generate a new section, identical to self, but with a continous rotation integrated"""
-        t = self.time.t - self.time.t[0]
-        rate = angle / self.time.t[-1]
-        superimposed_rotation = t * rate
+        
+        
+        superimposed_rotation = (self.t - self.t[0]) * angle / (self.duration if self.duration > 0 else self.dt[0])
 
-        angles = axis.unit().tile(len(t)) * superimposed_rotation
+        angles = axis.unit().tile(len(self)) * superimposed_rotation
 
         return self.superimpose_angles(angles, reference)
 
@@ -708,14 +674,10 @@ class State(Table):
         """Returns the curvature of the path in 1/m, axis is the desired axial direction
         in the world frame"""
         trfl = self.to_track()
+        body_curvature = g.point.cross((-trfl.zero_g_acc() / trfl.u ** 2), g.PX())
+        world_curvature = trfl.att.transform_point(body_curvature)
 
-        po = g.point.vector_rejection(
-            trfl.att.transform_point(
-                trfl.zero_g_acc() * g.Point(0, 1, 1) / abs(trfl.u) ** 2
-            ),
-            axis,
-        )
-        return po
+        return g.point.scalar_projection(world_curvature, axis) 
 
     #        po.data[-1, :] = np.nan
     #        return po.ffill()

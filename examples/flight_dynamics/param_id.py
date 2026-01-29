@@ -2,7 +2,7 @@
 
 from flightdata import *
 import geometry as g
-from flightplotting import plotsec
+from plotting import plotsec
 import numpy as np
 
 fl = Flight.from_json('examples/flight_dynamics/00000150.json').flying_only()

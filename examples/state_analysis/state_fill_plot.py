@@ -1,7 +1,7 @@
 from flightdata import State
 from geometry import Transformation, P0, Euldeg, PX, Point
-from flightplotting import plotsec
-from flightplotting.traces import vectors
+from plotting import plotsec
+from plotting.traces import vectors
 import numpy as np
 
 

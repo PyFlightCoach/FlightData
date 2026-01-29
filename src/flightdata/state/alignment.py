@@ -7,6 +7,9 @@ import geometry as g
 from .state import State
 
 
+type AlignRadiusOption = Literal["full"] | int
+
+
 @dataclass
 class Alignment:
     dist: float
@@ -26,14 +29,14 @@ class Alignment:
 
         a = self.aligned.iloc[self.path[::step, 1]].pos + offset / 10
         b = tp.iloc[self.path[::step, 0]].pos - offset / 10
-        text = [f"{p[0]},{i},{p[1]}" for i, p in enumerate(self.path[::step])]  
+        text = [f"{p[0]},{i},{p[1]}" for i, p in enumerate(self.path[::step])]
 
         fig.add_traces(
             [
                 go.Scatter3d(
-                    x=[a.x[i],b.x[i]],
-                    y=[a.y[i],b.y[i]],
-                    z=[a.z[i],b.z[i]],
+                    x=[a.x[i], b.x[i]],
+                    y=[a.y[i], b.y[i]],
+                    z=[a.z[i], b.z[i]],
                     name=text[i],
                     mode="lines",
                     showlegend=False,
@@ -44,35 +47,67 @@ class Alignment:
         )
         return fig
 
+    @staticmethod
+    def norm(tp: npt.NDArray, fl: npt.NDArray) -> npt.NDArray[np.floating]:
+        
+        # remove columns that are constant in the template
+        drop_cols = np.isclose(tp,tp[0, :]).all(axis=0)
+        tp = tp[:, ~drop_cols]
+        fl = fl[:, ~drop_cols]
 
-def align(
-    flown: State,
-    template: State,
-    radius=5,
-    mirror=True,
-    weights: g.Point = None,
-    tp_weights: g.Point = None,
-) -> Alignment:
-    """Perform a temporal alignment between two states. return the flown state with labels
-    copied from the template along the warped path.
-    """
-    from fastdtw.fastdtw import fastdtw
-    from scipy.spatial.distance import euclidean
+        #normalise by standard deviation
 
-    weights = weights or g.Point(1, 1.2, 0.5)
-    tp_weights = tp_weights or g.Point(0.6, 0.6, 0.6)
+        #make mean 0
+        
+        
+        return tp, fl
 
-    def get_brv(brv):
-        if mirror:
-            brv = g.Point(
-                np.abs(brv.x), brv.y, np.abs(brv.z)
-            )  # brv.abs() * g.Point(1, 0, 1) + brv * g.Point(0, 1, 0 )
-        return brv * weights
+    @staticmethod
+    def align(
+        flown: State,
+        template: State,
+        radius: AlignRadiusOption = "full",
+        mirror=True,
+        weights: g.Point = None,
+        tp_weights: g.Point = None,
+        norm: bool = False,  # TODO This is not Z norm
+        resample: bool=False
+    ) -> Alignment:
+        """Perform a temporal alignment between two states. return the flown state with labels
+        copied from the template along the warped path.
+        """
+        from fastdtw.fastdtw import fastdtw
+        from scipy.spatial.distance import euclidean
 
-    fl = get_brv(flown.rvel)
+        weights = weights or g.Point(1, 1.2, 0.5)
+        tp_weights = tp_weights or g.Point(0.6, 0.6, 0.6)
 
-    tp = get_brv(template.rvel * tp_weights)
+        def get_brv(brv):
+            if mirror:
+                brv = g.Point(
+                    np.abs(brv.x), brv.y, np.abs(brv.z)
+                )
+            return brv * weights
 
-    distance, path = fastdtw(tp.data, fl.data, radius=radius, dist=euclidean)
-    path = np.array(path)
-    return Alignment(distance, path, State.copy_labels(template, flown, path, 3))
+        fl = get_brv(flown.rvel)
+        tp = get_brv(template.rvel * tp_weights)
+
+        if resample:
+            raise NotImplementedError("Resample not implemented yet")
+            n = int(np.clip(len(fl) // len(tp), 1, 5))
+            fl = g.Point(fl.data[::n, :]) if n > 1 else fl
+        else:
+            n=1
+
+        distance, path = fastdtw(
+            *Alignment.norm(tp.data, fl.data),            
+            radius=len(flown) and len(template) if radius == "full" else radius,
+            dist=euclidean,
+        )
+        path = np.array(path)
+        
+        if n > 1:
+            path[:,1] = 2 * path[:,1]
+        
+        
+        return Alignment(distance, path, State.copy_labels(template, flown, path, 3))
