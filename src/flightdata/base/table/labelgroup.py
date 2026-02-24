@@ -207,6 +207,23 @@ class LabelGroup:
     def boundary_dict(self) -> dict[str, float]:
         return {k: v.stop for k, v in self.items()}
 
+    def plot_boundaries(self, fig, t: npt.ArrayLike, **kwargs):
+        import plotly.express as px
+        bdict: dict[str, float] = dict(start=t[0], **self.boundary_dict)
+        keys = list(bdict.keys())
+        for i, (k0, k1) in enumerate(zip(keys[:-1], keys[1:])):
+            b0, b1 = bdict[k0], bdict[k1]
+            fig.add_vrect(
+                x0=b0,
+                x1=b1,
+                fillcolor=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)],
+                opacity=0.2,
+                annotation_position="top left",
+                annotation_text=k1,
+                **kwargs
+            )
+        return fig
+
     def set_boundaries(self, stops: list[float]):
         """set the start and stop times of the labels, assumes tesselated"""
         newlabels = {}

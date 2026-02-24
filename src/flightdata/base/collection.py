@@ -71,6 +71,15 @@ class Collection:
     def filter_items(self, fun: Callable[[str, T], bool]):
         return self.__class__({k: v for k, v in self.items() if fun(k, v)})
     
+    def without(self, v_or_key: T | str):
+        if isinstance(v_or_key, self.__class__.VType):
+            key = getattr(v_or_key, self.__class__.uid)
+        elif isinstance(v_or_key, str):
+            key = v_or_key
+        else:
+            raise ValueError(f"Expected a {self.__class__.VType} or a str, got {type(v_or_key)}")
+        return self.__class__({k: v for k, v in self.items() if k != key})
+
     def index(self, key: str) -> int:
         if key in self.data:
             return list(self.data.keys()).index(key)

@@ -50,6 +50,10 @@ class Table:
     def t_end(self):
         return self.t + self.dt
 
+    @property
+    def t0(self):
+        return self.t - self.t[0]
+
     @classmethod
     def build(
         Cls,

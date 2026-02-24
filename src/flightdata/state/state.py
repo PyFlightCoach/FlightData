@@ -691,9 +691,12 @@ class State(Table):
         return mass.m * (self.zero_g_acc() + g.Point.cross(self.rvel, self.vel))
 
     def M_inertia(self, mass: g.Mass):
-        """return the inertial moment in N"""
+        """return the inertial moment in Nm"""
         h = mass.angular_momentum(self.rvel)
         return h.diff(self.dt) + g.Point.cross(self.rvel, h)
 
     def get_rotation(self):
-        return np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.dt)
+        return np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.time.dt0)
+
+    def roll_rotation(self):
+        return np.cumsum(self.rvel.x * self.time.dt0)
