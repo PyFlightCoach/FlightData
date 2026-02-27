@@ -99,8 +99,8 @@ class Collection:
         return cls([cls.VType.from_dict(**v) for v in vals])    
 
     @classmethod
-    def from_dict(cls, vals: dict[str, dict[str, Any]]) -> Self:
-        return cls([cls.VType.from_dict(v) for v in vals.values()])
+    def from_dict(cls, vals: dict[str, dict[str, Any]], *args, **kwargs) -> Self:
+        return cls([cls.VType.from_dict(v, *args, **kwargs) for v in vals.values()])
     
     def add(self, v: T | Self, inplace=True) -> Self:
         odata = self.data.copy()
@@ -120,7 +120,7 @@ class Collection:
     def concat(Cls, vs: list) -> Self:
         coll = Cls([])
         for v in vs:
-            coll.add(v)
+            coll = coll.add(v, inplace=False)
         return coll
     
     @classmethod

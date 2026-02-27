@@ -219,6 +219,7 @@ class LabelGroup:
                 fillcolor=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)],
                 opacity=0.2,
                 annotation_position="top left",
+                annotation_textangle=90,
                 annotation_text=k1,
                 **kwargs
             )
