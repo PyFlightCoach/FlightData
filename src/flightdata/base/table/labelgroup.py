@@ -16,6 +16,7 @@ class LabelGroup:
     """Contains a dict of labels
     They should be tesselated, so the stop of one label is the start of the next
     """
+
     labels: dict[str, Label] = field(default_factory=lambda: {})
 
     def __eq__(self, other: LabelGroup):
@@ -77,21 +78,25 @@ class LabelGroup:
         if len(labels.shape) > 1:
             raise ValueError("Label data must be 1D")
         if len(labels) == len(t):
-            labels= labels[:-1]
+            labels = labels[:-1]
         assert len(labels) == len(t) - 1
-        labels=labels.astype(object)
+        labels = labels.astype(object)
         change_ids = np.where(labels[:-1] != labels[1:])[0] + 1
-        
+
         newlabnames = [labels[0]]
         for i, oldlabname in enumerate(labels[change_ids]):
             newlabname = oldlabname
-            suffix=1
+            suffix = 1
             while newlabname in newlabnames:
                 newlabname = f"{oldlabname}_{suffix}"
-                suffix+=1
+                suffix += 1
             newlabnames.append(newlabname)
             if not newlabname == oldlabname:
-                labels[change_ids[i]:change_ids[i+1] if i+1<len(change_ids) else None] = newlabname
+                labels[
+                    change_ids[i] : change_ids[i + 1]
+                    if i + 1 < len(change_ids)
+                    else None
+                ] = newlabname
 
         labnames = pd.unique(labels)
         data = {}
@@ -153,7 +158,10 @@ class LabelGroup:
     def to_array(self, t: npt.NDArray):
         assert self.is_tesselated(t)
         return np.concatenate(
-            [np.full(sum(v.contains(t, i == len(self.labels) - 1)), k) for i, (k, v) in enumerate(self.labels.items())]
+            [
+                np.full(sum(v.contains(t, i == len(self.labels) - 1)), k)
+                for i, (k, v) in enumerate(self.labels.items())
+            ]
         )
 
     def scale(self, factor: float):
@@ -181,7 +189,6 @@ class LabelGroup:
                 self.offset(-a[0]).scale((b[-1] - b[0]) / (a[-1] - a[0])).offset(b[0])
             )
         else:
-            
             mans = (
                 pd.DataFrame(path, columns=["a", "b"])
                 .set_index("a")
@@ -191,10 +198,11 @@ class LabelGroup:
                 .reset_index()
                 .set_index("b")
             )
-            
-            #st: Self = flown.__class__(flown.data).label(**mans.to_dict(orient="list"))
+
+            # st: Self = flown.__class__(flown.data).label(**mans.to_dict(orient="list"))
             return LabelGroup.read_array(b, mans.a.values)
-#            return self.update(lambda v: v.transfer(a, b, path))
+
+    #            return self.update(lambda v: v.transfer(a, b, path))
     @property
     def widths(self):
         return [v.width for v in self.labels.values()]
@@ -207,21 +215,36 @@ class LabelGroup:
     def boundary_dict(self) -> dict[str, float]:
         return {k: v.stop for k, v in self.items()}
 
-    def plot_boundaries(self, fig, t: npt.ArrayLike, **kwargs):
+    def plot_boundaries(
+        self,
+        fig,
+        t: npt.ArrayLike,
+        zero_x: bool = True,
+        rename: dict[str, str] = None,
+        **kwargs,
+    ):
         import plotly.express as px
+
         bdict: dict[str, float] = dict(start=t[0], **self.boundary_dict)
         keys = list(bdict.keys())
+        rename = {k: k for k in keys} | (rename or {})
         for i, (k0, k1) in enumerate(zip(keys[:-1], keys[1:])):
             b0, b1 = bdict[k0], bdict[k1]
             fig.add_vrect(
-                x0=b0,
-                x1=b1,
-                fillcolor=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)],
-                opacity=0.2,
-                annotation_position="top left",
-                annotation_textangle=90,
-                annotation_text=k1,
-                **kwargs
+                x0=b0 - (t[0] if zero_x else 0),
+                x1=b1 - (t[0] if zero_x else 0),
+                fillcolor=px.colors.qualitative.Plotly[
+                    i % len(px.colors.qualitative.Plotly)
+                ],
+                **(
+                    dict(
+                        opacity=0.2,
+                        annotation_position="left",
+                        annotation_textangle=90,
+                        annotation_text=rename[k1],
+                    )
+                    | kwargs
+                ),
             )
         return fig
 
@@ -238,10 +261,10 @@ class LabelGroup:
     def from_boundaries(t0: Number, bdict: dict[str, Number]):
         labs = {}
         for i, (k, v) in enumerate(bdict.items()):
-            labs[k] = Label(t0 if i==0 else list(bdict.values())[i-1], v)
+            labs[k] = Label(t0 if i == 0 else list(bdict.values())[i - 1], v)
         return LabelGroup(labs)
 
-    def set_boundary(self, key: str | int, value: float, min_duration: int=0):
+    def set_boundary(self, key: str | int, value: float, min_duration: int = 0):
         """Set the stop time of a label, and the start of the next label"""
         index = list(self.keys()).index(key) if isinstance(key, str) else key
         if (
@@ -259,18 +282,19 @@ class LabelGroup:
         """Step the stop time of a label, and the start of the next label by steps timesteps"""
         ilg = self.to_iloc(t)
         iboundaries = np.concatenate([np.array([0]), ilg.boundaries])
-        lengths = [b1-b0 for b0, b1 in zip(iboundaries[:-1], iboundaries[1:])]
+        lengths = [b1 - b0 for b0, b1 in zip(iboundaries[:-1], iboundaries[1:])]
         index = list(self.keys()).index(key) if isinstance(key, str) else key
-#        new_iloc = np.where(t==self[index].stop)[0][0] + steps
-        
-        
-        if lengths[index] + steps + 1 >=  min_len  and lengths[index+1] - steps + 1>= min_len :
-            
+        #        new_iloc = np.where(t==self[index].stop)[0][0] + steps
+
+        if (
+            lengths[index] + steps + 1 >= min_len
+            and lengths[index + 1] - steps + 1 >= min_len
+        ):
             ilg[index].stop = ilg[index].stop + steps
             if index < len(ilg) - 1:
-                ilg[index+1].start = ilg[index+1].start + steps
+                ilg[index + 1].start = ilg[index + 1].start + steps
             return ilg.to_t(t)
-#            return self.set_boundary(key, t[new_iloc], 0)
+        #            return self.set_boundary(key, t[new_iloc], 0)
         else:
             raise ValueError(f"Cannot step boundary for label {key}")
 
@@ -287,40 +311,56 @@ class LabelGroup:
     def to_t(self, t: npt.NDArray):
         return self.update(lambda v: v.to_t(t))
 
-    def split_label(self, key: str, new_k: str, prop: float, pos: Literal["start", "end"], t: npt.NDArray, minl: int):
-        """Split a label at the propotion prop (between 0 and 1). give the new label the key new_k. 
-            if prop ==0, the original label will have length minl
-            if prop ==1, the new label will have length minl.
-            TODO handle sublabels
+    def split_label(
+        self,
+        key: str,
+        new_k: str,
+        prop: float,
+        pos: Literal["start", "end"],
+        t: npt.NDArray,
+        minl: int,
+    ):
+        """Split a label at the propotion prop (between 0 and 1). give the new label the key new_k.
+        if prop ==0, the original label will have length minl
+        if prop ==1, the new label will have length minl.
+        TODO handle sublabels
         """
         new_labs = {}
         for k, v in self.items():
             if k == key:
                 old_ilable = self[key].to_iloc(t)
-                if pos=="start":
-                    new_labs[new_k] = Label(old_ilable.start, old_ilable.start+minl).to_t(t)
-                    new_labs[key] = Label(old_ilable.start+minl, old_ilable.stop).to_t(t)
-                elif pos=="end":
-                    new_labs[key] = Label(old_ilable.start, old_ilable.stop - minl).to_t(t)
-                    new_labs[new_k] = Label(old_ilable.stop-minl, old_ilable.stop).to_t(t)
+                if pos == "start":
+                    new_labs[new_k] = Label(
+                        old_ilable.start, old_ilable.start + minl
+                    ).to_t(t)
+                    new_labs[key] = Label(
+                        old_ilable.start + minl, old_ilable.stop
+                    ).to_t(t)
+                elif pos == "end":
+                    new_labs[key] = Label(
+                        old_ilable.start, old_ilable.stop - minl
+                    ).to_t(t)
+                    new_labs[new_k] = Label(
+                        old_ilable.stop - minl, old_ilable.stop
+                    ).to_t(t)
             else:
-                new_labs[k]=v
+                new_labs[k] = v
         return LabelGroup(new_labs)
 
     def insert(self, loc: int, names: list[str]) -> LabelGroup:
         """Insert one or more zero width labels at the given location.
-        function is called recursively if more than one name provided 
+        function is called recursively if more than one name provided
         """
 
         if len(names) > 1:
             new = self.copy()
             for i, name in enumerate(names):
-                new = new.insert(loc+i, [name])
+                new = new.insert(loc + i, [name])
             return new
 
         new_labels = {}
         for i, (k, v) in enumerate(self.items()):
-            if i==loc:
+            if i == loc:
                 new_labels[names[0]] = Label(v.start, v.start)
             new_labels[k] = v
         if loc == len(self):
@@ -328,19 +368,19 @@ class LabelGroup:
         return LabelGroup(new_labels)
 
     def insert_list(self, keys: list[str]):
-        """update self based on the provided list of keys. 
+        """update self based on the provided list of keys.
         Where missing keys are found they will be inserted with minl timesteps.
         bounding labels will be shifted to accomodate."""
         labs = list(self.keys())
-    
+
         il = 0
         ii = 0
         inserts = []
         new_labs = {}
         while ii < len(keys):
-            if il<len(labs) and labs[il] == keys[ii]:
+            if il < len(labs) and labs[il] == keys[ii]:
                 if len(inserts):
-                    new_labs[il] = inserts                
+                    new_labs[il] = inserts
                 inserts = []
                 il += 1
                 ii += 1
@@ -351,14 +391,14 @@ class LabelGroup:
             if len(inserts):
                 new_labs[il] = inserts
         for loc in list(new_labs.keys())[::-1]:
-            self=self.insert(loc, new_labs[loc])
+            self = self.insert(loc, new_labs[loc])
         return self
 
     def expand_one(self, name: str | Number, min_len=0):
         """make the selected label one step longer"""
         if isinstance(name, Number):
             index = name
-        else:    
+        else:
             index = list(self.keys()).index(name)
         boundaries = self.boundaries
         widths = self.widths
@@ -368,35 +408,48 @@ class LabelGroup:
         elif index == len(self) - 1:
             side = "start"
         else:
-            next_space_stop = np.argwhere(np.array(widths[index+1:]) > min_len)
-            next_space_stop = next_space_stop[0][0] if len(next_space_stop) and len(next_space_stop[0]) else None
+            next_space_stop = np.argwhere(np.array(widths[index + 1 :]) > min_len)
+            next_space_stop = (
+                next_space_stop[0][0]
+                if len(next_space_stop) and len(next_space_stop[0])
+                else None
+            )
             next_space_start = np.argwhere(np.array(widths[:index][::-1]) > min_len)
-            next_space_start = next_space_start[0][0] if len(next_space_start) and len(next_space_start[0]) else None
-            
+            next_space_start = (
+                next_space_start[0][0]
+                if len(next_space_start) and len(next_space_start[0])
+                else None
+            )
+
             if next_space_stop is None and next_space_start is None:
                 raise ValueError(f"Cannot expand label {name}")
             elif next_space_stop is None:
                 side = "start"
             elif next_space_start is None:
-                side= "stop"
+                side = "stop"
             elif next_space_stop > 0 and next_space_start == 0:
                 side = "start"
             elif next_space_start > 0 and next_space_stop == 0:
                 side = "stop"
             else:
-                #either next_space_stop == next_space_start
-                side = "stop" if widths[:index][::-1][next_space_start] < widths[index+1:][next_space_stop] else "start"
-       
-        if side=="start":
-            boundaries[index-1] -= 1
+                # either next_space_stop == next_space_start
+                side = (
+                    "stop"
+                    if widths[:index][::-1][next_space_start]
+                    < widths[index + 1 :][next_space_stop]
+                    else "start"
+                )
+
+        if side == "start":
+            boundaries[index - 1] -= 1
         else:
             boundaries[index] += 1
         return self.set_boundaries(boundaries)
-        
-    def expand(self, minl: int=1):
+
+    def expand(self, minl: int = 1):
         """expand short labels to minl"""
-        
-        new = self.copy()   
+
+        new = self.copy()
         while min(new.widths) < minl:
-            new = new.expand_one(np.argmin(new.widths), minl)    
+            new = new.expand_one(np.argmin(new.widths), minl)
         return new
