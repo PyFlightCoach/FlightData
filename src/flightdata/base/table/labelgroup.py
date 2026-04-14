@@ -221,10 +221,13 @@ class LabelGroup:
         t: npt.ArrayLike,
         zero_x: bool = True,
         rename: dict[str, str] = None,
+        highlight_el: str=None,
         **kwargs,
     ):
         import plotly.express as px
-
+        colors = px.colors.qualitative.Plotly
+        if highlight_el is not None:
+            colors = ["grey" if el != highlight_el else None for i, el in enumerate(self.keys())]
         bdict: dict[str, float] = dict(start=t[0], **self.boundary_dict)
         keys = list(bdict.keys())
         rename = {k: k for k in keys} | (rename or {})
@@ -233,9 +236,7 @@ class LabelGroup:
             fig.add_vrect(
                 x0=b0 - (t[0] if zero_x else 0),
                 x1=b1 - (t[0] if zero_x else 0),
-                fillcolor=px.colors.qualitative.Plotly[
-                    i % len(px.colors.qualitative.Plotly)
-                ],
+                fillcolor=colors[i % len(colors)],
                 **(
                     dict(
                         opacity=0.2,

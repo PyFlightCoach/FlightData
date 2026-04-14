@@ -100,7 +100,7 @@ class Collection:
 
     @classmethod
     def from_dict(cls, vals: dict[str, dict[str, Any]], *args, **kwargs) -> Self:
-        return cls([cls.VType.from_dict(v, *args, **kwargs) for v in vals.values()])
+        return cls([cls.VType.from_dict(v, *args, **kwargs) for v in (vals.values() if isinstance(vals, dict) else vals)])
     
     def add(self, v: T | Self, inplace=True) -> Self:
         odata = self.data.copy()

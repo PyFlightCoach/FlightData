@@ -1,4 +1,4 @@
-from tuning import curvature_lowpass
+
 from flightdata import State
 from ..conftest import flight, origin, state
 from pytest import approx, fixture

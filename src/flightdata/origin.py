@@ -163,3 +163,15 @@ class Origin(object):
             alt=self.alt,
             heading=np.degrees(self.heading),
         )
+    
+    @staticmethod
+    def from_acrowrx_header(head1: dict):
+        return Origin(
+            "origin",
+            g.GPS(
+                float(head1["latitude"]),
+                float(head1["longitude"]),
+                float(head1["altitude"]),
+            ),
+            np.radians(float(head1["heading"])),
+        )

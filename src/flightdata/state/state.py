@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Literal, ClassVar, overload
+from typing import ClassVar, Literal, overload
 
+import geometry as g
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-
-import geometry as g
-from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from schemas import fcj
-from flightdata.base.table.slicer import Slicer
+
+from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
 from flightdata.base.table.label import Label
+from flightdata.base.table.slicer import Slicer
 from flightdata.state.kinematics import interpolate
-from dataclasses import dataclass
 
 
 @dataclass(repr=False)
@@ -31,9 +32,11 @@ class State(Table):
                 "vel",
                 g.Point,
                 ["u", "v", "w"],
-                lambda st: g.P0()
-                if len(st) == 1
-                else st.att.inverse().transform_point(st.pos.diff(st.dt)),
+                lambda st: (
+                    g.P0()
+                    if len(st) == 1
+                    else st.att.inverse().transform_point(st.pos.diff(st.dt))
+                ),
             ),
             SVar(
                 "rvel",
@@ -45,10 +48,12 @@ class State(Table):
                 "acc",
                 g.Point,
                 ["du", "dv", "dw"],
-                lambda st: g.P0()
-                if len(st) == 1
-                else st.att.inverse().transform_point(
-                    st.att.transform_point(st.vel).diff(st.dt) + g.PZ(9.81, len(st))
+                lambda st: (
+                    g.P0()
+                    if len(st) == 1
+                    else st.att.inverse().transform_point(
+                        st.att.transform_point(st.vel).diff(st.dt) + g.PZ(9.81, len(st))
+                    )
                 ),
             ),
         ]
@@ -255,7 +260,6 @@ class State(Table):
             ),
         )
 
-
     @staticmethod
     def kinematic_interpolation(a: State, b: State):
         def interp(fac: float):
@@ -339,13 +343,12 @@ class State(Table):
         """Rotate by an axis angle"""
         att = self.att.body_rotate(r)
         q = att.inverse() * self.att
-        
-        #TODO axis rates need to update, not just rotate
+
+        # TODO axis rates need to update, not just rotate
         rvel = q.transform_point(self.rvel)
         if len(r) == len(self):
             rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")])
 
-        
         return State.from_constructs(
             time=self.time,
             pos=self.pos,
@@ -467,15 +470,15 @@ class State(Table):
             lab: Label = label.to_iloc(self.t)
             mans.append(
                 fcj.Man(
-                    name = k,
-                    k = kfactors[i],
-                    id = f"sp_{i}",
-                    sp = i,
-                    wd = 100 * label.width / self.duration,
-                    start = lab.start,
-                    stop = lab.stop,
-                    sel = False,
-                    background = ""
+                    name=k,
+                    k=kfactors[i],
+                    id=f"sp_{i}",
+                    sp=i,
+                    wd=100 * label.width / self.duration,
+                    start=lab.start,
+                    stop=lab.stop,
+                    sel=False,
+                    background="",
                 )
             )
         return mans
@@ -489,37 +492,59 @@ class State(Table):
     ) -> fcj.FCJ:
         fcmans = self._create_json_mans(kfactors)
         return fcj.FCJ(
-            version = "1.3",
-            comments= "DO NOT EDIT\n",
-            name= schedule_name,
-            view= fcj.View(
-                position= {"x": -120,"y": 130.5,"z": 265.0},
-                target= {"x": -22, "y": 160, "z": -204},
+            version="1.3",
+            comments="DO NOT EDIT\n",
+            name=schedule_name,
+            view=fcj.View(
+                position={"x": -120, "y": 130.5, "z": 265.0},
+                target={"x": -22, "y": 160, "z": -204},
             ),
-            parameters= fcj.Parameters(
-                rotation = -1.5707963267948966,
-                start = int(fcmans[1].start),
-                stop = int(fcmans[1].stop),
-                moveEast = 0.0,
-                moveNorth = 0.0,
-                wingspan = 3,
-                modelwingspan = 25,
-                elevate = 0,
-                originLat = 0.0,
-                originLng = 0.0,
-                originAlt = 0.0,
-                pilotLat = "0.0",
-                pilotLng = "0.0",
-                pilotAlt = "0.00",
-                centerLat = "0.0",
-                centerLng = "-0.1",
-                centerAlt = "0.00",
-                schedule = [schedule_category, schedule_name],
+            parameters=fcj.Parameters(
+                rotation=-1.5707963267948966,
+                start=int(fcmans[1].start),
+                stop=int(fcmans[1].stop),
+                moveEast=0.0,
+                moveNorth=0.0,
+                wingspan=3,
+                modelwingspan=25,
+                elevate=0,
+                originLat=0.0,
+                originLng=0.0,
+                originAlt=0.0,
+                pilotLat="0.0",
+                pilotLng="0.0",
+                pilotAlt="0.00",
+                centerLat="0.0",
+                centerLng="-0.1",
+                centerAlt="0.00",
+                schedule=[schedule_category, schedule_name],
             ),
-            scored= scores is not None,
-            scores= [0,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,600,] if scores is None else scores,
-            mans= fcmans,
-            data= self._create_json_data(),
+            scored=scores is not None,
+            scores=[
+                0,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                10,
+                600,
+            ]
+            if scores is None
+            else scores,
+            mans=fcmans,
+            data=self._create_json_data(),
         )
 
     def direction(self):
@@ -603,9 +628,12 @@ class State(Table):
         self: State, axis: g.Point, angle: float, reference: str = "body"
     ) -> State:
         """Generate a new section, identical to self, but with a continous rotation integrated"""
-        
-        
-        superimposed_rotation = (self.t - self.t[0]) * angle / (self.duration if self.duration > 0 else self.dt[0])
+
+        superimposed_rotation = (
+            (self.t - self.t[0])
+            * angle
+            / (self.duration if self.duration > 0 else self.dt[0])
+        )
 
         angles = axis.unit().tile(len(self)) * superimposed_rotation
 
@@ -674,10 +702,10 @@ class State(Table):
         """Returns the curvature of the path in 1/m, axis is the desired axial direction
         in the world frame"""
         trfl = self.to_track()
-        body_curvature = g.point.cross((-trfl.zero_g_acc() / trfl.u ** 2), g.PX())
+        body_curvature = g.point.cross((-trfl.zero_g_acc() / trfl.u**2), g.PX())
         world_curvature = trfl.att.transform_point(body_curvature)
 
-        return g.point.scalar_projection(world_curvature, axis) 
+        return g.point.scalar_projection(world_curvature, axis)
 
     #        po.data[-1, :] = np.nan
     #        return po.ffill()
@@ -700,3 +728,13 @@ class State(Table):
 
     def roll_rotation(self):
         return np.cumsum(self.rvel.x * self.time.dt0)
+
+    def estimate_wind(self):
+        """This is a very rough estimate of the wind, it is based on the assumption that
+        on average the lateral component of alpha and beta is caused purely by the wind.
+        It will only work for flights with lots of different orientations.
+        It also assumes the wind is constant in time and space
+        """
+        body_slip=g.point.vector_rejection(self.vel, g.PX())
+        world_slip = self.att.transform_point(body_slip)
+        return g.point.vector_rejection(world_slip, g.PZ()).mean()

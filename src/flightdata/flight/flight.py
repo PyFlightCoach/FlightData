@@ -608,7 +608,7 @@ class Flight:
             )
 
         #TODO need to reverse engineer the origin if no origin in file.
-        origin = Origin("ekf_origin", GPS(parser.ORGN.iloc[:, -3:]), 0)
+        origin = Origin("ekf_origin", GPS(parser.ORGN.iloc[:, -3:])[0], 0)
 
         return Flight(
             dfout.set_index("time_flight", drop=False), params, origin, ppsource
@@ -677,6 +677,58 @@ class Flight:
         df["position_E"] = df["position_E"] + shift.y
         df["position_D"] = df["position_D"] + shift.z
         return Flight(df.set_index("time_flight", drop=False), None, origin, "xkf_c0")
+
+    @staticmethod
+    def from_acrowrx_df(df: pd.DataFrame | str | Path) -> Flight:
+        """Constructor from an acrowrx dataframe or csv file"""
+        if isinstance(df, (str, Path)):
+            df = pd.read_csv(df)
+                        
+        if df.YEAR.max() < 1000:
+            df.YEAR = df.YEAR + 2000
+
+        _time = pd.to_datetime(
+            pd.DataFrame(
+                dict(
+                    year=df.YEAR,
+                    month=df.MONTH,
+                    day=df.DAY,
+                    hour=df.HOUR,
+                    minute=df.MINUTE,
+                    seconds=df.SECOND,
+                    millisecond=df.MS,
+                )
+            )
+        ).astype(int)
+
+        t = (_time - _time[0]) / 1e9
+
+        df = Flight.build_cols(
+            time_flight=np.linspace(0, t.iloc[-1], len(t)),
+            time_actual=_time/1e9,
+            attitude_roll=np.radians(df.ROLL),
+            attitude_pitch=np.radians(df.PITCH),
+            attitude_yaw=np.radians(df.YAW),
+            pos_latitude=df.LAT,
+            pos_longitude=df.LONG,
+            pos_altitude=df.ALT,
+            velocity_N=df.VX,
+            velocity_E=df.VY,
+            velocity_D=df.VZ,
+            acceleration_x=df.AX,
+            acceleration_y=df.AY,
+            acceleration_z=df.AZ,
+            axisrate_roll=df.GX,
+            axisrate_pitch=df.GY,
+            axisrate_yaw=df.GZ,
+        )
+
+        return Flight(
+            df.set_index("time_flight", drop=False),
+            origin=Origin("dummy_origin", GPS(0, 0, 0), -np.pi / 2),
+            primary_pos_source="pos_c0",
+        )
+
 
     def remove_time_flutter(self):
         # I think the best option is just to take the average of the timestep.

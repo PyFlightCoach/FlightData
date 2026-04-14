@@ -32,7 +32,7 @@ class Flow(Table):
         airspeed = body.vel - body.att.inverse().transform_point(env.wind)
 
         with np.errstate(invalid='ignore'):
-            alpha =  np.arctan(airspeed.z / airspeed.x) 
+            alpha =  np.arctan2(airspeed.z, airspeed.x) 
         alpha[np.isnan(alpha)] = 0.0
 
         stab_airspeed = Euler(
@@ -42,7 +42,7 @@ class Flow(Table):
         ).transform_point(airspeed)
     
         with np.errstate(invalid='ignore'):
-            beta = np.arctan(stab_airspeed.y / stab_airspeed.x)
+            beta = np.arctan2(stab_airspeed.y, stab_airspeed.x)
         beta[np.isnan(beta)] = 0.0
 
         with np.errstate(invalid='ignore'):
