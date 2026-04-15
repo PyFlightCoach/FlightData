@@ -123,4 +123,10 @@ def test_from_bindata(bindata: BinData):
     assert isinstance(fl, Flight)
 
     
+def test_create_flight_from_acrowrx_dataframe():
+    acrowrxdf = pd.read_csv('iac_advanced_01_11_2025.acrowrx.csv')
 
+    fl = Flight.from_acrowrx_df(acrowrxdf)
+
+    assert isinstance(fl, Flight)
+    
