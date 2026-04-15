@@ -19,8 +19,6 @@ from .labelgroup import LabelGroup
 from .labelgroups import LabelGroups
 from .slicer import Slicer
 
-pd.options.mode.copy_on_write = True
-
 default_interpolators = dict(
     Time="linterp",
     Point="linterp",
