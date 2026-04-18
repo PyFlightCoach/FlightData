@@ -19,8 +19,6 @@ from .labelgroup import LabelGroup
 from .labelgroups import LabelGroups
 from .slicer import Slicer
 
-pd.options.mode.copy_on_write = True
-
 default_interpolators = dict(
     Time="linterp",
     Point="linterp",
@@ -188,7 +186,7 @@ class Table:
                     self.t[-1] + self.dt[-1] if sli.stop is None else sli.stop,
                     sli.step,
                 )
-            ]
+            ].copy()
             if sli.start is None or sli.start < self.data.index[0]:
                 first = None
             else:
