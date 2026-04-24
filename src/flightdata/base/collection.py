@@ -1,16 +1,24 @@
-from typing import Union, Any, Self, TypeVar, Iterable, Callable
+from typing import Union, Any, Self, TypeVar, Iterable, Callable, Generic, get_args
 import pandas as pd
 
 
 T = TypeVar('T')
 
 
-class Collection:
-    VType: T = None
-
+class Collection(Generic[T]):
+    VType: type[T]
     uid = "uid"
-    def __init__(self, data: Union[dict[str, T], list[str,T]]=None, check_types=True):
-        
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Extract T from Collection[T] and auto-set VType
+        for base in cls.__orig_bases__:
+            args = get_args(base)
+            if args:
+                cls.VType = args[0]
+                break
+
+    def __init__(self, data: Union[dict[str, T], list[str,T]]=None, check_types=True):    
         self.data: dict[str, T] = {}
         if isinstance(data, dict):
             self.data = data
@@ -26,6 +34,9 @@ class Collection:
         assert all([hasattr(v, self.__class__.uid) for v in self.data.values()])
         if check_types:
             assert all(isinstance(v, self.__class__.VType) for v in self.data.values())
+
+
+
 
     def __getattr__(self, name) -> T:
         if name in self.data:

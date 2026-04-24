@@ -13,8 +13,8 @@ class P:
     def from_dict(d):
         return P(d["uid"])
 
-class Col(Collection):
-    VType=P
+class Col(Collection[P]):
+    pass
 
 
 @fixture()

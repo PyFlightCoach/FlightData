@@ -24,8 +24,8 @@ class SVar:
     def __repr__(self):
         return f"SVar({self.name}, {self.obj.__name__}, {self.keys})"
 
-class Constructs(Collection):
-    VType=SVar
+
+class Constructs(Collection[SVar]):
     uid = "name"
 
     def __init__(self, data):
