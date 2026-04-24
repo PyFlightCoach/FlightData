@@ -104,7 +104,6 @@ def test_slice_labels(tab_lab: Table):
     assert sli.labels["a"].labels["a0"].stop == 1
 
 
-
 def test_copy(tab_full: Table):
     tab2 = tab_full.copy()
     np.testing.assert_array_equal(tab2.t, tab_full.t)
@@ -166,6 +165,16 @@ def test_stack_no_overlap(tab_full: Table):
     assert tfn.element.e0.duration == tab_full.duration
     assert tfn.element.e1.t[0] == tab_full.duration + tab_full.dt[-1]
     assert tfn.element.e1.duration == tab_full.duration
+
+
+
+
+def test_stack_three_tables_two_one_long(tab_full: Table):
+
+    stacked = Table.stack([tab_full[0], tab_full, tab_full[-1]])
+    assert len(stacked) == len(tab_full) 
+    
+    
 
 
 def test_iloc(tab_full: Table):
@@ -255,3 +264,8 @@ def test_nest_labels_multi():
     assert tlab.a.a2.labels.b.b1 == Label(5, 7)
     assert tlab.a.a2.labels.b.b2 == Label(7, 9)
     
+
+def test_splice_sts_inserts_new_indeces(tab_full: Table):
+        tf = Table.splice([tab_full, tab_full.iloc[[0.5, 1.5, 2.5]]])
+        assert len(tf) == 9
+        assert tf.t[1] == 0.5

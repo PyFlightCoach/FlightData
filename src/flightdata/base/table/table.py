@@ -137,6 +137,44 @@ class Table:
             df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
             return Cls.build(df)
 
+    def to_parquet(self, path: str):
+        df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
+        df.to_parquet(path, index=False)
+
+    @classmethod
+    def from_parquet(Cls, path: str) -> Self:
+        df = pd.read_parquet(path)
+        return Cls.build(df)
+
+    def to_pybytes(self, ascii: bool = False) -> bytes:
+        import pyarrow as pa
+        import base64
+
+        table = pa.Table.from_pandas(
+            pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
+        )
+
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, table.schema) as writer:
+            writer.write_table(table)
+
+        payload = sink.getvalue().to_pybytes()
+
+        return base64.b64encode(payload).decode("ascii") if ascii else payload
+
+    @classmethod
+    def from_pybytes(Cls, payload: bytes | str) -> Self:
+        import pyarrow as pa
+        import base64
+
+        if isinstance(payload, str):
+            payload = base64.b64decode(payload)
+
+        reader = pa.ipc.open_stream(pa.BufferReader(payload))
+        table = reader.read_all()
+        df = table.to_pandas().set_index("t", drop=False)
+        return Cls.build(df)
+
     def __len__(self):
         return len(self.data)
 
@@ -217,7 +255,7 @@ class Table:
             else:
                 res = self.__class__(pd.DataFrame(self.data.iloc[i, :]).T)
         elif pd.api.types.is_list_like(sli):
-            res = self.__class__(self.data.loc[sli])
+            res = self.concatenate([self[s] for s in sli])
         else:
             raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
 
@@ -229,9 +267,8 @@ class Table:
         class ILocer:
             def __getitem__(_, sli: Number | slice) -> Table:
                 return self[get_value(self.t, sli)]
+
         return ILocer()
-
-
 
     def __iter__(self):
         for t in list(self.data.index):
@@ -344,15 +381,41 @@ class Table:
 
         return newst
 
+    def recalculate_dt(self):
+        t = g.Time.from_t(self.data.t.to_numpy())
+        _ndf =self.data.assign(
+            t=t.t,
+            dt=t.dt,
+        )
+        assert _ndf.index.is_monotonic_increasing
+        return self.__class__(_ndf, self.labels)
+
     @classmethod
     def concatenate(Cls, sts: list[Table] | dict[Table]) -> Self:
         """Concatenate a list of Tables and recalculate the timesteps"""
-        df = pd.concat([st.data for st in (sts if isinstance(sts, list) else sts.values())], axis=0)
+        df = pd.concat(
+            [st.data for st in (sts if isinstance(sts, list) else sts.values())], axis=0
+        )
         t = g.Time.from_t(df.t.to_numpy())
         df.t = t.t
         df.dt = t.dt
         assert df.index.is_monotonic_increasing
         return Cls(df).label(LabelGroups.concat(*[st.labels for st in sts]))
+
+    @classmethod
+    def splice(Cls, sts: list[Table]):
+        """
+        Splice a list of Tables together,
+        the time of the first table is preserved and the time of the last table is preserved
+        if indeces are repeated the first table with that index is used, the others are ignored
+        """ 
+        newdf = (pd.concat([st.data for st in sts], axis=0)
+            .drop_duplicates(subset="t")
+            .sort_values(by="t")
+            .reset_index(drop=True))
+        
+        return Cls(newdf).recalculate_dt()
+
 
     def label(
         self,
