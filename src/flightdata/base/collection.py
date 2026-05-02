@@ -1,4 +1,4 @@
-from typing import Union, Any, Self, TypeVar, Iterable, Callable, Generic, get_args
+from typing import Union, Any, Self, TypeVar, Iterable, Callable, Generic, get_args, Iterator
 import pandas as pd
 
 
@@ -57,16 +57,16 @@ class Collection(Generic[T]):
     def subset(self, keys: list[str]) -> Self:
         return self.__class__([getattr(self, k) for k in keys])
 
-    def keys(self):
+    def keys(self) -> Iterable[str]:
         return self.data.keys()
     
-    def items(self):
+    def items(self) -> Iterable[tuple[str, T]]:
         return self.data.items()
     
-    def values(self):
+    def values(self) -> Iterable[T]:
         return self.data.values()
 
-    def __iter__(self) -> Iterable[T]:
+    def __iter__(self) -> Iterator[T]:
         for v in self.data.values():
             yield v
 
