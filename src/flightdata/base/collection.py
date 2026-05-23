@@ -175,7 +175,7 @@ class Collection(Generic[T]):
             key_or_id = list(self.data.keys())[key_or_id]
         return self.__class__({k: v for k, v in self.data.items() if k != key_or_id})
 
-    def replace(self, key_or_id: str | int, v: T, inplace=False) -> Self:
+    def _replace(self, key_or_id: str | int, v: T, inplace=False) -> Self:
         if isinstance(key_or_id, int):
             key_or_id = list(self.data.keys())[key_or_id]
         if not hasattr(v, self.uid):
@@ -190,6 +190,11 @@ class Collection(Generic[T]):
             else:
                 raise KeyError(f"{key_or_id} not found in {self.__class__}")
             return self
+
+    def replace(self, **kwargs) -> Self:
+        for k, v in kwargs.items():
+            self = self._replace(k, v, False)
+        return self
 
     @property
     def uids(self) -> list[str]:
