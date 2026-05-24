@@ -97,3 +97,15 @@ def test_resample():
     st = State.from_transform(vel=g.PX(30)).extrapolate(1)
     
 
+def test_state_interpolate():
+    st = State.from_dict(load(Path("test/data/st_interpolation_testing.json").open()))
+
+    sts = State.stack([st.iloc[i] for i in np.linspace(0, 2, 20)], overlap=0)
+    pass
+    
+        
+
+    st.iloc[0.5].wvel == (st.wvel[0] + st.wvel[1]) / 2
+    st.iloc[0.5].vel == (st.vel[0] + st.vel[1]) / 2
+    st.plot().show()
+    pass

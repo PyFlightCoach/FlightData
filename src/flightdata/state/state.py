@@ -129,6 +129,19 @@ class State(Table):
     def wrvel(self) -> g.Point:
         return self.att.transform_point(self.rvel)
 
+
+    @property
+    def wx(self) -> g.Point:
+        return self.att.transform_point(g.PX())
+    
+    @property
+    def wy(self) -> g.Point:
+        return self.att.transform_point(g.PY())
+    
+    @property
+    def wz(self) -> g.Point:
+        return self.att.transform_point(g.PZ())
+
     def fill(self, time: g.Time) -> State:
         """Project forward through time assuming uniform circular motion"""
         st = self[-1]
