@@ -35,9 +35,6 @@ class Collection(Generic[T]):
         if check_types:
             assert all(isinstance(v, self.__class__.VType) for v in self.data.values())
 
-
-
-
     def __getattr__(self, name) -> T:
         if name in self.data:
             return self.data[name]
@@ -66,12 +63,20 @@ class Collection(Generic[T]):
     def values(self) -> Iterable[T]:
         return self.data.values()
 
+    def index(self, key: str) -> int:
+        if key in self.data:
+            return list(self.data.keys()).index(key)
+        raise KeyError(f"{key} not found in {self.__class__}")
+
     def __iter__(self) -> Iterator[T]:
         for v in self.data.values():
             yield v
 
     def update(self, fun: Callable[[T], T]):
         return self.__class__({k: fun(v) for k, v in self.items()})
+
+    def filter_indices(self, fun: Callable[[int], bool]):
+        return self.__class__({k: v for i, (k, v) in enumerate(self.items()) if fun(i)})
 
     def filter_values(self, fun: Callable[[T], bool]):
         return self.__class__({k: v for k, v in self.items() if fun(v)})
