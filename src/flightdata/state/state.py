@@ -743,10 +743,12 @@ class State(Table):
 
     def estimate_wind(self):
         """This is a very rough estimate of the wind, it is based on the assumption that
-        on average the lateral component of alpha and beta is caused purely by the wind.
+        on average the lateral component of alpha and beta is caused by the wind.
         It will only work for flights with lots of different orientations.
         It also assumes the wind is constant in time and space
         """
         body_slip=g.point.vector_rejection(self.vel, g.PX())
         world_slip = self.att.transform_point(body_slip)
-        return g.point.vector_rejection(world_slip, g.PZ()).mean()
+        confidence = abs(g.point.vector_rejection(world_slip, g.PZ())) / abs(self.vel)
+        wind = (world_slip * confidence).sum() / (np.mean(confidence) * len(self))
+        return g.point.vector_rejection(wind, g.PZ()), np.mean(confidence)
