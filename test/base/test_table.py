@@ -266,6 +266,8 @@ def test_nest_labels_multi():
     
 
 def test_splice_sts_inserts_new_indeces(tab_full: Table):
+        tab_full = tab_full.label(element="e0")
         tf = Table.splice([tab_full, tab_full.iloc[[0.5, 1.5, 2.5]]])
         assert len(tf) == 9
         assert tf.t[1] == 0.5
+        assert "element" in tf.labels.keys()

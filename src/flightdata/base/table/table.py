@@ -354,36 +354,35 @@ class Table:
         if isinstance(sts, dict):
             label_values = list(sts.keys())
             sts = list(sts.values())
-        if len(sts) == 1:
-            return sts[0]
 
         if label_title:
             assert len(label_values) == len(sts)
             sts[0] = sts[0].over_label(label_title, label_values[0])
 
         newst = sts[0]
-        for i, st in enumerate(sts[1:], 1):
-            if overlap > 0:
-                next_t = newst.t[-overlap]
-                newst = Cls(newst.data.iloc[:-overlap, :]).label(newst.labels)
-            else:
-                next_t = newst.t[-1] + newst.dt[-1]
+        if len(sts) > 1:
+            for i, st in enumerate(sts[1:], 1):
+                if overlap > 0:
+                    next_t = newst.t[-overlap]
+                    newst = Cls(newst.data.iloc[:-overlap, :]).label(newst.labels)
+                else:
+                    next_t = newst.t[-1] + newst.dt[-1]
 
-            if label_title:
-                st = st.over_label(label_title, label_values[i])
+                if label_title:
+                    st = st.over_label(label_title, label_values[i])
 
-            newst = Cls.concatenate(
-                [
-                    newst,
-                    st.shift_time(next_t - st.data.index[0]),
-                ]
-            )
+                newst = Cls.concatenate(
+                    [
+                        newst,
+                        st.shift_time(next_t - st.data.index[0]),
+                    ]
+                )
 
         return newst
 
     def recalculate_dt(self):
         t = g.Time.from_t(self.data.t.to_numpy())
-        _ndf =self.data.assign(
+        _ndf = self.data.assign(
             t=t.t,
             dt=t.dt,
         )
@@ -408,14 +407,19 @@ class Table:
         Splice a list of Tables together,
         the time of the first table is preserved and the time of the last table is preserved
         if indeces are repeated the first table with that index is used, the others are ignored
-        """ 
-        newdf = (pd.concat([st.data for st in sts], axis=0)
+        """
+
+        newdf = (
+            pd.concat(
+                [st.data for st in sts],
+                axis=0,
+            )
             .drop_duplicates(subset="t")
             .sort_values(by="t")
-            .reset_index(drop=True))
+            .reset_index(drop=True)
+        )
         
-        return Cls(newdf).recalculate_dt()
-
+        return Cls(newdf).recalculate_dt().label(LabelGroups.concat(*[st.labels for st in sts]))
 
     def label(
         self,
@@ -541,9 +545,11 @@ class Table:
         return newtab
 
     def step_label(
-        self, group: str, name: str, steps: int, t: npt.NDArray, min_len: int
+        self, group: str, name: str, steps: int | Literal["limit"], t: npt.NDArray , min_len: int
     ) -> Self:
         """Shift the label by steps rows"""
+        if steps=="limit":
+            steps = self.labels[group][name].to_iloc(self.t).start+min_len
         return self.__class__(self.data).label(
             self.labels.step_boundary(group, name, steps, t, min_len)
         )

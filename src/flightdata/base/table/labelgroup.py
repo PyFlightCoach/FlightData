@@ -114,10 +114,11 @@ class LabelGroup:
         for lg in args:
             for k, v in lg.items():
                 if k in new_labels:
-                    if new_labels[k].stop == v.start:
-                        new_labels[k].stop = v.stop
-                    else:
-                        raise ValueError(f"Labels {k} are not contiguous")
+                    new_labels[k] = Label(
+                        min(new_labels[k].start, v.start),
+                        max(new_labels[k].stop, v.stop),
+                    )
+
                 else:
                     new_labels[k] = v
 
@@ -221,13 +222,17 @@ class LabelGroup:
         t: npt.ArrayLike,
         zero_x: bool = True,
         rename: dict[str, str] = None,
-        highlight_el: str=None,
+        highlight_el: str = None,
         **kwargs,
     ):
         import plotly.express as px
+
         colors = px.colors.qualitative.Plotly
         if highlight_el is not None:
-            colors = ["grey" if el != highlight_el else None for i, el in enumerate(self.keys())]
+            colors = [
+                "grey" if el != highlight_el else None
+                for i, el in enumerate(self.keys())
+            ]
         bdict: dict[str, float] = dict(start=t[0], **self.boundary_dict)
         keys = list(bdict.keys())
         rename = {k: k for k in keys} | (rename or {})
