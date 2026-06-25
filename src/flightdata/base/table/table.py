@@ -545,11 +545,18 @@ class Table:
         return newtab
 
     def step_label(
-        self, group: str, name: str, steps: int | Literal["limit"], t: npt.NDArray , min_len: int
+        self, group: str, name: str, steps: int | Literal["left_limit", "right_limit"], t: npt.NDArray , min_len: int
     ) -> Self:
         """Shift the label by steps rows"""
-        if steps=="limit":
-            steps = self.labels[group][name].to_iloc(self.t).start+min_len
+        labels = self.labels[group].to_iloc(self.t)
+
+        label_index = list(labels.keys()).index(name)
+
+        if steps=="left_limit":
+            steps = -labels[name].width + min_len
+        elif steps=="right_limit":
+            next_label = list(labels.keys())[min(len(labels)-1, label_index+1)]
+            steps = labels[next_label].width - min_len - 1
         return self.__class__(self.data).label(
             self.labels.step_boundary(group, name, steps, t, min_len)
         )
