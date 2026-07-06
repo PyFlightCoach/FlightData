@@ -307,6 +307,11 @@ class LabelGroup:
     def to_dict(self):
         return {k: v.to_dict() for k, v in self.labels.items()}
 
+    def to_ellist(self):
+        return [
+            {"name": k, "start": v.start, "stop": v.stop} for k, v in self.labels.items()
+        ]
+
     @staticmethod
     def from_dict(data: dict[str, dict]):
         return LabelGroup({k: Label.from_dict(v) for k, v in data.items()})
