@@ -40,7 +40,7 @@ class Collection(Generic[T]):
             return self.data[name]
         raise AttributeError(f"{name} not found in {self.__class__}")
 
-    def __getitem__(self, key: Union[int, str, slice]) -> Union[Self, T]:
+    def __getitem__(self, key: Union[int, str, slice, Iterable]) -> Union[Self, T]:
         if isinstance(key, int): 
             return list(self.data.values())[key]
         elif isinstance(key, slice):
@@ -49,6 +49,8 @@ class Collection(Generic[T]):
             return self.data[key]
         elif isinstance(key, self.__class__.VType):
             return self.data[getattr(key, self.__class__.uid)]
+        elif hasattr(key, "__iter__"):
+            return self.__class__([self[k] for k in key])
         raise ValueError(f"Invalid Key or Indexer {key}")
 
     def subset(self, keys: list[str]) -> Self:

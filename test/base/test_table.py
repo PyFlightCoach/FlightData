@@ -271,3 +271,7 @@ def test_splice_sts_inserts_new_indeces(tab_full: Table):
         assert len(tf) == 9
         assert tf.t[1] == 0.5
         assert "element" in tf.labels.keys()
+
+        e0 = tf.element.e0
+        assert e0.t[-1] == 5.0
+        pass

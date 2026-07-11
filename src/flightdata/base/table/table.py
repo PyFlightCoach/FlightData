@@ -111,7 +111,7 @@ class Table:
             con: SVar = self.__class__.constructs[name]
             return con.obj(self.data.loc[:, con.keys])
         elif name in self.labels.lgs:
-            return Slicer(self.labels[name], self)
+            return Slicer(name, self.labels[name], self)
         else:
             raise AttributeError(f"Unknown column or construct {name}")
 
@@ -417,6 +417,7 @@ class Table:
             .drop_duplicates(subset="t")
             .sort_values(by="t")
             .reset_index(drop=True)
+            .set_index("t", drop=False)
         )
         
         return Cls(newdf).recalculate_dt().label(LabelGroups.concat(*[st.labels for st in sts]))
