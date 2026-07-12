@@ -196,14 +196,6 @@ class Table:
 
         return new_table.label(self.labels)
 
-    #    def resample(self, new_t: g.Time) -> State:
-    #        return State.from_constructs(
-    #            *[
-    #                getattr(self, con.name).interpolate(self.t)(new_t)
-    #                for con in self.__class__.constructs
-    #            ]
-    #        )
-
     def resample(self, dt: float = 1 / 25, sli: slice = None):
         if sli is None or sli.start is None:
             start = self.t[0]
