@@ -27,7 +27,7 @@ class State(Table):
                 ["rw", "rx", "ry", "rz"],
                 lambda self: g.Q0(len(self)),
             ),
-            SVar(
+        SVar(
                 "vel",
                 g.Point,
                 ["u", "v", "w"],
@@ -129,15 +129,14 @@ class State(Table):
     def wrvel(self) -> g.Point:
         return self.att.transform_point(self.rvel)
 
-
     @property
     def wx(self) -> g.Point:
         return self.att.transform_point(g.PX())
-    
+
     @property
     def wy(self) -> g.Point:
         return self.att.transform_point(g.PY())
-    
+
     @property
     def wz(self) -> g.Point:
         return self.att.transform_point(g.PZ())
@@ -736,10 +735,12 @@ class State(Table):
         return h.diff(self.dt) + g.Point.cross(self.rvel, h)
 
     def get_rotation(self):
-        return np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.time.dt0)
+        return np.pad(
+            np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.dt), (1, 0)
+        )
 
     def roll_rotation(self):
-        return np.cumsum(self.rvel.x * self.time.dt0)
+        return np.pad(np.cumsum(self.rvel.x * self.dt), (1, 0))
 
     def estimate_wind(self):
         """This is a very rough estimate of the wind, it is based on the assumption that
@@ -747,8 +748,73 @@ class State(Table):
         It will only work for flights with lots of different orientations.
         It also assumes the wind is constant in time and space
         """
-        body_slip=g.point.vector_rejection(self.vel, g.PX())
+        body_slip = g.point.vector_rejection(self.vel, g.PX())
         world_slip = self.att.transform_point(body_slip)
         confidence = abs(g.point.vector_rejection(world_slip, g.PZ())) / abs(self.vel)
         wind = (world_slip * confidence).sum() / (np.mean(confidence) * len(self))
         return g.point.vector_rejection(wind, g.PZ()), np.mean(confidence)
+
+    def boundary_measure(
+        self,
+        metric: str,
+        t0: float,
+        t1: float,
+        iatt: g.Quaternion,
+        axis: g.Point,
+        delta: float = 0.001,
+    ) -> tuple[float, float, float]:
+
+        m = getattr(self[t0:t1], metric)(iatt, axis)
+        m0 = getattr(self[t0 - delta : t1], metric)(iatt, axis)
+        m1 = getattr(self[t0 : t1 + delta], metric)(iatt, axis)
+
+        return m, (m - m0) / delta, (m1 - m) / delta
+
+    def measure_rate(
+        self,
+        iatt: g.Quaternion,
+        axis: g.Point = None,
+    ) -> float | tuple[float, float, float]:
+        """measure the roll rate, asuming it started at t0 and finished at t1."""
+        return np.sum((self.p * self.dt)[:-1]) / self.duration
+
+    def measure_speed(
+        self,
+        iatt: g.Quaternion,
+        axis: g.Point = None,
+    ) -> float:
+        """measure the speed of the flown line assuming it started at t0 and finished at t1.
+        Linearly interpolate between datapoints
+        """
+        return np.sum((self.u * self.dt)[:-1]) / self.duration
+
+    def measure_length(self, iatt: g.Quaternion, axis: g.Point = None) -> float:
+        """measure the length of the flown line assuming it started at t0 and finished at t1.
+        Linearly interpolate between datapoints
+        """
+        pos = self.pos
+        return g.point.scalar_projection(
+            pos[-1] - pos[0], iatt.transform_point(g.PX())
+        )[0]
+
+    def measure_duration(self, iatt: g.Quaternion, axis: g.Point = None) -> float:
+        """measure the duration of the flown line assuming it started at t0 and finished at t1.
+        Linearly interpolate between datapoints
+        """
+        return self.duration
+
+    def measure_radius(
+        self,
+        iatt: g.Quaternion,
+        axis: g.Point = None,
+    ) -> float:
+
+        centre = self.arc_centre()
+
+        bvec = self.att.inverse().transform_point(axis)
+        rads = abs(g.point.vector_rejection(centre, bvec))
+
+        angles = np.arctan(abs(self.vel) * self.dt / rads)
+        keep = ~np.isnan(rads * angles)
+
+        return np.sum((rads * angles)[keep][:-1]) / np.sum(angles[keep][:-1])
