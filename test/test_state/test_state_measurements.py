@@ -31,3 +31,41 @@ def test_boundary_measure_rate_reduces_as_window_widens():
     assert dmr1 > 0 
     assert dmr2 < 0
     pass
+
+
+
+def test_boundary_measure_length(state: State):
+    iatt = state[0].att.closest_principal()
+
+    m, dm1, dm2 = state.boundary_measure(
+        "measure_length", state.t[0], state.t[0] + 3.0, iatt, None
+    ) 
+    assert m == approx(
+        abs(state.interpolate(state.t[0] + 3.0).x[0] - state.iloc[0].x[0]), rel=1e-2
+    )
+
+
+def test_measure_rate(state: State):
+
+    t0 = state.element.e_1_0.t[0]
+
+    iatt = state.element.e_1_0[0].att.closest_principal()
+
+    t0 = state.element.e_1_0.t[0]
+    t1 = state.element.e_1_0.t[-1]
+
+    assert (
+        (state.boundary_measure("measure_rate", state, iatt, t0, t1 + 0.001) ** 2)[0]
+        < (state.boundary_measure("measure_rate", state, iatt, t0, t1) ** 2)[0]
+    )
+    assert (
+        (state.boundary_measure("measure_rate", state, iatt, t0, t1 - 0.001) ** 2)[0]
+        > (state.boundary_measure("measure_rate", state, iatt, t0, t1) ** 2)[0]
+    )
+
+
+def test_measure_duration(state: State):
+    t0 = state.t[0]
+    t1 = state.t[-1]
+
+    assert state.boundary_measure("measure_duration", state, t0, t1, None, None)[0] == approx(t1 - t0, rel=1e-2)

@@ -818,3 +818,6 @@ class State(Table):
         keep = ~np.isnan(rads * angles)
 
         return np.sum((rads * angles)[keep][:-1]) / np.sum(angles[keep][:-1])
+
+    def measure_roll(self,*args, **kwargs) -> float:
+        return self.roll_rotation()[-1]
