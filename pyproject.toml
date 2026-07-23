@@ -10,6 +10,7 @@ dependencies = [
     "pandas>=2.2.3",
     "pfc-geometry>=0.2.23",
     "pfcschemas>=0.1.15",
+    "scipy>=1.15.2",
     "simplejson>=3.20.1",
 ]
 

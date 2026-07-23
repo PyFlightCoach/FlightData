@@ -821,3 +821,7 @@ class State(Table):
 
     def measure_roll(self,*args, **kwargs) -> float:
         return self.roll_rotation()[-1]
+
+    def measure_turns(self,*args, **kwargs) -> float:
+        
+        return self.roll_rotation()[-1]
