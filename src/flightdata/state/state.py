@@ -751,6 +751,7 @@ class State(Table):
         body_slip = g.point.vector_rejection(self.vel, g.PX())
         world_slip = self.att.transform_point(body_slip)
         confidence = abs(g.point.vector_rejection(world_slip, g.PZ())) / abs(self.vel)
+        confidence = np.nan_to_num(confidence)
         wind = (world_slip * confidence).sum() / (np.mean(confidence) * len(self))
         return g.point.vector_rejection(wind, g.PZ()), np.mean(confidence)
 

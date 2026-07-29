@@ -69,3 +69,8 @@ def test_measure_duration(state: State):
     t1 = state.t[-1]
 
     assert state.boundary_measure("measure_duration", state, t0, t1, None, None)[0] == approx(t1 - t0, rel=1e-2)
+
+
+def test_estimate_wind(state: State):
+    wind = state.estimate_wind()
+    assert isinstance(wind[0], g.Point)
