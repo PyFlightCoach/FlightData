@@ -1,11 +1,11 @@
 
-from flightdata import State
-from ..conftest import flight, origin, state
-from pytest import approx, fixture
 import geometry as g
 import numpy as np
+from pytest import approx
 
+from flightdata import State
 
+from ..conftest import flight, origin, state
 
 
 def test_direction(state):
