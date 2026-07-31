@@ -1,14 +1,16 @@
 from __future__ import annotations
-import enum
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from numbers import Number
+from typing import Annotated, Literal
+
 import numpy as np
-import pandas as pd
 import numpy.typing as npt
+import pandas as pd
 from geometry import Time
-from dataclasses import field, dataclass
-from typing import Annotated, Literal, Callable
 
 from .label import Label
-from numbers import Number
 
 
 @dataclass
@@ -27,6 +29,9 @@ class LabelGroup:
 
     def __iter__(self):
         return self.values()
+
+    def __contains__(self, key: str):
+        return key in self.labels
 
     def items(self):
         return self.labels.items()
@@ -91,7 +96,7 @@ class LabelGroup:
                 newlabname = f"{oldlabname}_{suffix}"
                 suffix += 1
             newlabnames.append(newlabname)
-            if not newlabname == oldlabname:
+            if newlabname != oldlabname:
                 labels[
                     change_ids[i] : change_ids[i + 1]
                     if i + 1 < len(change_ids)

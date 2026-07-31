@@ -1,39 +1,41 @@
 from __future__ import annotations
-import numpy as np
-import pandas as pd
-import numpy.typing as npt
-from geometry import Time
-from dataclasses import field, dataclass
-from typing import Annotated, Literal, Callable
-from .labelgroup import LabelGroup
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Annotated, Literal
+
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+from geometry import Time
+
+from .labelgroup import LabelGroup
 
 
 @dataclass
 class LabelGroups:
-    lgs: dict[str, LabelGroup] = field(default_factory=lambda: {})
+    lgs: dict[str, LabelGroup] = field(default_factory=dict)
 
     def __eq__(self, other: LabelGroup):
-        return all([v == other[k] for k, v in self.lgs.items()])
+        return all(v == other[k] for k, v in self.lgs.items())
 
     def __dict__(self):
         return self.lgs
 
     def __iter__(self):
-        for k, v in self.lgs.items():
-            yield k, v
+        yield from self.lgs.items()
+
+    def __contains__(self, key: str):
+        return key in self.lgs
 
     def items(self):
-        for k, v in self.lgs.items():
-            yield k, v
+        yield from self.lgs.items()
 
     def values(self):
-        for v in self.lgs.values():
-            yield v
+        yield from self.lgs.values()
 
     def keys(self):
-        for k in self.lgs.keys():
-            yield k
+        yield from self.lgs.keys()
 
     def __getitem__(self, name: str | int):
         if isinstance(name, str):
@@ -41,7 +43,7 @@ class LabelGroups:
         elif isinstance(name, int):
             return list(self.lgs.values())[name]
         else:
-            raise ValueError(
+            raise TypeError(
                 f"Can only index labelgroups with int or str, got {name.__class__.__name__}"
             )
 

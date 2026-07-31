@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Literal, overload
 
@@ -27,7 +28,7 @@ class State(Table):
                 ["rw", "rx", "ry", "rz"],
                 lambda self: g.Q0(len(self)),
             ),
-        SVar(
+            SVar(
                 "vel",
                 g.Point,
                 ["u", "v", "w"],
@@ -79,11 +80,11 @@ class State(Table):
     def __getattr__(self, key):
         return super().__getattr__(key)
 
-    @property
+    @cached_property
     def transform(self):
         return g.Transformation.build(self.pos, self.att)
 
-    @property
+    @cached_property
     def back_transform(self):
         return g.Transformation(-self.pos, self.att.inverse())
 
@@ -370,14 +371,17 @@ class State(Table):
         ).label(**self.labels)
 
     def scale(self: State, factor: float) -> State:
-        return State.from_constructs(
-            time=self.time,
-            pos=self.pos * factor,
-            att=self.att,
-            vel=self.vel * factor,
-            rvel=self.rvel,
-            acc=self.acc * factor,
-        ).label(**self.labels)
+        df = self.data.copy()
+
+        df["x"] *= factor
+        df["y"] *= factor
+        df["z"] *= factor
+
+        df["u"] *= factor
+        df["v"] *= factor
+        df["w"] *= factor
+
+        return State(df, self.labels)
 
     def mirror_zy(self: State) -> State:
         att = g.Quaternion.from_euler(
@@ -454,23 +458,23 @@ class State(Table):
         eul = transform.rotate(self.att).to_euler()
 
         fcd = pd.DataFrame(
-            data=dict(
-                time=(self.t * 1e6).astype(int),
-                N=self.x,
-                E=-self.y,
-                D=-self.z,
-                VN=wvels.x,
-                VE=-wvels.y,
-                VD=-wvels.z,
-                r=np.degrees(eul.x),
-                p=np.degrees(eul.y),
-                yw=np.degrees(eul.z),
-                wN=np.zeros(len(self)),
-                wE=np.zeros(len(self)),
-                roll=eul.x,
-                pitch=eul.y,
-                yaw=eul.z,
-            ),
+            data={
+                "time": (self.t * 1e6).astype(int),
+                "N": self.x,
+                "E": -self.y,
+                "D": -self.z,
+                "VN": wvels.x,
+                "VE": -wvels.y,
+                "VD": -wvels.z,
+                "r": np.degrees(eul.x),
+                "p": np.degrees(eul.y),
+                "yw": np.degrees(eul.z),
+                "wN": np.zeros(len(self)),
+                "wE": np.zeros(len(self)),
+                "roll": eul.x,
+                "pitch": eul.y,
+                "yaw": eul.z,
+            },
         )
 
         return [fcj.Data(**row) for row in fcd.to_dict("records")]
@@ -624,15 +628,16 @@ class State(Table):
             ).label(**self.labels)
         else:
             att = self.att.rotate(angles)
+            inv = att.inverse()
             return State.from_constructs(
                 self.time,
                 self.pos,
                 att,
-                att.inverse().transform_point(self.att.transform_point(self.vel)),
-                rvel=att.inverse().transform_point(
+                inv.transform_point(self.att.transform_point(self.vel)),
+                rvel=inv.transform_point(
                     self.att.transform_point(self.rvel) + angles.diff(self.dt)
                 ),
-                acc=att.inverse().transform_point(self.att.transform_point(self.acc)),
+                acc=inv.transform_point(self.att.transform_point(self.acc)),
             ).label(**self.labels)
 
     def superimpose_rotation(
@@ -757,7 +762,13 @@ class State(Table):
 
     def boundary_measure(
         self,
-        metric: str,
+        metric: Literal[
+            "measure_rate",
+            "measure_speed",
+            "measure_length",
+            "measure_duration",
+            "measure_radius",
+        ],
         t0: float,
         t1: float,
         iatt: g.Quaternion,
@@ -820,9 +831,9 @@ class State(Table):
 
         return np.sum((rads * angles)[keep][:-1]) / np.sum(angles[keep][:-1])
 
-    def measure_roll(self,*args, **kwargs) -> float:
+    def measure_roll(self, *args, **kwargs) -> float:
         return self.roll_rotation()[-1]
 
-    def measure_turns(self,*args, **kwargs) -> float:
-        
+    def measure_turns(self, *args, **kwargs) -> float:
+
         return self.roll_rotation()[-1]

@@ -1,11 +1,12 @@
-from typing import Union, Any, Self, TypeVar, Iterable, Callable, Generic, get_args, Iterator
-import pandas as pd
+from collections.abc import Callable, Iterable, Iterator
+from typing import Any, Self, TypeVar, get_args
 
+import pandas as pd
 
 T = TypeVar('T')
 
 
-class Collection(Generic[T]):
+class Collection[T]:
     VType: type[T]
     uid = "uid"
 
@@ -18,7 +19,7 @@ class Collection(Generic[T]):
                 cls.VType = args[0]
                 break
 
-    def __init__(self, data: Union[dict[str, T], list[str,T]]=None, check_types=True):    
+    def __init__(self, data: dict[str, T] | list[str, T] | None = None, check_types=True):    
         self.data: dict[str, T] = {}
         if isinstance(data, dict):
             self.data = data
@@ -31,7 +32,7 @@ class Collection(Generic[T]):
         else:
             self.data = {getattr(d, self.__class__.uid): d for d in data}
 
-        assert all([hasattr(v, self.__class__.uid) for v in self.data.values()])
+        assert all(hasattr(v, self.__class__.uid) for v in self.data.values())
         if check_types:
             assert all(isinstance(v, self.__class__.VType) for v in self.data.values())
 
@@ -40,7 +41,7 @@ class Collection(Generic[T]):
             return self.data[name]
         raise AttributeError(f"{name} not found in {self.__class__}")
 
-    def __getitem__(self, key: Union[int, str, slice, Iterable]) -> Union[Self, T]:
+    def __getitem__(self, key: int | str | slice | Iterable) -> Self | T:
         if isinstance(key, int): 
             return list(self.data.values())[key]
         elif isinstance(key, slice):
@@ -52,6 +53,16 @@ class Collection(Generic[T]):
         elif hasattr(key, "__iter__"):
             return self.__class__([self[k] for k in key])
         raise ValueError(f"Invalid Key or Indexer {key}")
+
+    def __contains__(self, key: str | T):
+        if isinstance(key, str):
+            return key in self.data
+        elif isinstance(key, self.__class__.VType):
+            return getattr(key, self.__class__.uid) in self.data
+        elif isinstance(key, int):
+            return key < len(self.data)
+        else:
+            raise TypeError(f"Expected a {self.__class__.VType} or a str, got {type(key)}")
 
     def subset(self, keys: list[str]) -> Self:
         return self.__class__([getattr(self, k) for k in keys])
@@ -71,8 +82,7 @@ class Collection(Generic[T]):
         raise KeyError(f"{key} not found in {self.__class__}")
 
     def __iter__(self) -> Iterator[T]:
-        for v in self.data.values():
-            yield v
+        yield from self.data.values()
 
     def update(self, fun: Callable[[T], T]):
         return self.__class__({k: fun(v) for k, v in self.items()})
@@ -95,13 +105,8 @@ class Collection(Generic[T]):
         elif isinstance(v_or_key, str):
             key = v_or_key
         else:
-            raise ValueError(f"Expected a {self.__class__.VType} or a str, got {type(v_or_key)}")
+            raise TypeError(f"Expected a {self.__class__.VType} or a str, got {type(v_or_key)}")
         return self.__class__({k: v for k, v in self.items() if k != key})
-
-    def index(self, key: str) -> int:
-        if key in self.data:
-            return list(self.data.keys()).index(key)
-        raise KeyError(f"{key} not found in {self.__class__}")
 
     def to_list(self) -> list[T]:
         return list(self.values())
@@ -162,8 +167,7 @@ class Collection(Generic[T]):
         i=0
         while f"{prefix}{i}" in self.data:
             i+=1
-        else:
-            return f"{prefix}{i}"
+        return f"{prefix}{i}"
 
     def copy(self, deep=True) -> Self:
         return self.__class__([v.copy() for v in self] if deep else self.data.copy())
@@ -199,9 +203,10 @@ class Collection(Generic[T]):
             return self
 
     def replace(self, **kwargs) -> Self:
+        new_self = self
         for k, v in kwargs.items():
-            self = self._replace(k, v, False)
-        return self
+            new_self = self._replace(k, v, False)
+        return new_self
 
     @property
     def uids(self) -> list[str]:
@@ -209,7 +214,7 @@ class Collection(Generic[T]):
 
     @property
     def first(self) -> T:
-        return list(self.data.values())[0]
+        return next(iter(self.data.values()))
 
     @property
     def last(self) -> T:
@@ -219,5 +224,5 @@ class Collection(Generic[T]):
     def only(self) -> T:
         if len(self.data) != 1:
             raise ValueError(f"Collection has {len(self.data)} items, expected exactly one")
-        return list(self.data.values())[0]
+        return next(iter(self.data.values()))
     

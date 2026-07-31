@@ -12,12 +12,13 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from json import dump, load
 from numbers import Number
-from typing import Self, Union
-
 from pathlib import Path
+from typing import ClassVar, Self, Union
+
 import numpy as np
 import pandas as pd
 from geometry import GPS, P0, Point
@@ -32,16 +33,14 @@ from .ardupilot import flightmodes
 from .fields import Field, fields
 
 
-def filter(data, cutoff=25, order=5, fs=25):
-    return filtfilt(
-        *butter(order, min(cutoff, np.trunc(fs/2)), fs=fs, btype="low", analog=False),
-        data,
-        padlen=len(data) - 1,
-    )
+class FlightDataError(Exception):
+    """Base class for exceptions in this module."""
+   
 
 
+@dataclass
 class Flight:
-    ardupilot_types = [
+    ardupilot_types: ClassVar[list[str]] = [
         "XKF1",
         "XKF2",
         "NKF1",
@@ -67,24 +66,19 @@ class Flight:
         "ESC",
         "CURRENT",
     ]
-
-    def __init__(
-        self,
-        data: pd.DataFrame,
-        parameters: pd.DataFrame = None,
-        origin: Origin = None,
-        primary_pos_source="pos_c0",
-    ):
-        self.data = data
-        self.parameters = parameters
-        self.origin = origin
-        self.primary_pos_source = primary_pos_source
+    data: pd.DataFrame
+    parameters: pd.DataFrame = None
+    origin: Origin = None
+    primary_pos_source: str = "pos_c0"
 
     def __getattr__(self, name):
-        if self.parameters is not None and 'parameter' in self.parameters.columns:
-            if name in self.parameters.parameter.unique():
-                df = self.parameters.loc[self.parameters.parameter == name]
-                return df.loc[df.value != df.value.shift()]
+        if (
+            self.parameters is not None
+            and "parameter" in self.parameters.columns
+            and name in self.parameters.parameter.unique()
+        ):
+            df = self.parameters.loc[self.parameters.parameter == name]
+            return df.loc[df.value != df.value.shift()]
         cols = getattr(fields, name)
         if cols is None:
             cols = [f for f in self.data.columns if f.startswith(name)]
@@ -103,12 +97,13 @@ class Flight:
                     return pd.Series(np.full(len(self), np.nan), name=cols.col)
                 else:
                     return pd.DataFrame(
-                        data=np.full((len(self), len(cols)), np.nan), columns=[f.col for f in cols]
+                        data=np.full((len(self), len(cols)), np.nan),
+                        columns=[f.col for f in cols],
                     )
         raise AttributeError(f"'Flight' object has no attribute '{name}'")
 
     def make_param_labels(
-        self, pname: str, prefix: str = None, suffix: str = None, unknown=""
+        self, pname: str, prefix: str | None = None, suffix: str | None = None, unknown=""
     ):
         """Make a series with the parameter values at the correct times."""
         ser = pd.Series(np.nan, index=self.data.index, name=pname)
@@ -129,7 +124,7 @@ class Flight:
         """Make a dataframe of parameter values"""
         return pd.DataFrame([self.make_param_labels(p) for p in pnames]).T
 
-    def contains(self, name: Union[str, list[str]]):
+    def contains(self, name: str | list[str]):
         cols = getattr(fields, name)
         if isinstance(cols, Field):
             return name in self.data.columns
@@ -141,7 +136,7 @@ class Flight:
             if sli < 0:
                 return self.data.iloc[sli]
             else:
-                gl = self.data.index.get_indexer([sli], method="nearest")                    
+                gl = self.data.index.get_indexer([sli], method="nearest")
                 return Flight(
                     self.data.iloc[gl],
                     self.parameters[:sli] if self.parameters else None,
@@ -151,7 +146,9 @@ class Flight:
         elif isinstance(sli, slice):
             return Flight(
                 self.data.loc[slice(sli.start, sli.stop, sli.step)],
-                self.parameters.loc[:sli.stop] if self.parameters is not None else None,
+                self.parameters.loc[: sli.stop]
+                if self.parameters is not None
+                else None,
                 self.origin,
                 self.primary_pos_source,
             )
@@ -199,9 +196,7 @@ class Flight:
             if self.parameters is not None
             else None,
             kwargs["origin"] if "origin" in kwargs else self.origin.copy(),
-            kwargs["primary_pos_source"]
-            if "primary_pos_source" in kwargs
-            else self.primary_pos_source,
+            kwargs.get("primary_pos_source", self.primary_pos_source),
         )
 
     def to_dict(self):
@@ -250,7 +245,7 @@ class Flight:
         start_t = max([fl.time_actual.iloc[0] for fl in fls])
         end_t = min([fl.time_actual.iloc[-1] for fl in fls])
         if end_t < start_t:
-            raise Exception("These flights do not overlap")
+            raise FlightDataError("These flights do not overlap")
         otf = fls[0].slice_raw_t(slice(start_t, end_t, None)).time_actual
 
         flos = []
@@ -316,7 +311,7 @@ class Flight:
             return False
 
     def boot_time(self):
-        timestamp = self.time_actual.iloc[0] 
+        timestamp = self.time_actual.iloc[0]
         return datetime.fromtimestamp(timestamp) if not np.isnan(timestamp) else None
 
     @staticmethod
@@ -338,9 +333,8 @@ class Flight:
                 str(log),
                 types=list(
                     set(
-                        Flight.ardupilot_types + []
-                        if extra_types is None
-                        else extra_types
+                        Flight.ardupilot_types
+                        + ([] if extra_types is None else extra_types)
                     )
                 ),
             )
@@ -359,8 +353,8 @@ class Flight:
             ekf1 = "XKF1"
             ekf2 = "XKF2"
 
-        ekf1 = parser.dfs[ekf1] if ekf1 in parser.dfs else None
-        ekf2 = parser.dfs[ekf2] if ekf2 in parser.dfs else None
+        ekf1 = parser.dfs.get(ekf1, None)
+        ekf2 = parser.dfs.get(ekf2, None)
 
         dfs = []
 
@@ -396,14 +390,14 @@ class Flight:
         if ekf1 is not None:
             newdfs = Flight.parse_instances(
                 ekf1,
-                dict(
-                    position_N="PN",
-                    position_E="PE",
-                    position_D="PD",
-                    velocity_N="VN",
-                    velocity_E="VE",
-                    velocity_D="VD",
-                ),
+                {
+                    "position_N": "PN",
+                    "position_E": "PE",
+                    "position_D": "PD",
+                    "velocity_N": "VN",
+                    "velocity_E": "VE",
+                    "velocity_D": "VD",
+                },
                 "C",
             )
 
@@ -453,7 +447,7 @@ class Flight:
                 else:
                     imu = pd.merge_asof(imu, ekf1, on="timestamp", direction="nearest")
 
-                if all([v in imu.columns for v in ["GX", "GY", "GZ"]]):
+                if all(v in imu.columns for v in ["GX", "GY", "GZ"]):
                     imu["GyrX"] = imu.GyrX + np.radians(imu.GX) / 100
                     imu["GyrY"] = imu.GyrY + np.radians(imu.GY) / 100
                     imu["GyrZ"] = imu.GyrZ + np.radians(imu.GZ) / 100
@@ -468,7 +462,7 @@ class Flight:
                     )
                 else:
                     imu = pd.merge_asof(imu, ekf2, on="timestamp", direction="nearest")
-                if all([v in imu.columns for v in ["AX", "AY", "AZ"]]):
+                if all(v in imu.columns for v in ["AX", "AY", "AZ"]):
                     imu["AccX"] = imu.AccX + imu.AX / 100
                     imu["AccY"] = imu.AccY + imu.AY / 100
                     imu["AccZ"] = imu.AccZ + imu.AZ / 100
@@ -512,13 +506,13 @@ class Flight:
         if "BARO" in parser.dfs:
             dfs = dfs + Flight.parse_instances(
                 parser.BARO,
-                dict(air_pressure="Press", air_temperature="Temp", air_altitude="Alt"),
+                {"air_pressure": "Press", "air_temperature": "Temp", "air_altitude": "Alt"},
                 "I",
             )
 
         if "ARSP" in parser.dfs:
             dfs = dfs + Flight.parse_instances(
-                parser.ARSP, dict(air_speed="Airspeed"), "I"
+                parser.ARSP, {"air_speed": "Airspeed"}, "I"
             )
 
         if "RCIN" in parser.dfs:
@@ -566,19 +560,19 @@ class Flight:
         if "BAT" in parser.dfs:
             dfs = dfs + Flight.parse_instances(
                 parser.BAT,
-                dict(
-                    battery_voltage="Volt",
-                    battery_current="Curr",
-                    battery_totalcurrent="CurrTot",
-                    battery_totalenergy="EnrgTot",
-                ),
+                {
+                    "battery_voltage": "Volt",
+                    "battery_current": "Curr",
+                    "battery_totalcurrent": "CurrTot",
+                    "battery_totalenergy": "EnrgTot",
+                },
                 "Inst",
             )
 
         if "ESC" in parser.dfs:
             dfs = dfs + Flight.parse_instances(
                 parser.ESC,
-                dict(motor_voltage="Volt", motor_current="Curr", motor_rpm="RPM"),
+                {"motor_voltage": "Volt", "motor_current": "Curr", "motor_rpm": "RPM"},
             )
         elif "RPM" in parser.dfs:
             dfs.append(
@@ -607,7 +601,7 @@ class Flight:
                 tolerance=min(max(dt, df.time_actual.diff().max()), 0.1),
             )
 
-        #TODO need to reverse engineer the origin if no origin in file.
+        # TODO need to reverse engineer the origin if no origin in file.
         origin = Origin("ekf_origin", GPS(parser.ORGN.iloc[:, -3:])[0], 0)
 
         return Flight(
@@ -634,7 +628,7 @@ class Flight:
                 Flight.build_cols(
                     time_actual=_subdf.timestamp,
                     **{
-                        f'{k}{f"_{i}" if i > 0 else ""}': _subdf[v]
+                        f"{k}{f'_{i}' if i > 0 else ''}": _subdf[v]
                         for k, v in colmap.items()
                     },
                 )
@@ -683,21 +677,21 @@ class Flight:
         """Constructor from an acrowrx dataframe or csv file"""
         if isinstance(df, (str, Path)):
             df = pd.read_csv(df)
-                        
+
         if df.YEAR.max() < 1000:
             df.YEAR = df.YEAR + 2000
 
         _time = pd.to_datetime(
             pd.DataFrame(
-                dict(
-                    year=df.YEAR,
-                    month=df.MONTH,
-                    day=df.DAY,
-                    hour=df.HOUR,
-                    minute=df.MINUTE,
-                    seconds=df.SECOND,
-                    millisecond=df.MS,
-                )
+                {
+                    "year": df.YEAR,
+                    "month": df.MONTH,
+                    "day": df.DAY,
+                    "hour": df.HOUR,
+                    "minute": df.MINUTE,
+                    "seconds": df.SECOND,
+                    "millisecond": df.MS,
+                }
             )
         ).astype(int)
 
@@ -705,7 +699,7 @@ class Flight:
 
         df = Flight.build_cols(
             time_flight=np.linspace(0, t.iloc[-1], len(t)),
-            time_actual=_time/1e9,
+            time_actual=_time / 1e9,
             attitude_roll=np.radians(df.ROLL),
             attitude_pitch=np.radians(df.PITCH),
             attitude_yaw=np.radians(df.YAW),
@@ -728,7 +722,6 @@ class Flight:
             origin=Origin("dummy_origin", GPS(0, 0, 0), -np.pi / 2),
             primary_pos_source="pos_c0",
         )
-
 
     def remove_time_flutter(self):
         # I think the best option is just to take the average of the timestep.
@@ -797,3 +790,11 @@ class Flight:
         T = (ts[-1] - ts[0]) / N
         fs = 1 / T
         return self.filter(*butter(order, cutoff, fs=fs, btype="low", analog=False))
+
+
+def filter(data, cutoff=25, order=5, fs=25):
+    return filtfilt(
+        *butter(order, min(cutoff, np.trunc(fs / 2)), fs=fs, btype="low", analog=False),
+        data,
+        padlen=len(data) - 1,
+    )

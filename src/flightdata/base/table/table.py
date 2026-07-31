@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from numbers import Number
 from time import time
 from typing import Annotated, ClassVar, Literal, Self, overload
 from xmlrpc.client import boolean
 
+import geometry as g
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import geometry as g
-
 from geometry.utils import get_value
+
 from flightdata.base.table.constructs import Constructs, SVar
 
 from .label import Label
@@ -19,13 +20,17 @@ from .labelgroup import LabelGroup
 from .labelgroups import LabelGroups
 from .slicer import Slicer
 
-default_interpolators = dict(
-    Time="linterp",
-    Point="linterp",
-    Quaternion="slerp",
-    Air="linterp",
-    Attack="linterp",
-)
+default_interpolators = {
+    "Time": "linterp",
+    "Point": "linterp",
+    "Quaternion": "slerp",
+    "Air": "linterp",
+    "Attack": "linterp",
+}
+
+
+class TableError(Exception):
+    """Base exception for table-related errors."""
 
 
 @dataclass
@@ -44,11 +49,15 @@ class Table:
     @overload
     def __getattr__(self, name: Literal["time"]) -> g.Time: ...
 
-    @property
+    @cached_property
+    def index(self):
+        return self.data.index
+
+    @cached_property
     def t_end(self):
         return self.t + self.dt
 
-    @property
+    @cached_property
     def t0(self):
         return self.t - self.t[0]
 
@@ -67,7 +76,7 @@ class Table:
             data = pd.DataFrame(data).T
 
         if len(data) < min_len:
-            raise Exception(
+            raise TableError(
                 f"Table constructor length check failed, data length = {len(data)}, min_len = {min_len}"
             )
 
@@ -90,40 +99,46 @@ class Table:
             return instance
 
     def populate(self):
-        newtab = self.__class__(self.data.copy(), self.labels)
         missing = self.__class__.constructs.missing(self.data.columns)
-        for svar in missing:
-            newdata = (
-                svar.builder(newtab)
-                .to_pandas(columns=svar.keys, index=newtab.data.index)
-                .loc[:, [key for key in svar.keys if key not in newtab.data.columns]]
-            )
-            newtab = self.__class__(
-                pd.concat([newtab.data, newdata], axis=1), self.labels
-            )
+        if not missing:
+            return self.__class__(self.data, self.labels)
+        new_frames = [
+            svar.builder(self)
+            .to_pandas(columns=svar.keys, index=self.data.index)
+            .loc[:, [k for k in svar.keys if k not in self.data.columns]]
+            for svar in missing
+        ]
+        return self.__class__(pd.concat([self.data, *new_frames], axis=1), self.labels)
 
-        return newtab
 
-    def __getattr__(self, name: str) -> npt.NDArray | g.Time | g.Point | g.Quaternion:
+    def __getattr__(self, name):
         if name in self.data.columns:
-            return self.data[name].to_numpy()
-        elif name in self.__class__.constructs.data.keys():
-            con: SVar = self.__class__.constructs[name]
-            return con.obj(self.data.loc[:, con.keys])
-        elif name in self.labels.lgs:
-            return Slicer(name, self.labels[name], self)
-        else:
-            raise AttributeError(f"Unknown column or construct {name}")
+            value = self.data[name].to_numpy()
+            self.__dict__[name] = value
+            return value
 
+        if name in self.__class__.constructs.data:
+            con = self.__class__.constructs[name]
+            value = con.obj(self.data[con.keys].values)
+            self.__dict__[name] = value
+            return value
+
+        if name in self.labels.lgs:
+            value = Slicer(name, self.labels[name], self)
+            self.__dict__[name] = value
+            return value
+
+        raise AttributeError(f"Unknown column or construct {name}")
+    
     def to_dict(self, legacy: boolean = False) -> dict[str, dict]:
         if legacy:
             df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
             return df.to_dict(orient="records")
         else:
-            return dict(
-                data=self.data.to_dict(orient="list"),
-                labels=self.labels.to_dict(),
-            )
+            return {
+                "data": self.data.to_dict(orient="list"),
+                "labels": self.labels.to_dict(),
+            }
 
     @classmethod
     def from_dict(Cls, data: dict | list[dict]) -> Self:
@@ -147,8 +162,9 @@ class Table:
         return Cls.build(df)
 
     def to_pybytes(self, ascii: bool = False) -> bytes:
-        import pyarrow as pa
         import base64
+
+        import pyarrow as pa
 
         table = pa.Table.from_pandas(
             pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
@@ -164,8 +180,9 @@ class Table:
 
     @classmethod
     def from_pybytes(Cls, payload: bytes | str) -> Self:
-        import pyarrow as pa
         import base64
+
+        import pyarrow as pa
 
         if isinstance(payload, str):
             payload = base64.b64decode(payload)
@@ -182,21 +199,31 @@ class Table:
     def duration(self):
         return self.t[-1] - self.t[0]
 
+    def _get_interpolator(self, con):
+        key = f"_interp_{con.name}"
+        if key not in self.__dict__:
+            geom = getattr(self, con.name)
+            self.__dict__[key] = geom.interpolate(
+                self.t, default_interpolators[con.obj.__name__]
+            )
+        return self.__dict__[key]
+
     def interpolate(self, t: npt.NDArray | float):
         if isinstance(t, Number):
             t = np.array([t])
+
+        
         new_table = self.__class__.from_constructs(
             *[
-                getattr(self, con.name).interpolate(
-                    self.t, default_interpolators[con.obj.__name__]
-                )(t)
+                self._get_interpolator(con)(t)
                 for con in self.constructs
             ]
         )
 
         return new_table.label(self.labels)
 
-    def resample(self, dt: float = 1 / 25, sli: slice = None):
+
+    def resample(self, dt: float = 1 / 25, sli: slice | None = None):
         if sli is None or sli.start is None:
             start = self.t[0]
         else:
@@ -207,63 +234,74 @@ class Table:
             stop = sli.stop
 
         return self.interpolate(np.linspace(start, stop, int((stop - start) / dt)))
+    
+    @cached_property
+    def _t_np(self):
+        return self.data.index.to_numpy()
 
-    def __getitem__(self, sli: Number | slice) -> Self:
-        if isinstance(sli, slice):
-            middle = self.data.loc[
-                slice(
-                    self.t[0] if sli.start is None else sli.start,
-                    self.t[-1] + self.dt[-1] if sli.stop is None else sli.stop,
-                    sli.step,
+    @cached_property
+    def _dt_np(self):
+        return self.data["dt"].to_numpy()
+
+    def __getitem__(self, sli):
+        t = self._t_np
+
+        if isinstance(sli, Number):
+            if sli == 0:
+                return self.__class__(self.data.iloc[[0], :]).label(
+                    self.labels.slice(t[0], t[0])
                 )
-            ].copy()
-            if sli.start is None or sli.start < self.data.index[0]:
-                first = None
-            else:
-                istart = self.data.index.get_indexer([sli.start])[0]
-                first = self.interpolate(sli.start) if istart == -1 else None
 
-            if sli.stop is None or sli.stop > self.data.index[-1]:
-                last = None
-            else:
-                iend = self.data.index.get_indexer([sli.stop])[0]
-                last = self.interpolate(sli.stop) if iend == -1 else None
+            if sli < t[0] or sli > t[-1]:
+                idx = np.searchsorted(t, sli)
+                idx = max(0, min(idx, len(t)-1))
+                return self.__class__(self.data.iloc[[idx], :]).label(
+                    self.labels.slice(t[idx], t[idx])
+                )
 
-            if first is not None:
-                middle = pd.concat([first.data, middle], axis=0)
-            if last is not None:
-                middle.loc[middle.iloc[-1].name, "dt"] = (
-                    last.data.t - middle.iloc[-1].t
-                ).item()
-                middle = pd.concat([middle, last.data], axis=0)
+            idx = np.searchsorted(t, sli)
+            if idx < len(t) and t[idx] == sli:
+                return self.__class__(self.data.iloc[[idx], :]).label(
+                    self.labels.slice(sli, sli)
+                )
 
-            res = self.__class__(middle)
-        elif isinstance(sli, Number):
-            if sli <= 0:
-                return self.__class__(self.data.iloc[[int(sli)], :])
-            i = self.data.index.get_indexer([sli])[0]
-            if i == -1:
-                res = self.interpolate(sli)
-            else:
-                res = self.__class__(pd.DataFrame(self.data.iloc[i, :]).T)
-        elif pd.api.types.is_list_like(sli):
-            res = self.concatenate([self[s] for s in sli])
-        else:
-            raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
+            return self.interpolate(sli)
 
-        return res.label(self.labels.slice(res.t[0], res.t[-1]))
+        if isinstance(sli, slice):
+            start = sli.start if sli.start is not None else t[0]
+            stop  = sli.stop  if sli.stop  is not None else t[-1] + self._dt_np[-1]
+
+            i0 = np.searchsorted(t, start, side="left")
+            i1 = np.searchsorted(t, stop,  side="right")
+
+            frames = []
+
+            if start >= t[0] and start <= t[-1] and (i0 == len(t) or t[i0] != start):
+                frames.append(self.interpolate(start).data)
+
+            frames.append(self.data.iloc[i0:i1])
+
+            if stop >= t[0] and stop <= t[-1] and (i1 == 0 or t[i1-1] != stop):
+                    frames.append(self.interpolate(stop).data)
+
+            out = pd.concat(frames, axis=0)
+
+            res = self.__class__(out)
+            res_t = res.t
+            return res.label(self.labels.slice(res_t[0], res_t[-1]))
+
+        if pd.api.types.is_list_like(sli):
+            return self.concatenate([self[s] for s in sli])
+
+        raise TypeError(f"Expected Number or slice, got {type(sli).__name__}")
+
 
     @property
     def iloc(self):
-        @dataclass
-        class ILocer:
-            def __getitem__(_, sli: Number | slice) -> Table:
-                return self[get_value(self.t, sli)]
-
-        return ILocer()
-
+        return _ILocer(self)
+    
     def __iter__(self):
-        for t in list(self.data.index):
+        for t in self.t:
             yield self[t]
 
     def __eq__(self, other: Self):
@@ -288,9 +326,11 @@ class Table:
         return Cls.build(df)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs.keys()])},duration={self.duration})"
+        return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs])},duration={self.duration})"
 
     def copy(self, *args, **kwargs) -> Self:
+        if not args and not kwargs:
+            return self.__class__(self.data.copy(), self.labels)
         kwargs = dict(
             kwargs,
             **{list(self.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
@@ -334,8 +374,8 @@ class Table:
     def stack(
         Cls,
         sts: list[Table] | dict[str, Table],
-        label_title: str = None,
-        label_values: list[str] = None,
+        label_title: str | None = None,
+        label_values: list[str] | None = None,
         overlap: Literal[0, 1] = 1,
     ) -> Self:
         """Stack a list of Tables on top of each other.
@@ -407,7 +447,7 @@ class Table:
                 axis=0,
             )
             .drop_duplicates(subset="t")
-            .sort_values(by="t")
+            .sort_index()
             .reset_index(drop=True)
             .set_index("t", drop=False)
         )
@@ -441,9 +481,17 @@ class Table:
             self.labels = new_lgs
         return self.__class__(self.data, new_lgs)
 
+    def shift_labels(self, lg: str, boundaries: list[float]) -> Self:
+        new_lg = self.labels[lg].set_boundaries(boundaries)
+        _newlgs = self.labels.copy()
+        del _newlgs.lgs[lg]
+        _newlgs.lgs[lg] = new_lg
+        return self.__class__(self.data, _newlgs)
+        
+
     def nest_labels(self, **kwargs: dict[str, npt.NDArray]) -> Self:
-        first_key = list(kwargs.keys())[0]
-        first_values = list(kwargs.values())[0]
+        first_key = next(iter(kwargs.keys()))
+        first_values = next(iter(kwargs.values()))
         newst = self.label(**{first_key: first_values})
 
         if len(kwargs) == 1:
@@ -464,7 +512,7 @@ class Table:
             )
 
     def over_label(
-        self, title: str, value: str, child_groups: list[str] = None
+        self, title: str, value: str, child_groups: list[str] | None = None
     ) -> Self:
         """label with the value, make existing labels sublabels of the new label
         if child_groups is not None, only the child groups are made sublabels"""
@@ -484,7 +532,7 @@ class Table:
 
     @staticmethod
     def labselect(
-        data: pd.DataFrame, test: str = None, offset=False, **kwargs
+        data: pd.DataFrame, test: str | None = None, offset=False, **kwargs
     ) -> pd.DataFrame:
         """Select rows from a dataframe based on the values in the kwargs
         in kwargs, keys are column names and values are the values to select
@@ -565,3 +613,12 @@ class Table:
         return self.__class__(self.data).label(
             self.labels.set_boundaries(group, boundaries)
         )
+
+
+
+@dataclass
+class _ILocer:
+    table: Table
+    def __getitem__(self, sli) -> Table:
+
+        return self.table[get_value(self.table.t, sli)]
