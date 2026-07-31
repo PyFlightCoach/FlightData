@@ -286,6 +286,8 @@ class Table:
 
             out = pd.concat(frames, axis=0)
 
+            _dt = np.pad(np.diff(out.index.to_numpy()), (0, 1), mode="edge")
+            out = out.assign(dt=_dt)
             res = self.__class__(out)
             res_t = res.t
             return res.label(self.labels.slice(res_t[0], res_t[-1]))
