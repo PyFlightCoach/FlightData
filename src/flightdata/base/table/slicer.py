@@ -1,8 +1,11 @@
 from __future__ import annotations
+
+from collections.abc import Iterable
 from dataclasses import dataclass
+
 from .label import Label
 from .labelgroup import LabelGroup
-from typing import Iterable
+
 
 @dataclass
 class Slicer:
@@ -15,6 +18,9 @@ class Slicer:
 
     def __getitem__(self, name):
         return self.extract(name)
+
+    def __contains__(self, name):
+        return name in self.labels
 
     def extract(self, name: str | Iterable[str]):
         if hasattr(name, "__iter__") and not isinstance(name, str):
@@ -36,11 +42,11 @@ class Slicer:
         return self.labels.active(self.data.t[0])
     
     def __iter__(self):
-        for k in self.labels.keys():
+        for k in self.labels:
             yield self[k]
 
     def items(self):
-        for k in self.labels.keys():
+        for k in self.labels:
             yield k, self[k]
 
-from .table import Table  # noqa: E402
+from .table import Table

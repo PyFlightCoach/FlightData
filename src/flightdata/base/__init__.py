@@ -1,4 +1,4 @@
-from .table import Table, Constructs, SVar
+from .table import Table
 from .collection import Collection
 from .numpy_encoder import NumpyEncoder
 from numbers import Number

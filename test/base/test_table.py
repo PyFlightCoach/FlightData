@@ -1,45 +1,30 @@
+import geometry as g
 import numpy as np
 import pandas as pd
 import pytest
-from geometry import Time
-from pytest import fixture, mark
+from pytest import approx, fixture, mark
 
 from flightdata import Table
 from flightdata.base.table import Label, LabelGroup, LabelGroups, Slicer
+from flightdata.base.table.table import TableError
 
 
 @fixture
-def df():
-    df = pd.DataFrame(np.linspace(0, 5, 6), columns=["t"])
-    return df.set_index("t", drop=False)
-
-@fixture
-def table(df):
-    return Table.build(df, fill=True)
-
-
-def test_table_init(table: Table):
-    np.testing.assert_array_equal(table.data.columns, ["t", "dt"])
-
-
-def test_table_init_junk_cols(df: pd.DataFrame):
-    df = df.assign(junk=6)
-    tab = Table.build(df)
-    assert len(tab.data.columns) == 2
-    assert "junk" not in tab.data.columns
+def table():
+    return Table(g.Time.from_t(np.arange(6)))
 
 
 def test_table_get_svar(table: Table):
-    assert isinstance(table.time, Time)
+    assert isinstance(table.time, g.Time)
 
 
-def test_table_get_column(table: Table):
+def test_table_get_a_column_of_time(table: Table):
     assert isinstance(table.t, np.ndarray)
     assert isinstance(table.dt, np.ndarray)
 
 
 def test_table_interpolate(table: Table):
-    with pytest.raises(Exception):
+    with pytest.raises(g.base.ExtrapolationError):
         t = table.interpolate(7)
 
     t = table.interpolate(2.5)
@@ -47,7 +32,16 @@ def test_table_interpolate(table: Table):
     assert t.dt[0] == 0.5
 
 
-def test_tab_getitem(table):
+def test_concatenate_tables():
+    t1 = Table(g.Time.from_t(np.arange(6)))
+    t2 = Table(g.Time.from_t(np.arange(7, 11)))
+    t3 = Table.concatenate([t1, t2])
+    assert len(t3) == 10
+    assert t3.t[0] == 0
+    assert t3.t[-1] == 10
+
+
+def test_tab_getitem_single_value(table):
     assert table[2].t[0] == 2
     assert table[2.6].t[0] == 2.6
 
@@ -67,11 +61,15 @@ def test_tab_getslice_interpolate(table):
     assert sli.dt[-1] == 0.5
 
 
-
+def test_df_creates_pd_df(table: Table):
+    df = table.to_dataframe()
+    assert isinstance(df, pd.DataFrame)
+    assert "t" in df.columns
+    assert "dt" in df.columns
+    
 @fixture
 def label_array(table):
     return np.array([f"a{int(i / 2)}" for i in range(len(table))])
-
 
 @fixture
 def tab_lab(table: Table, label_array):
@@ -98,18 +96,10 @@ def test_slice_labels(tab_lab: Table):
     assert sli.labels["a"].labels["a0"].stop == 1
 
 
-def test_copy(table: Table):
-    tab2 = table.copy()
-    np.testing.assert_array_equal(tab2.t, table.t)
-
-    tab3 = table.copy(time=Time.from_t(table.t + 10))
-
-    np.testing.assert_array_equal(tab3.t, table.t + 10)
-
 
 def test_copy_labels_no_path(tab_lab: Table):
 #    path=np.array([[0,0], [1,1], [2,2], [3,3], [4,4], [5,5]])
-    tfull = Table.from_constructs(Time.from_t(np.arange(2*len(tab_lab))))
+    tfull = Table(g.Time.from_t(np.arange(2*len(tab_lab))))
     tlab2 = Table.copy_labels(tab_lab, tfull)
     assert "a" in tlab2.labels.lgs
 
@@ -140,7 +130,7 @@ def test_unsquash_labels(tab_lab: Table):
     
 
 
-def test_shift_time(tab_lab):
+def test_shift_time(tab_lab: Table):
     new_lab = tab_lab.shift_time(2)
     assert new_lab.t[0] == 2
     assert new_lab.labels["a"].labels["a0"].start == 2

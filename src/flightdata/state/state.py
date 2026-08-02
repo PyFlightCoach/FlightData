@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Literal, overload
+from typing import ClassVar, Literal
 
 import geometry as g
 import numpy as np
@@ -11,74 +11,58 @@ import numpy.typing as npt
 import pandas as pd
 from schemas import fcj
 
-from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
+from flightdata import Environment, Flight, Flow, Origin, Table
 from flightdata.base.table.label import Label
-from flightdata.base.table.slicer import Slicer
 from flightdata.state.kinematics import interpolate
 
 
 @dataclass(repr=False)
 class State(Table):
-    constructs: ClassVar[Constructs] = Table.constructs + Constructs(
-        [
-            SVar("pos", g.Point, ["x", "y", "z"], lambda self: g.P0(len(self))),
-            SVar(
-                "att",
-                g.Quaternion,
-                ["rw", "rx", "ry", "rz"],
-                lambda self: g.Q0(len(self)),
-            ),
-            SVar(
-                "vel",
-                g.Point,
-                ["u", "v", "w"],
-                lambda st: (
-                    g.P0()
-                    if len(st) == 1
-                    else st.att.inverse().transform_point(st.pos.diff(st.dt))
-                ),
-            ),
-            SVar(
-                "rvel",
-                g.Point,
-                ["p", "q", "r"],
-                lambda st: g.P0() if len(st) == 1 else st.att.body_diff(st.dt),
-            ),
-            SVar(
-                "acc",
-                g.Point,
-                ["du", "dv", "dw"],
-                lambda st: (
-                    g.P0()
-                    if len(st) == 1
-                    else st.att.inverse().transform_point(
-                        st.att.transform_point(st.vel).diff(st.dt) + g.PZ(9.81, len(st))
-                    )
-                ),
-            ),
-        ]
-    )
-    _construct_freq: ClassVar[float] = 25
+    constructs: ClassVar[dict[str, type]] = {
+        "time": g.Time,
+        "pos": g.Point,
+        "att": g.Quaternion,
+        "vel": g.Point,
+        "rvel": g.Point,
+        "acc": g.Point,
+    }
+    pos: g.Point
+    att: g.Quaternion
+    _vel: g.Point | None = None
+    _rvel: g.Point | None = None
+    _acc: g.Point | None = None
 
-    @overload
-    def __getattr__(self, name: Literal["pos"]) -> g.Point: ...
-    @overload
-    def __getattr__(self, name: Literal["att"]) -> g.Quaternion: ...
-    @overload
-    def __getattr__(self, name: Literal["vel"]) -> g.Point: ...
-    @overload
-    def __getattr__(self, name: Literal["rvel"]) -> g.Point: ...
-    @overload
-    def __getattr__(self, name: Literal["acc"]) -> g.Point: ...
-    @overload
-    def __getattr__(
-        self, name: Literal["x,y,z,rw,rx,ry,rz,u,v,w,du,dv,dw"]
-    ) -> npt.NDArray: ...
-    @overload
-    def __getattr__(self, name: str) -> Slicer: ...
+    @property
+    def vel(self) -> npt.NDArray:
+        if self._vel is None:
+            self._vel = self.att.inverse().transform_point(self.pos.diff(self.dt))
+        return self._vel
 
-    def __getattr__(self, key):
-        return super().__getattr__(key)
+    @property
+    def rvel(self) -> npt.NDArray:
+        if self._rvel is None:
+            self._rvel = self.att.body_diff(self.dt)
+        return self._rvel
+
+    @property
+    def acc(self) -> npt.NDArray:
+        if self._acc is None:
+            self._acc = self.att.inverse().transform_point(
+                self.att.transform_point(self.vel).diff(self.dt) + g.PZ(9.81)
+            )
+        return self._acc
+
+    @property
+    def x(self) -> npt.NDArray:
+        return self.pos.x
+
+    @property
+    def y(self) -> npt.NDArray:
+        return self.pos.y
+
+    @property
+    def z(self) -> npt.NDArray:
+        return self.pos.z
 
     @cached_property
     def transform(self):

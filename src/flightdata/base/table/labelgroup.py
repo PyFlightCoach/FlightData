@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from itertools import pairwise
 from numbers import Number
 from typing import Annotated, Literal
 
@@ -19,10 +20,10 @@ class LabelGroup:
     They should be tesselated, so the stop of one label is the start of the next
     """
 
-    labels: dict[str, Label] = field(default_factory=lambda: {})
+    labels: dict[str, Label] = field(default_factory=dict)
 
     def __eq__(self, other: LabelGroup):
-        return all([v == other[k] for k, v in self.labels.items()])
+        return all(v == other[k] for k, v in self.labels.items())
 
     def __dict__(self):
         return self.labels
@@ -46,7 +47,7 @@ class LabelGroup:
         return LabelGroup({k: fun(v) for k, v in self.labels.items()})
 
     def __repr__(self):
-        return f"LabelGroup({','.join([str(l) for l in self.labels.keys()])})"
+        return f"LabelGroup({','.join([str(l) for l in self.keys()])})"
 
     def filter(self, fun: Callable[[Label], bool]):
         return LabelGroup({k: v for k, v in self.labels.items() if fun(v)})
@@ -67,7 +68,7 @@ class LabelGroup:
             stop = self.labels[-1] if name.stop is None else self.labels[name.stop]
             return [start, stop]
         else:
-            raise ValueError(
+            raise IndexError(
                 f"Can only index labelgroup with int or str, got {name.__class__.__name__}"
             )
 
@@ -132,7 +133,7 @@ class LabelGroup:
     def is_tesselated(self, t: npt.NDArray | None = None):
         """Check if the labels are tesselated and ordered.
         If data is passed then also check that it is covered"""
-        if not np.array(set(self.labels.keys())) == np.array(self.labels.keys()):
+        if np.array(set(self.labels.keys())) != np.array(self.labels.keys()):
             return False
         lvs = list(self.labels.values())
 
@@ -142,7 +143,7 @@ class LabelGroup:
             if not (lvs[-1].stop is None or lvs[-1].stop >= t[-1]):
                 return False
 
-        for v0, v1 in zip(lvs[:-1], lvs[1:]):
+        for v0, v1 in pairwise(lvs):
             if v0.stop != v1.start:
                 return False
         return True
@@ -226,8 +227,8 @@ class LabelGroup:
         fig,
         t: npt.ArrayLike,
         zero_x: bool = True,
-        rename: dict[str, str] = None,
-        highlight_el: str = None,
+        rename: dict[str, str] | None = None,
+        highlight_el: str | None = None,
         **kwargs,
     ):
         import plotly.express as px
@@ -241,19 +242,19 @@ class LabelGroup:
         bdict: dict[str, float] = dict(start=t[0], **self.boundary_dict)
         keys = list(bdict.keys())
         rename = {k: k for k in keys} | (rename or {})
-        for i, (k0, k1) in enumerate(zip(keys[:-1], keys[1:])):
+        for i, (k0, k1) in enumerate(pairwise(keys)):
             b0, b1 = bdict[k0], bdict[k1]
             fig.add_vrect(
                 x0=b0 - (t[0] if zero_x else 0),
                 x1=b1 - (t[0] if zero_x else 0),
                 fillcolor=colors[i % len(colors)],
                 **(
-                    dict(
-                        opacity=0.2,
-                        annotation_position="left",
-                        annotation_textangle=90,
-                        annotation_text=rename[k1],
-                    )
+                    {
+                        "opacity": 0.2,
+                        "annotation_position": "left",
+                        "annotation_textangle": 90,
+                        "annotation_text": rename[k1],
+                    }
                     | kwargs
                 ),
             )
@@ -293,7 +294,7 @@ class LabelGroup:
         """Step the stop time of a label, and the start of the next label by steps timesteps"""
         ilg = self.to_iloc(t)
         iboundaries = np.concatenate([np.array([0]), ilg.boundaries])
-        lengths = [b1 - b0 for b0, b1 in zip(iboundaries[:-1], iboundaries[1:])]
+        lengths = [b1 - b0 for b0, b1 in pairwise(iboundaries)]
         index = list(self.keys()).index(key) if isinstance(key, str) else key
         #        new_iloc = np.where(t==self[index].stop)[0][0] + steps
 
@@ -398,12 +399,13 @@ class LabelGroup:
             else:
                 inserts.append(keys[ii])
                 ii += 1
-        else:
-            if len(inserts):
-                new_labs[il] = inserts
+        
+        if len(inserts):
+            new_labs[il] = inserts
+        _self = self.copy()
         for loc in list(new_labs.keys())[::-1]:
-            self = self.insert(loc, new_labs[loc])
-        return self
+            _self = _self.insert(loc, new_labs[loc])
+        return _self
 
     def expand_one(self, name: str | Number, min_len=0):
         """make the selected label one step longer"""

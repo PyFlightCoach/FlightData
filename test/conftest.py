@@ -1,6 +1,8 @@
 from pytest import fixture
-from flightdata import Flight, Origin, State
 from schemas import fcj
+
+from flightdata import Flight, Origin, State
+
 
 @fixture(scope='session')
 def fcjson():

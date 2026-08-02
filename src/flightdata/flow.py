@@ -1,30 +1,24 @@
 
-from typing import ClassVar, overload, Literal
-from flightdata import Table, SVar, Constructs, SVar
-from geometry import Point, Base, PX, Euler
+from dataclasses import dataclass
+from typing import ClassVar, Literal, overload
+
+import geometry as g
 import numpy as np
-from dataclasses import dataclass 
+
+from flightdata import Table
 from flightdata.coefficients import Coefficients
 from flightdata.environment import Environment
 
-class Attack(Base):
-    cols = ['alpha', 'beta', 'q']
+
+class Attack(g.Base):
+    cols: ClassVar[list[str]] = ['alpha', 'beta', 'q']
 
 
 @dataclass(repr=False)
 class Flow(Table):
-    constructs: ClassVar[Constructs] = Table.constructs + Constructs([
-        SVar("aspd", Point, ["asx", "asy", "asz"], None),
-        SVar("flow", Attack, ["alpha", "beta", "q"], None)
-    ])
+    aspd: g.Point
+    flow: Attack
 
-    @overload
-    def __getattr__(self, key: Literal["aspd"]) -> Point: ...
-    @overload
-    def __getattr__(self, key: Literal["flow"]) -> Attack: ...
-
-    def __getattr__(self, key):
-        return super().__getattr__(key)
 
     @staticmethod
     def from_state(body, env: Environment):
@@ -35,7 +29,7 @@ class Flow(Table):
             alpha =  np.arctan2(airspeed.z, airspeed.x) 
         alpha[np.isnan(alpha)] = 0.0
 
-        stab_airspeed = Euler(
+        stab_airspeed = g.Euler(
             np.zeros(len(alpha)), 
             alpha, 
             np.zeros(len(alpha))

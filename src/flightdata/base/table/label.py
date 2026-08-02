@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from numbers import Number
+from typing import Annotated, Literal
+
 import numpy as np
 import numpy.typing as npt
-from numbers import Number
-from dataclasses import field, dataclass
-from typing import Annotated, Literal
 from geometry.utils import get_index, get_value
 
 
