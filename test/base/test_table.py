@@ -58,7 +58,7 @@ def test_tab_getslice_interpolate(table):
     assert sli.t[-1] == 4.5
     assert sli.dt[0] == 0.5
     assert sli.dt[-2] == 0.5
-    assert sli.dt[-1] == 0.5
+    assert sli.dt[-1] == 0
 
 
 def test_df_creates_pd_df(table: Table):
@@ -137,30 +137,6 @@ def test_shift_time(tab_lab: Table):
     assert new_lab.labels["a"].labels["a0"].stop == 4
 
 
-
-def test_stack_no_overlap(table: Table):
-    tfn = Table.stack(
-        [table.label(element="e0"), table.label(element="e1")], overlap=0
-    )
-    assert tfn.duration == 2 * table.duration + table.dt[-1]
-    assert len(tfn) == 2 * len(table)
-
-    assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == table.duration
-    assert tfn.element.e1.t[0] == table.duration + table.dt[-1]
-    assert tfn.element.e1.duration == table.duration
-
-
-
-
-def test_stack_three_tables_two_one_long(table: Table):
-
-    stacked = Table.stack([table[0], table, table[-1]])
-    assert len(stacked) == len(table) 
-    
-    
-
-
 def test_iloc(table: Table):
     t = table.iloc[2:4]
     assert len(t) == 3
@@ -173,17 +149,64 @@ def test_iloc_list(table: Table):
     assert t.t[0] == 0
     assert t.t[-1] == table.t[-1]
 
+
+
+def test_stack_no_overlap(table: Table):
+    tfn = Table.stack(
+        [table.label(element="e0"), table.label(element="e1")], overlap=0
+    )
+    assert tfn.duration == 2 * table.duration
+    assert len(tfn) == 2 * len(table)
+
+    assert "element" in tfn.labels.lgs
+    assert tfn.element.e0.duration == table.duration + table.dt[-1]
+    assert tfn.element.e1.t[0] == table.duration
+    assert tfn.element.e1.duration == table.duration
+
+
 def test_stack_overlap(table):
     tfn = Table.stack(
         [table.label(element="e0"), table.label(element="e1")], overlap=1
     )
     assert tfn.duration == 2 * table.duration
-    assert len(tfn) == 2 * len(table) - 1
+    assert len(tfn) == 2 * len(table) -1
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == table.duration
+    assert tfn.element.e0.duration == table.duration - table.dt[-1]
     assert tfn.element.e1.t[0] == table.duration
     assert tfn.element.e1.duration == table.duration
+
+
+
+
+
+def test_stack_three_tables_two_one_long(table: Table):
+
+    stacked = Table.stack([table[0], table, table[-1]])
+    assert len(stacked) == len(table) 
+
+
+def test_stack_labels_tesselate(table: Table):
+    t1 = table.label(element="e0")
+    t2 = table.label(element="e1")
+
+    stacked = Table.stack([t1, t2], overlap=1)
+    assert len(stacked) == 2 * len(table) - 1
+    assert stacked.labels.element.e0.stop == table.t[-1]
+    assert stacked.labels.element.e1.start == table.t[-1]
+
+    assert stacked.element.e0.t[-1] == table.t[-1]
+    assert stacked.element.e1.t[0] == table.t[-1]
+
+
+def test_to_dateframe(table: Table):
+    df = table.label(element="e0").to_dataframe()
+    assert isinstance(df, pd.DataFrame)
+    assert "t" in df.columns
+    assert "dt" in df.columns
+    assert "element" in df.columns
+
+
 
 
 def test_over_label(tab_lab: Table):

@@ -11,7 +11,6 @@ import geometry as g
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from geometry.utils import get_value
 
 from .label import Label
 from .labelgroup import LabelGroup
@@ -88,7 +87,7 @@ class Table:
 
         raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dataframe(self, labels: bool = False) -> pd.DataFrame:
+    def to_dataframe(self, labels: bool = True) -> pd.DataFrame:
         df = pd.DataFrame(
             np.column_stack([getattr(self, con).data for con in self.construct_names]),
             columns=self.columns,
@@ -97,6 +96,10 @@ class Table:
         if labels:
             df = pd.concat([df, self.labels.to_df(self.t)], axis=1)
         return df
+
+    @property
+    def df(self) -> pd.DataFrame:
+        return self.to_dataframe()
 
     def to_dict(self, legacy: boolean = False) -> dict[str, dict]:
         if legacy:
@@ -117,7 +120,7 @@ class Table:
 
     @cached_property
     def duration(self):
-        return self.t[-1] - self.t[0]
+        return self.time.duration
 
     def _get_interpolator(self, con: str):
         """caching for the interpoaltors"""
@@ -157,8 +160,13 @@ class Table:
         return self.data["dt"].to_numpy()
 
     def __getitem__(self, sli):
-        if isinstance(sli, Number | np.ndarray):
-            return self.interpolate(sli)
+        if isinstance(sli, Number | np.ndarray | list):
+            sli = np.array(sli)
+            sli = np.where(sli < 0, len(self) + sli, sli)
+
+            _label_start = np.min(sli)
+            _label_stop = np.max(sli)
+            return self.interpolate(sli).label(self.labels.slice(_label_start, _label_stop))
 
         if isinstance(sli, slice):
             start = sli.start if sli.start is not None else self.t[0]
@@ -203,8 +211,11 @@ class Table:
     def __eq__(self, other: Self):
         return self.data.equals(other.data) and self.labels == other.labels
 
-    def __repr__(self):
+    def __str__(self):
         return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs])},duration={self.duration})"
+
+    def __repr__(self):
+        return str(self)
 
     def copy(self) -> Self:
         return self.__class__(
@@ -247,12 +258,10 @@ class Table:
         sts: list[Table] | dict[str, Table],
         label_title: str | None = None,
         label_values: list[str] | None = None,
-        overlap: Literal[0, 1] = 1,
+        overlap: bool = True,
     ) -> Self:
-        """Stack a list of Tables on top of each other.
-        The overlap is the number of rows to overlap between each st.
-        Existing labels will be moved to sublabels if label_title is not None
-        otherwise they will be concatenated.
+        """Stack a list of Tables on top of each other and sort out the times.
+        if overlap is True the last row of the previous table is removed.
         """
         if isinstance(sts, dict):
             label_values = list(sts.keys())
@@ -265,21 +274,27 @@ class Table:
         newst = sts[0]
         if len(sts) > 1:
             for i, st in enumerate(sts[1:], 1):
-                if overlap > 0:
-                    next_t = newst.t[-overlap]
-                    newst = Cls(newst.data.iloc[:-overlap, :]).label(newst.labels)
-                else:
-                    next_t = newst.t[-1] + newst.dt[-1]
+                _t_offset = newst.t[-1] - st.t[0] + newst.dt[-1]
+
+                _st = replace(
+                    st, time=st.time + _t_offset, labels=st.labels.offset(_t_offset)
+                )
 
                 if label_title:
-                    st = st.over_label(label_title, label_values[i])
+                    _st = _st.over_label(label_title, label_values[i])
 
-                newst = Cls.concatenate(
-                    [
-                        newst,
-                        st.shift_time(next_t - st.data.index[0]),
-                    ]
-                )
+                if len(newst) > 1 or not overlap:
+                    if overlap:
+                        newst = Cls(*[getattr(newst, con)[:-1] for con in newst.construct_names], labels=newst.labels)
+
+                    newst = Cls.concatenate(
+                        [
+                            newst,
+                            _st,
+                        ]
+                    )
+                else:
+                    newst = _st
 
         return newst
 
@@ -341,7 +356,7 @@ class Table:
         for key, value in kwargs.items():
             newlg: LabelGroup = None
             if isinstance(value, str):
-                newlg = LabelGroup({value: Label(self.t[0], self.t[-1])})
+                newlg = LabelGroup({value: Label(self.t[0], self.t[-1] + self.dt[-1])})
             elif isinstance(value, LabelGroup):
                 newlg = value
             elif pd.api.types.is_list_like(value):
@@ -399,7 +414,7 @@ class Table:
             list(self.labels.keys()) if child_groups is None else child_groups
         )
         labels = self.labels.filter_keys(lambda k: k in child_groups)
-        newlg = LabelGroup({value: Label(self.t[0], self.t[-1], labels)})
+        newlg = LabelGroup({value: Label(self.t[0], self.t[-1] + self.dt[-1], labels)})
 
         return self.label(
             LabelGroups({title: newlg}),
@@ -502,6 +517,15 @@ class Table:
 class _ILocer:
     table: Table
 
-    def __getitem__(self, sli) -> Table:
+    def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Table:
+        if isinstance(sli, Number | np.ndarray | list):
+            sli = self.table.time.get_value(np.array(sli))
+        elif isinstance(sli, slice):
+            assert sli.step is None, "Slicing with step is not supported"
+            sli = slice(
+                self.table.time.get_value(sli.start) if sli.start is not None else None,
+                self.table.time.get_value(sli.stop) if sli.stop is not None else None,
+                None,
+            )
 
-        return self.table[get_value(self.table.t, sli)]
+        return self.table[sli]
