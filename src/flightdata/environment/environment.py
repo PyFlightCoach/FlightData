@@ -1,17 +1,26 @@
-from dataclasses import dataclass
+from typing import ClassVar
 
 import geometry as g
 import numpy as np
 import numpy.typing as npt
 
 from flightdata import Flight, Origin, Table
+from flightdata.base.table import Construct
+from flightdata.base.table.labelgroups import LabelGroups
 from flightdata.environment.wind import WindModel
 
 
-@dataclass(repr=False)
 class Environment(Table):
-    _atm: g.Air
-    _wind: g.Point
+    _constructs: ClassVar[list[Construct]] = Table._constructs + [
+        Construct("atm", g.Air, ["P", "T", "rho"], lazy=True),
+        Construct("wind", g.Point, ["x", "y", "z"], lazy=True),
+    ]
+
+    def __init__(self, time: g.Time, atm: g.Air = None, wind: g.Point = None, labels: LabelGroups = None):
+        self._atm = atm
+        self._wind = wind
+        super().__init__(time=time, labels=labels)
+        
 
     @property
     def atm(self) -> g.Air:

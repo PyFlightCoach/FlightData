@@ -2,4 +2,4 @@ from .label import Label
 from .labelgroup import LabelGroup
 from .labelgroups import LabelGroups
 from .slicer import Slicer
-from .table import Table
+from .table import Table, Construct

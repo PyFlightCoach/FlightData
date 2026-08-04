@@ -1,13 +1,15 @@
-from flightdata import Flight, State, Origin, BinData
-from schemas import fcj
-from pytest import approx, fixture, mark
-import geometry as g
-from geometry import checks
-
-import numpy as np
-from time import sleep, time
 from json import load
-from ..conftest import state, flight, origin, fcjson
+from time import sleep, time
+
+import geometry as g
+import numpy as np
+from geometry import checks
+from pytest import approx, fixture, mark
+from schemas import fcj
+
+from flightdata import BinData, Flight, Origin, State
+
+from ..conftest import fcjson, flight, origin, state
 
 
 def test_extrapolate():
@@ -41,7 +43,7 @@ def test_extrapolate_rot():
 
 
 def test_from_flight(flight: Flight, state: State):
-    assert len(state.data) == len(flight.data)
+    assert len(state) == len(flight)
     assert not np.any(np.isnan(state.pos.data))
     assert state.z.mean() > 0
 

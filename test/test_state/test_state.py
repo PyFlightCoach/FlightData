@@ -1,19 +1,42 @@
-from pytest import mark
-from flightdata import State
-import geometry as g
-from pathlib import Path
 from json import load
-import pandas as pd
+from pathlib import Path
+
+import geometry as g
 import numpy as np
+import pandas as pd
+from geometry.checks import assert_almost_equal, assert_equal
+from pytest import fixture, mark
+
+from flightdata import State
 from flightdata.state.alignment import Alignment
 
-def test_from_constructs():
-    st = State.from_constructs(
-        time=g.Time(5, 1 / 30),
-        pos=g.Point.zeros(),
-        att=g.Quaternion.from_euler(g.Point.zeros()),
-    )
-    assert st.pos == g.Point.zeros()
+
+@fixture
+def st():
+    return State(
+            time=g.Time.uniform(0.4, 5),
+            pos=g.PX(np.arange(5)),
+            att=g.upright().tile(5),
+        )
+
+def test_basic_initialization_lazy_attributes(st: State):
+    assert st._vel is None
+    assert_almost_equal(st.vel, g.PX(10, 5))
+    assert st._vel is not None
+
+    assert_almost_equal(st.rvel, g.P0(5))
+    assert_almost_equal(st.acc, g.PZ(-9.81, 5))
+
+    assert np.shares_memory(st.pos.data, st.x) 
+
+def test_to_from_numpy(st: State):   
+    st2 = State.from_data(st.to_numpy(generate=False))
+    assert_equal(st.pos, st2.pos)
+    assert st._vel is None
+    
+    st2 = State.from_data(st.to_numpy(generate=True))
+    assert_equal(st.pos, st2.pos)
+    assert st.vel is not None
 
 
 def test_from_transform():
@@ -24,8 +47,15 @@ def test_from_transform():
     assert st.vel.x == 20
 
 
+def test_to_from_df(st: State):
+    df = st.to_dataframe()
+    st2 = State.from_df(df)
+    assert_equal(st.pos, st2.pos)
+
+
 def test_from_old_dict():
-    data = load(Path("test/data/old_state.json").open())
+    with Path("test/data/old_state.json").open() as fp:
+        data = load(fp)
 
     df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
 
@@ -59,7 +89,7 @@ def test_to_from_new_dict():
     st = State.from_transform(vel=g.PX(20)).extrapolate(0.5).label(element="e1")
     data = st.to_dict()
     st2 = State.from_dict(data)
-    assert st.data.equals(st2.data)
+    assert st.almost_equal(st2)
     assert st.labels == st2.labels
 
 @mark.skip
@@ -81,13 +111,13 @@ def test_align():
 
 
 def test_align_resample():
-    from flightanalysis.elements import Line, Loop, Elements
+    from flightanalysis.elements import Elements, Line, Loop
     itrans = g.Transformation()
     tp = Elements([Line("l1", 30, 30, 0), Line("l2", 30, 30, np.pi), Line("l3", 30, 30, 0)]).create_templates(itrans)
     fl = Elements([Line("l1", 30, 70, 0), Line("l2", 30, 70, np.pi), Line("l3", 30, 70, 0)]).create_templates(itrans)
     tp = State.stack(tp, "element")
     fl = State.stack(fl, "element").remove_labels()
-    aligmnent = Alignment.align(fl, tp, resample=True)
+    aligmnent = Alignment.align(fl, tp)
 
     assert len(aligmnent.aligned) == len(fl)
 
@@ -98,14 +128,13 @@ def test_resample():
     
 
 def test_state_interpolate():
-    st = State.from_dict(load(Path("test/data/st_interpolation_testing.json").open()))
+    with Path("test/data/st_interpolation_testing.json").open() as fp:
+        st = State.from_dict(load(fp))
 
-    sts = State.stack([st.iloc[i] for i in np.linspace(0, 2, 20)], overlap=0)
-    pass
+    State.stack([st.iloc[i] for i in np.linspace(0, 2, 20)], overlap=0)
+
+    assert_almost_equal(st.iloc[0.5].pos, (st.pos[0] + st.pos[1]) / 2)
+
+    assert_almost_equal(st.iloc[0.5].vel, (st.vel[0] + st.vel[1]) / 2)
     
-        
-
-    st.iloc[0.5].wvel == (st.wvel[0] + st.wvel[1]) / 2
-    st.iloc[0.5].vel == (st.vel[0] + st.vel[1]) / 2
-    st.plot().show()
     pass

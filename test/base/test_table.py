@@ -58,7 +58,7 @@ def test_tab_getslice_interpolate(table):
     assert sli.t[-1] == 4.5
     assert sli.dt[0] == 0.5
     assert sli.dt[-2] == 0.5
-    assert sli.dt[-1] == 0
+    assert sli.dt[-1] == 0.5
 
 
 def test_df_creates_pd_df(table: Table):
@@ -153,26 +153,26 @@ def test_iloc_list(table: Table):
 
 def test_stack_no_overlap(table: Table):
     tfn = Table.stack(
-        [table.label(element="e0"), table.label(element="e1")], overlap=0
+        [table.label(element="e0"), table.label(element="e1")], overlap=False
     )
-    assert tfn.duration == 2 * table.duration
+    assert tfn.duration == 2 * table.duration + table.dt[-1]
     assert len(tfn) == 2 * len(table)
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == table.duration + table.dt[-1]
-    assert tfn.element.e1.t[0] == table.duration
+    assert tfn.element.e0.duration == table.duration
+    assert tfn.element.e1.t[0] == table.duration + table.dt[-1]
     assert tfn.element.e1.duration == table.duration
 
 
 def test_stack_overlap(table):
     tfn = Table.stack(
-        [table.label(element="e0"), table.label(element="e1")], overlap=1
+        [table.label(element="e0"), table.label(element="e1")], overlap=True
     )
-    assert tfn.duration == 2 * table.duration
+    assert tfn.duration == 2 * table.duration 
     assert len(tfn) == 2 * len(table) -1
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == table.duration - table.dt[-1]
+    assert tfn.element.e0.duration == table.duration 
     assert tfn.element.e1.t[0] == table.duration
     assert tfn.element.e1.duration == table.duration
 
@@ -252,14 +252,14 @@ def test_set_boundary(tab_lab: Table):
 
 
 def test_nest_labels_single():
-    table = Table.from_constructs(Time.from_t(np.arange(10)))
+    table = Table(g.Time.from_t(np.arange(10)))
     a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
     tlab = table.nest_labels(a=a)
     assert tlab.labels.a.a1 == Label(0, 5)
     assert tlab.labels.a.a2 == Label(5, 9)
 
 def test_nest_labels_multi():
-    table = Table.from_constructs(Time.from_t(np.arange(10)))
+    table = Table(g.Time.from_t(np.arange(10)))
     a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
 
     b=np.concatenate([np.full(2, "b1"), np.full(3, "b2"), np.full(2, "b1"), np.full(3, "b2")])
@@ -277,7 +277,7 @@ def test_splice_sts_inserts_new_indeces(table: Table):
         tf = Table.splice([table, table.iloc[[0.5, 1.5, 2.5]]])
         assert len(tf) == 9
         assert tf.t[1] == 0.5
-        assert "element" in tf.labels.keys()
+        assert "element" in tf.labels
 
         e0 = tf.element.e0
         assert e0.t[-1] == 5.0

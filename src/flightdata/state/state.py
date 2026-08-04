@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -11,31 +11,41 @@ import numpy.typing as npt
 import pandas as pd
 from schemas import fcj
 
-from flightdata import Environment, Flight, Flow, Origin, Table
-from flightdata.base.table.label import Label
+from flightdata import Environment, Flight, Flow, Origin
+from flightdata.base.table import Construct, Label, LabelGroups, Table
 from flightdata.state.kinematics import interpolate
 
 
-@dataclass(repr=False)
 class State(Table):
-    constructs: ClassVar[dict[str, type]] = {
-        "time": g.Time,
-        "pos": g.Point,
-        "att": g.Quaternion,
-        "vel": g.Point,
-        "rvel": g.Point,
-        "acc": g.Point,
-    }
-    pos: g.Point
-    att: g.Quaternion
-    _vel: g.Point | None = None
-    _rvel: g.Point | None = None
-    _acc: g.Point | None = None
+    _constructs: ClassVar[list[Construct]] = Table._constructs + [
+        Construct("pos", g.Point, ["x", "y", "z"] ),
+        Construct("att", g.Quaternion, ["rw", "rx", "ry", "rz"]),
+        Construct("vel", g.Point, ["u", "v", "w"], lazy=True),
+        Construct("rvel", g.Point, ["p", "q", "r"], lazy=True),
+        Construct("acc", g.Point, ["du", "dv", "dw"], lazy=True),
+    ]
+
+    def __init__(
+        self,
+        time: g.Time,
+        pos: g.Point,
+        att: g.Quaternion,
+        vel: g.Point | None = None,
+        rvel: g.Point | None = None,
+        acc: g.Point | None = None,
+        labels: LabelGroups | None = None
+    ):
+        self.pos = pos
+        self.att = att
+        self._vel = vel
+        self._rvel = rvel
+        self._acc = acc
+        super().__init__(time, labels=labels)
 
     @property
     def vel(self) -> npt.NDArray:
         if self._vel is None:
-            self._vel = self.att.inverse().transform_point(self.pos.diff(self.dt))
+            self._vel = self.att.inverse().transform_point(self.pos.diff(self.time.dt))
         return self._vel
 
     @property
@@ -51,18 +61,6 @@ class State(Table):
                 self.att.transform_point(self.vel).diff(self.dt) + g.PZ(9.81)
             )
         return self._acc
-
-    @property
-    def x(self) -> npt.NDArray:
-        return self.pos.x
-
-    @property
-    def y(self) -> npt.NDArray:
-        return self.pos.y
-
-    @property
-    def z(self) -> npt.NDArray:
-        return self.pos.z
 
     @cached_property
     def transform(self):
@@ -80,7 +78,7 @@ class State(Table):
             kwargs["time"] = g.Time.from_t(
                 np.linspace(0, State._construct_freq * len(transform), len(transform))
             )
-        return State.from_constructs(pos=transform.p, att=transform.q, **kwargs)
+        return State(pos=transform.p, att=transform.q, **kwargs)
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame
@@ -128,7 +126,7 @@ class State(Table):
 
     def fill(self, time: g.Time) -> State:
         """Project forward through time assuming uniform circular motion"""
-        st = self[-1]
+        st = self.iloc[-1]
         t = time.t - time.t[0]
 
         vel: g.Point = st.vel.tile(len(time))
@@ -160,9 +158,7 @@ class State(Table):
             pos = self.pos + wvel[0] * t
             acc = g.PZ(9.81, len(time))
 
-        return State.from_constructs(
-            time, pos, att, vel, rvel, att.inverse().transform_point(acc)
-        )
+        return State(time, pos, att, vel, rvel, att.inverse().transform_point(acc))
 
     def plot(self, **kwargs):
         from plotting import plotsec
@@ -231,7 +227,7 @@ class State(Table):
 
         att = origin.rotation * g.Euler(flight.attitude.ffill().bfill())
 
-        return State.from_constructs(
+        return State(
             g.Time.from_t(np.array(flight.data.time_flight)),
             pos,
             att,
@@ -271,7 +267,7 @@ class State(Table):
             att = g.Quaternion.slerp(a.att[0], b.att[0])(fac)
             rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(fac)
 
-            return State.from_constructs(
+            return State(
                 g.Time(t, b.t[0] - t),
                 pos,
                 att,
@@ -343,9 +339,9 @@ class State(Table):
         # TODO axis rates need to update, not just rotate
         rvel = q.transform_point(self.rvel)
         if len(r) == len(self):
-            rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")])
+            rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")[:-1]])
 
-        return State.from_constructs(
+        return State(
             time=self.time,
             pos=self.pos,
             att=att,
@@ -371,7 +367,7 @@ class State(Table):
         att = g.Quaternion.from_euler(
             (self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1)
         )
-        return State.from_constructs(
+        return State(
             time=self.time,
             pos=self.pos * g.Point(-1, 1, 1),
             att=att,  # g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
@@ -384,13 +380,13 @@ class State(Table):
 
     def body_to_stability(self: State, flow: Flow = None) -> State:
         if not flow:
-            env = Environment.from_constructs(self.time)
+            env = Environment(self.time)
             flow = Flow.from_state(self, env)
         return self.body_rotate(-g.Point(0, 1, 0) * flow.alpha)
 
     def stability_to_wind(self: State, flow: Flow = None) -> State:
         if not flow:
-            env = Environment.from_constructs(self.time)
+            env = Environment(self.time)
             flow = Flow.from_state(self, env)
         return self.body_rotate(g.Point(0, 0, 1) * flow.beta)
 
@@ -577,7 +573,7 @@ class State(Table):
 
     def move(self: State, transform: g.Transformation) -> State:
         """Move the state by a transformation"""
-        return State.from_constructs(
+        return State(
             time=self.time,
             pos=transform.point(self.pos),
             att=transform.rotate(self.att),
@@ -601,7 +597,7 @@ class State(Table):
 
         if reference == "body":
             rot = g.Quaternion.from_axis_angle(angles).inverse()
-            return State.from_constructs(
+            return State(
                 self.time,
                 self.pos,
                 self.att.body_rotate(angles),
@@ -613,7 +609,7 @@ class State(Table):
         else:
             att = self.att.rotate(angles)
             inv = att.inverse()
-            return State.from_constructs(
+            return State(
                 self.time,
                 self.pos,
                 att,

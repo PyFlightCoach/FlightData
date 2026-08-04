@@ -1,8 +1,9 @@
 import numpy as np
-from flightdata import State, Environment, Flow
+from geometry import P0, PX, PY, Euler, Point, Transformation
+from pytest import fixture, mark
 
-from pytest import mark, fixture
-from geometry import Transformation, Point, P0, Euler, PY, PX
+from flightdata import Environment, Flow, State
+
 from ..conftest import state
 
 
@@ -12,9 +13,9 @@ def test_to_track(state: State):
 
     assert isinstance(jst, State)
 
-    env = Environment.from_constructs(state.time)
-    flw_body = Flow.from_body(state, env)
-    flw_judge = Flow.from_body(jst, env)
+    env = Environment(state.time)
+    flw_body = Flow.from_state(state, env)
+    flw_judge = Flow.from_state(jst, env)
 
     
     #this wont reduce alpha and beta to zero as velocity comes from IMU,
