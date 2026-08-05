@@ -282,3 +282,12 @@ def test_splice_sts_inserts_new_indeces(table: Table):
         e0 = tf.element.e0
         assert e0.t[-1] == 5.0
         pass
+
+def test_step_label(table: Table):
+
+    tab_lab = Table.stack({"a0": table, "a1": table}, "a")
+
+    step = tab_lab.step_label("a", "a0", 1)
+    
+    assert step.labels.a.a0.start == 0
+    assert step.labels.a.a0.stop == 6

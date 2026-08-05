@@ -59,7 +59,7 @@ class Environment(Table):
     @staticmethod
     def from_flight(flight: Flight, origin: Origin = None):
         origin = flight.origin if origin is None else origin
-        return Environment.from_constructs(
+        return Environment(
             g.Time.from_t(np.array(flight.data.time_flight)),
             g.Air.from_pt(
                 flight.air_pressure.to_numpy(),

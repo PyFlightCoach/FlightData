@@ -30,11 +30,11 @@ def test_basic_initialization_lazy_attributes(st: State):
     assert np.shares_memory(st.pos.data, st.x) 
 
 def test_to_from_numpy(st: State):   
-    st2 = State.from_data(st.to_numpy(generate=False))
+    st2 = State.from_numpy(st.to_numpy(generate=False))
     assert_equal(st.pos, st2.pos)
     assert st._vel is None
     
-    st2 = State.from_data(st.to_numpy(generate=True))
+    st2 = State.from_numpy(st.to_numpy(generate=True))
     assert_equal(st.pos, st2.pos)
     assert st.vel is not None
 

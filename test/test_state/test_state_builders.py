@@ -131,4 +131,4 @@ def test_st_slice():
 
     st_sliced = st[0.5:3.5]
 #
-    st_sliced.plot().show(nmodels=100, scale=1)
+#    st_sliced.plot().show(nmodels=100, scale=1)

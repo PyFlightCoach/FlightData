@@ -80,8 +80,8 @@ class Table:
 
     def replace(self, copy: bool = False, **kwargs) -> Self:
         """Return a new instance of the table with the specified attributes replaced."""
-        _copy = lambda x: x.copy() if copy and hasattr(x, 'copy') else x
-            
+        _copy = lambda x: x.copy() if copy and hasattr(x, "copy") else x
+
         return self.__class__(
             *[
                 kwargs.get(con.name, _copy(getattr(self, con.raw_name)))
@@ -150,7 +150,7 @@ class Table:
         return np.column_stack(_condata)
 
     @classmethod
-    def from_data(Cls, data: npt.NDArray, labels: LabelGroups = None) -> Self:
+    def from_numpy(Cls, data: npt.NDArray, labels: LabelGroups = None) -> Self:
         if labels is None:
             labels = LabelGroups()
 
@@ -304,9 +304,9 @@ class Table:
     def _dt_np(self):
         return self.data["dt"].to_numpy()
 
-    def __getitem__(self, sli):
+    def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Self:
 
-        if sli==0 or sli==-1:
+        if isinstance(sli, Number) and (sli == 0 or sli == -1):
             return self.iloc[sli]
 
         if isinstance(sli, Number | np.ndarray | list):
@@ -362,8 +362,10 @@ class Table:
     def almost_equal(self, other: Self, tol: float = 1e-6) -> bool:
         return (
             np.all(
-                [con.almost_equal(other.raw_constructs[name], tol)
-                for name, con in self.raw_constructs.items()]
+                [
+                    con.almost_equal(other.raw_constructs[name], tol)
+                    for name, con in self.raw_constructs.items()
+                ]
             )
             and self.labels == other.labels
         )
@@ -382,7 +384,6 @@ class Table:
 
     def __repr__(self):
         return str(self)
-
 
     def append(self, other, timeoption: str = "dt"):
         if timeoption in ["now", "t"]:
@@ -463,13 +464,8 @@ class Table:
         return newst
 
     def recalculate_dt(self):
-        t = g.Time.from_t(self.data.t.to_numpy())
-        _ndf = self.data.assign(
-            t=t.t,
-            dt=t.dt,
-        )
-        assert _ndf.index.is_monotonic_increasing
-        return self.__class__(_ndf, self.labels)
+        newt = g.Time.from_t(self.time.t)
+        return self.replace(time=newt, labels=self.labels)
 
     @classmethod
     def concatenate(Cls, sts: list[Table] | dict[Table]) -> Self:
@@ -492,23 +488,11 @@ class Table:
         the time of the first table is preserved and the time of the last table is preserved
         if indeces are repeated the first table with that index is used, the others are ignored
         """
+        data = np.vstack([st.to_numpy(False) for st in sts])
 
-        newdf = (
-            pd.concat(
-                [st.data for st in sts],
-                axis=0,
-            )
-            .drop_duplicates(subset="t")
-            .sort_index()
-            .reset_index(drop=True)
-            .set_index("t", drop=False)
-        )
+        new_tab = Cls.from_numpy(data[data[:, 0].argsort(), :]).recalculate_dt()
 
-        return (
-            Cls(newdf)
-            .recalculate_dt()
-            .label(LabelGroups.concat(*[st.labels for st in sts]))
-        )
+        return new_tab.label(LabelGroups.concat(*[st.labels for st in sts]))
 
     def label(
         self,
@@ -660,8 +644,8 @@ class Table:
         elif steps == "right_limit":
             next_label = list(labels.keys())[min(len(labels) - 1, label_index + 1)]
             steps = labels[next_label].width - min_len - 1
-        return self.__class__(self.data).label(
-            self.labels.step_boundary(group, name, steps, self.t, min_len)
+        return self.replace(
+            labels=self.labels.step_boundary(group, name, steps, self.t, min_len)
         )
 
     def move_label(
@@ -681,23 +665,22 @@ class Table:
 class _ILocer:
     table: Table
 
-
     def int_items(self, sli: slice | list[int] | npt.NDArray) -> dict[str, g.GBase]:
         """Return a dictionary of the constructs sliced by the given slice or list of indices"""
         if isinstance(sli, slice):
-            sli = slice(sli.start, sli.stop+1 if sli.stop else None)
+            sli = slice(sli.start, sli.stop + 1 if sli.stop else None)
             start = sli.start if sli.start is not None else 0
             stop = sli.stop if sli.stop is not None else len(self.table)
-            
+
         elif isinstance(sli, (list, np.ndarray)):
             sli = np.array(sli).astype(int)
             start = np.min(sli)
             stop = np.max(sli) + 1
         else:
-            sli=int(sli)
+            sli = int(sli)
             start = sli
             stop = sli + 1
-            
+
         return self.table.__class__(
             *[
                 None if con is None else con[sli]
@@ -711,8 +694,6 @@ class _ILocer:
 
     def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Table:
 
-
-
         if isinstance(sli, Number | np.ndarray | list):
             if np.all(np.array(sli).astype(int) == np.array(sli)):
                 return self.int_items(sli)
@@ -723,10 +704,16 @@ class _ILocer:
             if int(sli.start) == sli.start and int(sli.stop) == sli.stop:
                 return self.int_items(sli)
             else:
-                return self.table[slice(
-                    self.table.time.get_value(sli.start) if sli.start is not None else None,
-                    self.table.time.get_value(sli.stop) if sli.stop is not None else None,
-                    None,
-                )]
+                return self.table[
+                    slice(
+                        self.table.time.get_value(sli.start)
+                        if sli.start is not None
+                        else None,
+                        self.table.time.get_value(sli.stop)
+                        if sli.stop is not None
+                        else None,
+                        None,
+                    )
+                ]
 
         return self.table[sli]
