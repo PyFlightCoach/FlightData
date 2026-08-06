@@ -711,20 +711,20 @@ class State(Table):
 
     def F_inertia(self, mass: g.Mass):
         """Returns the inertial force in N"""
-        return mass.m * (self.zero_g_acc() + g.Point.cross(self.rvel, self.vel))
+        return mass.m * (self.zero_g_acc() + g.point.cross(self.rvel, self.vel))
 
     def M_inertia(self, mass: g.Mass):
         """return the inertial moment in Nm"""
         h = mass.angular_momentum(self.rvel)
-        return h.diff(self.dt) + g.Point.cross(self.rvel, h)
+        return h.diff(self.dt) + g.point.cross(self.rvel, h)
 
     def get_rotation(self):
         return np.pad(
-            np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.dt), (1, 0)
-        )
+            np.cumsum(g.point.scalar_projection(self.rvel, self.vel) * self.dt), (1, 0)
+        )[:-1]
 
     def roll_rotation(self):
-        return np.pad(np.cumsum(self.rvel.x * self.dt), (1, 0))
+        return np.pad(np.cumsum(self.rvel.x * self.dt), (1, 0))[:-1]
 
     def estimate_wind(self):
         """This is a very rough estimate of the wind, it is based on the assumption that
