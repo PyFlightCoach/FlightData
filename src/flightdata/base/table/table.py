@@ -481,6 +481,11 @@ class Table:
             ]
         ).label(LabelGroups.concat(*[st.labels for st in sts]))
 
+    def remove_duplicate_ts(self) -> Self:
+        """Remove duplicate time steps from the table"""
+        _, idx = np.unique(self.t, return_index=True)
+        return self.iloc[idx]
+
     @classmethod
     def splice(Cls, sts: list[Table]):
         """
@@ -490,7 +495,11 @@ class Table:
         """
         data = np.vstack([st.to_numpy(False) for st in sts])
 
-        new_tab = Cls.from_numpy(data[data[:, 0].argsort(), :]).recalculate_dt()
+        new_tab = (
+            Cls.from_numpy(data[data[:, 0].argsort(), :])
+            .remove_duplicate_ts()
+            .recalculate_dt()
+        )
 
         return new_tab.label(LabelGroups.concat(*[st.labels for st in sts]))
 
@@ -701,7 +710,9 @@ class _ILocer:
                 return self.table[self.table.time.get_value(np.array(sli))]
         elif isinstance(sli, slice):
             assert sli.step is None, "Slicing with step is not supported"
-            if int(sli.start) == sli.start and int(sli.stop) == sli.stop:
+            if (sli.start is None or int(sli.start) == sli.start) and (
+                sli.stop is None or int(sli.stop) == sli.stop
+            ):
                 return self.int_items(sli)
             else:
                 return self.table[

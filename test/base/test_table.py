@@ -272,9 +272,9 @@ def test_nest_labels_multi():
     assert tlab.a.a2.labels.b.b2 == Label(7, 9)
     
 
-def test_splice_sts_inserts_new_indeces(table: Table):
+def test_splice_sts_inserts_new_indeces_but_not_existing_ones(table: Table):
         table = table.label(element="e0")
-        tf = Table.splice([table, table.iloc[[0.5, 1.5, 2.5]]])
+        tf = Table.splice([table, table.iloc[[0.5, 1.0, 1.5, 2.5]]])
         assert len(tf) == 9
         assert tf.t[1] == 0.5
         assert "element" in tf.labels
