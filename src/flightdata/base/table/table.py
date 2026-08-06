@@ -206,13 +206,7 @@ class Table:
 
     def to_dict(self, legacy: boolean = False) -> dict[str, dict]:
         if legacy:
-            condfs = [
-                con.to_pandas(index=self.t, columns=con.cols)
-                for con in self.loaded_constructs.values()
-            ]
-
-            df: pd.DataFrame = pd.concat(condfs + [self.labels.to_df(self.t)], axis=1)
-            return df.to_dict(orient="records")
+            return self.df.to_dict(orient="records")
         else:
             return {
                 "data": self.df.to_dict(orient="list"),
