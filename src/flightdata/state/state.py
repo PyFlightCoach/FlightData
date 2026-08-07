@@ -12,7 +12,6 @@ from schemas import fcj
 
 from flightdata import Environment, Flight, Flow, Origin
 from flightdata.base.table import Construct, Label, LabelGroups, Table
-from flightdata.state.kinematics import interpolate
 
 
 class State(Table):
@@ -69,6 +68,30 @@ class State(Table):
     def back_transform(self):
         return g.Transformation(-self.pos, self.att.inverse())
 
+    @cached_property
+    def wvel(self) -> g.Point:
+        return self.att.transform_point(self.vel)
+
+    @cached_property
+    def wacc(self) -> g.Point:
+        return self.att.transform_point(self.acc)
+
+    @cached_property
+    def wrvel(self) -> g.Point:
+        return self.att.transform_point(self.rvel)
+
+    @cached_property
+    def wx(self) -> g.Point:
+        return self.att.transform_point(g.PX())
+
+    @cached_property
+    def wy(self) -> g.Point:
+        return self.att.transform_point(g.PY())
+
+    @cached_property
+    def wz(self) -> g.Point:
+        return self.att.transform_point(g.PZ())
+
     @staticmethod
     def from_transform(transform: g.Transformation = None, **kwargs) -> State:
         if transform is None:
@@ -78,6 +101,10 @@ class State(Table):
                 np.linspace(0, State._construct_freq * len(transform), len(transform))
             )
         return State(pos=transform.p, att=transform.q, **kwargs)
+
+    def rotation_spline(self):
+        from scipy.spatial.transform import Rotation, RotationSpline
+        pass
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame
@@ -98,30 +125,6 @@ class State(Table):
             self.back_transform.rotate(pin)
         else:
             return self.back_transform.point(pin)
-
-    @property
-    def wvel(self) -> g.Point:
-        return self.att.transform_point(self.vel)
-
-    @property
-    def wacc(self) -> g.Point:
-        return self.att.transform_point(self.acc)
-
-    @property
-    def wrvel(self) -> g.Point:
-        return self.att.transform_point(self.rvel)
-
-    @property
-    def wx(self) -> g.Point:
-        return self.att.transform_point(g.PX())
-
-    @property
-    def wy(self) -> g.Point:
-        return self.att.transform_point(g.PY())
-
-    @property
-    def wz(self) -> g.Point:
-        return self.att.transform_point(g.PZ())
 
     def fill(self, time: g.Time) -> State:
         """Project forward through time assuming uniform circular motion"""
@@ -162,7 +165,7 @@ class State(Table):
     def plot(self, **kwargs):
         from plotting import plotsec
 
-        return plotsec(self, **(dict(nmodels=10, ribb=True) | kwargs))
+        return plotsec(self, **({"nmodels": 10, "ribb": True} | kwargs))
 
     def plotlabels(self, label: str, **kwargs):
         from plotting import plot_regions
@@ -251,45 +254,10 @@ class State(Table):
             ),
         )
 
-    @staticmethod
-    def kinematic_interpolation(a: State, b: State):
-        def interp(fac: float):
-            t = a.t[0] + fac * (b.t[0] - a.t[0])
-            pos, vel, acc = interpolate(
-                a.t[0],
-                b.t[0],
-                a.pos[0],
-                b.pos[0],
-                a.att.transform_point(a.vel)[0],
-                b.att.transform_point(b.vel)[0],
-            )(t)
-            att = g.Quaternion.slerp(a.att[0], b.att[0])(fac)
-            rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(fac)
-
-            return State(
-                g.Time(t, b.t[0] - t),
-                pos,
-                att,
-                att.inverse().transform_point(vel),
-                rvel,
-                att.inverse().transform_point(acc),
-            )
-
-        return interp
-
-    def interpolate_kinematic(self: State, t: float) -> State:
-        i0 = self.data.index.get_indexer([t], method="ffill")[0]
-        i1 = self.data.index.get_indexer([t], method="bfill")[0]
-        if i0 == i1:
-            return self.iloc[i0]
-        return State.kinematic_interpolation(self.iloc[i0], self.iloc[i1])(
-            (t - self.t[i0]) / (self.t[i1] - self.t[i0])
-        )
-
     def splitter_labels(
         self: State,
         mans: list[fcj.Man],
-        better_names: list[str] = None,
+        better_names: list[str] | None = None,
         target_col="manoeuvre",
         t0=0,
     ) -> State:
@@ -582,8 +550,8 @@ class State(Table):
         ).label(**self.labels)
 
     def move_back(self: State, transform: g.Transformation) -> State:
-        self = self.move(g.Transformation(-transform.pos, g.Q0()))
-        return self.move(g.Transformation(g.P0(), transform.att.inverse()))
+        _self = self.move(g.Transformation(-transform.pos, g.Q0()))
+        return _self.move(g.Transformation(g.P0(), transform.att.inverse()))
 
     def relocate(self: State, start_pos: g.Point) -> State:
         offset = start_pos - self.pos[0]
