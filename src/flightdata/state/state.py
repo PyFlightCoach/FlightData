@@ -77,6 +77,10 @@ class State(Table):
         return self.att.transform_point(self.acc)
 
     @cached_property
+    def wacc_zero_g(self) -> g.Point:
+        return self.wacc - g.PZ(9.81)
+
+    @cached_property
     def wrvel(self) -> g.Point:
         return self.att.transform_point(self.rvel)
 
@@ -102,9 +106,6 @@ class State(Table):
             )
         return State(pos=transform.p, att=transform.q, **kwargs)
 
-    def rotation_spline(self):
-        from scipy.spatial.transform import Rotation, RotationSpline
-        pass
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame

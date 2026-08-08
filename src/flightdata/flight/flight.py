@@ -448,9 +448,9 @@ class Flight:
                     imu = pd.merge_asof(imu, ekf1, on="timestamp", direction="nearest")
 
                 if all(v in imu.columns for v in ["GX", "GY", "GZ"]):
-                    imu["GyrX"] = imu.GyrX + np.radians(imu.GX) / 100
-                    imu["GyrY"] = imu.GyrY + np.radians(imu.GY) / 100
-                    imu["GyrZ"] = imu.GyrZ + np.radians(imu.GZ) / 100
+                    imu["GyrX"] = imu.GyrX - np.radians(imu.GX)
+                    imu["GyrY"] = imu.GyrY - np.radians(imu.GY)
+                    imu["GyrZ"] = imu.GyrZ - np.radians(imu.GZ)
 
             if ekf2 is not None:
                 if "C" in ekf2.columns:
@@ -463,21 +463,21 @@ class Flight:
                 else:
                     imu = pd.merge_asof(imu, ekf2, on="timestamp", direction="nearest")
                 if all(v in imu.columns for v in ["AX", "AY", "AZ"]):
-                    imu["AccX"] = imu.AccX + imu.AX / 100
-                    imu["AccY"] = imu.AccY + imu.AY / 100
-                    imu["AccZ"] = imu.AccZ + imu.AZ / 100
+                    imu["AccX"] = imu.AccX - imu.AX
+                    imu["AccY"] = imu.AccY - imu.AY
+                    imu["AccZ"] = imu.AccZ - imu.AZ
 
             _imufs = 1 / np.mean(np.diff(imu.timestamp))
 
             dfs.append(
                 Flight.build_cols(
                     time_actual=imu.timestamp,
-                    acceleration_x=filter(imu.AccX, 10, 5, _imufs),
-                    acceleration_y=filter(imu.AccY, 10, 5, _imufs),
-                    acceleration_z=filter(imu.AccZ, 10, 5, _imufs),
-                    axisrate_roll=filter(imu.GyrX, 10, 5, _imufs),
-                    axisrate_pitch=filter(imu.GyrY, 10, 5, _imufs),
-                    axisrate_yaw=filter(imu.GyrZ, 10, 5, _imufs),
+                    acceleration_x=imu.AccX,#filter(imu.AccX, 10, 5, _imufs),
+                    acceleration_y=imu.AccY,#filter(imu.AccY, 10, 5, _imufs),
+                    acceleration_z=imu.AccZ,#filter(imu.AccZ, 10, 5, _imufs),
+                    axisrate_roll=imu.GyrX,#filter(imu.GyrX, 10, 5, _imufs),
+                    axisrate_pitch=imu.GyrY,#filter(imu.GyrY, 10, 5, _imufs),
+                    axisrate_yaw=imu.GyrZ,#filter(imu.GyrZ, 10, 5, _imufs),
                 )
             )
 

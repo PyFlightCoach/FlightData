@@ -125,16 +125,25 @@ def test_align_resample():
 
 def test_resample():
     st = State.from_transform(vel=g.PX(30)).extrapolate(1)
-    
+    st = st.resample(0.1)
+    assert len(st) == 10
 
 def test_state_interpolate():
     with Path("test/data/st_interpolation_testing.json").open() as fp:
         st = State.from_dict(load(fp))
 
-    State.stack([st.iloc[i] for i in np.linspace(0, 2, 20)], overlap=0)
+    inst = st.iloc[np.linspace(0, 2, 20)]
+
+    np.testing.assert_array_almost_equal(inst.t, np.linspace(st.t[0], st.t[2], 20))
+
 
     assert_almost_equal(st.iloc[0.5].pos, (st.pos[0] + st.pos[1]) / 2)
 
     assert_almost_equal(st.iloc[0.5].vel, (st.vel[0] + st.vel[1]) / 2)
+    assert_almost_equal(st.iloc[0.5].acc, (st.acc[0] + st.acc[1]) / 2)
+    assert_almost_equal(st.iloc[0.5].rvel, (st.rvel[0] + st.rvel[1]) / 2)
+
+    assert_almost_equal(st.iloc[0.5].wvel, (st.wvel[0] + st.wvel[1]) / 2, 0.01)
+    assert_almost_equal(st.iloc[0.5].wacc, (st.wacc[0] + st.wacc[1]) / 2, 0.01)
     
     pass
