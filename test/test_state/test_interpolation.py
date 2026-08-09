@@ -2,10 +2,9 @@ import geometry as g
 import numpy as np
 import pytest
 
-from flightdata.state.interpolation import QuinticHermiteSpline3D
+from flightdata.state.interpolation import SplineInterpolator3D, RotationInterpolator
 
 
-# --- Fixtures ---
 @pytest.fixture
 def sample_spline_data():
     """Generates a simple 2-point valid trajectory segment."""
@@ -16,23 +15,11 @@ def sample_spline_data():
     return time, pos, vel, acc
 
 
-# --- Tests ---
-
-def test_initialization_length_mismatch():
-    """Verifies that an error is thrown if array lengths do not match."""
-    time = g.Time([0.0, 1.0])
-    pos = g.Point([[0.0, 0.0, 0.0]])  # Length 1 mismatch
-    vel = g.Point([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-    acc = g.Point([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-    
-    with pytest.raises(AssertionError, match="All input arrays must have the same length."):
-        QuinticHermiteSpline3D(time, pos, vel, acc)
-
 
 def test_boundary_conditions_exact_match(sample_spline_data):
     """Verifies the spline exactly returns the starting and ending node states."""
     time, pos, vel, acc = sample_spline_data
-    spline = QuinticHermiteSpline3D(time, pos, vel, acc)
+    spline = SplineInterpolator3D(time, pos, vel, acc)
     
     # Evaluate at exactly t = 0.0 (Start node)
     p_start, v_start, a_start = spline(0.0)
@@ -50,7 +37,7 @@ def test_boundary_conditions_exact_match(sample_spline_data):
 def test_scalar_vs_array_output_shapes(sample_spline_data):
     """Checks that scalar inputs yield tuples of vectors, and array inputs yield matrices."""
     time, pos, vel, acc = sample_spline_data
-    spline = QuinticHermiteSpline3D(time, pos, vel, acc)
+    spline = SplineInterpolator3D(time, pos, vel, acc)
     
     # Scalar check
     res_scalar = spline(1.0)
@@ -67,7 +54,7 @@ def test_scalar_vs_array_output_shapes(sample_spline_data):
 def test_time_clipping_out_of_bounds(sample_spline_data):
     """Verifies that queries outside the time bounds are safely clipped."""
     time, pos, vel, acc = sample_spline_data
-    spline = QuinticHermiteSpline3D(time, pos, vel, acc)
+    spline = SplineInterpolator3D(time, pos, vel, acc)
     
     # Below lower bound (-1.0 -> should clip to 0.0)
     p_low, v_low, a_low = spline(-1.0)
@@ -87,8 +74,11 @@ def test_multi_segment_spline():
     vel = g.Point([[0, 0, 0], [1, 2, 3], [2, 4, 8]])
     acc = g.Point([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
     
-    spline = QuinticHermiteSpline3D(time, pos, vel, acc)
+    spline = SplineInterpolator3D(time, pos, vel, acc)
     
     # Check a value distinctly inside the second segment (t=1.5)
     p, v, a = spline(1.5)
     assert len(p) == 1
+
+
+

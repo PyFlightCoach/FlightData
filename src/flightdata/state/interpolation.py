@@ -233,6 +233,7 @@ class SplineInterpolator3D:
         ) / (dt**2)
 
 
+
 @dataclass
 class RotationInterpolator:
     time: g.Time
@@ -242,7 +243,7 @@ class RotationInterpolator:
     _interpolator: (
         RotationSpline | Callable[[npt.NDArray[np.float64]], g.Quaternion] | None
     ) = field(init=False, repr=False, default=None)
-
+ 
     def __post_init__(self):
         n = len(self.time)
         assert len(self.att) == n, "Attitude array length must match time array"
@@ -250,13 +251,13 @@ class RotationInterpolator:
             assert len(self.rvel) == n, (
                 "Rotational velocity array length must match time array"
             )
-
+ 
         if self.mode is None:
             if self.rvel is not None:
                 self.mode = "Squad"
             else:
                 self.mode = "Slerp"
-
+ 
         if self.mode == "RotationSpline":
             self._interpolator = RotationSpline(self.time.t, Rotation(self.att.xyzw))
         elif self.mode == "Slerp":
@@ -265,15 +266,24 @@ class RotationInterpolator:
             assert self.rvel is not None, (
                 "Rotational velocity must be provided for Squad interpolation"
             )
-            self._interpolator = self.att.squad(self.rvel, self.time.t)
-
-    def __call__(self, t_query: npt.NDArray[np.float64] | float) -> g.Quaternion:
-        """Evaluate attitude at query times."""
+            self._interpolator = self.att.squad(self.rvel, self.time)
+ 
+    def __call__(
+        self,
+        t_query: npt.NDArray[np.float64] | float,
+        mode: Literal["body", "world"] = "body",
+    ) -> tuple[g.Quaternion, g.Point]:
+        """ 
+        TODO check rotationspline mode
+        """
         t_q = np.atleast_1d(t_query).astype(float)
         t_clipped = np.clip(t_q, self.time.t[0], self.time.t[-1])
-
+ 
         if self.mode == "RotationSpline":
-            att = g.Quaternion(self._interpolator(t_clipped)[:, [3, 0, 1, 2]])
+            att = g.Quaternion(self._interpolator(t_clipped).as_quat()[:, [3, 0, 1, 2]])
             rvel = g.Point(self._interpolator(t_clipped, 1))
+            if mode == "world":
+                rvel = att.transform_point(rvel)
+            return att, rvel
         elif self.mode in ["Slerp", "Squad"]:
-            return self._interpolator(t_clipped)
+            return self._interpolator(t_clipped, mode)
