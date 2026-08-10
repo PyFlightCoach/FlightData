@@ -10,7 +10,7 @@ from scipy.spatial.transform import Rotation, RotationSpline
 
 
 @dataclass
-class SplineInterpolator3D:
+class SplineInterpolator:
     time: g.Time
     pos: g.Point
     vel: g.Point
@@ -285,5 +285,7 @@ class RotationInterpolator:
             if mode == "world":
                 rvel = att.transform_point(rvel)
             return att, rvel
-        elif self.mode in ["Slerp", "Squad"]:
+        elif self.mode == "Slerp":
+            return self._interpolator(t_clipped, mode, True)
+        elif self.mode=="Squad":
             return self._interpolator(t_clipped, mode)

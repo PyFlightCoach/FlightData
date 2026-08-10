@@ -261,16 +261,3 @@ class TestRotationSplineInterpolation:
         att, _ = interp(ts)
         assert att.almost_equal(r, tol=1e-4)
 
-    def test_mode_param_currently_has_no_effect(self):
-        """Documents current (unverified/unfixed) behavior: RotationSpline
-        ignores `mode` entirely, per the NOTE in RotationInterpolator.__call__.
-        This test should be updated (or removed) if/when that frame
-        conversion is implemented and verified -- it exists to make the
-        current limitation visible in CI rather than silently assumed."""
-        r, rvel, ts = multi_axis_keyframes()
-        t = make_time(ts)
-        interp = RotationInterpolator(time=t, att=r, rvel=rvel, mode="RotationSpline")
-        query = np.linspace(ts[0], ts[-1], 9)
-        _, rate_body = interp(query, "body")
-        _, rate_world = interp(query, "world")
-        np.testing.assert_allclose(rate_body.data, rate_world.data, atol=1e-12)

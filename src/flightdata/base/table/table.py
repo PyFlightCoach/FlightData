@@ -268,7 +268,7 @@ class Table:
         return self.__dict__[key]
 
     def interpolate(self, t: float | npt.NDArray) -> Self:
-
+        
         return self.__class__(
             *[
                 self._get_interpolator(con.name)(t)
@@ -289,7 +289,7 @@ class Table:
         else:
             stop = sli.stop
 
-        return self.interpolate(np.linspace(start, stop, int((stop - start) / dt)))
+        return self[np.linspace(start, stop, int((stop - start) / dt))]
 
     @cached_property
     def _t_np(self):
@@ -523,8 +523,7 @@ class Table:
         new_lgs = LabelGroups(labelgroups)
         if inplace:
             self.labels = new_lgs
-        return self.__class__(
-            *[getattr(self, con) for con in self.construct_names],
+        return self.replace(
             labels=new_lgs,
         )
 
@@ -533,7 +532,7 @@ class Table:
         _newlgs = self.labels.copy()
         del _newlgs.lgs[lg]
         _newlgs.lgs[lg] = new_lg
-        return self.__class__(self.data, _newlgs)
+        return self.replace(labels=_newlgs)
 
     def nest_labels(self, **kwargs: dict[str, npt.NDArray]) -> Self:
         first_key = next(iter(kwargs.keys()))
@@ -574,27 +573,8 @@ class Table:
         )
 
     def remove_labels(self) -> Self:
-        return self.__class__(*[getattr(self, con) for con in self.construct_names])
+        return self.replace(labels=LabelGroups())
 
-    @staticmethod
-    def labselect(
-        data: pd.DataFrame, test: str | None = None, offset=False, **kwargs
-    ) -> pd.DataFrame:
-        """Select rows from a dataframe based on the values in the kwargs
-        in kwargs, keys are column names and values are the values to select
-        if test is not None, it is a string that is a pandas string method .
-        if offset is True the row after the last selected row for each kwarg is included.
-        """
-        sel = np.full(len(data), True)
-        for k, v in kwargs.items():
-            if test:
-                sel = getattr(data[k].str, test)(v)
-            else:
-                sel = sel & (data[k] == v)
-        if offset:
-            return data.loc[sel + (sel.astype(int).diff() == -1)]
-        else:
-            return data.loc[sel]
 
     @staticmethod
     def copy_labels(
@@ -655,13 +635,13 @@ class Table:
     def move_label(
         self, group: str, name: str, t: float, min_duration: float = 0
     ) -> Self:
-        return self.__class__(self.data).label(
-            self.labels.set_boundary(group, name, t, min_duration)
+        return self.replace(
+            labels=self.labels.set_boundary(group, name, t, min_duration)
         )
 
     def set_boundaries(self, group: str, boundaries: npt.NDArray) -> Self:
-        return self.__class__(self.data).label(
-            self.labels.set_boundaries(group, boundaries)
+        return self.replace(
+            labels=self.labels.set_boundaries(group, boundaries)
         )
 
 
@@ -685,11 +665,11 @@ class _ILocer:
             start = sli
             stop = sli + 1
 
-        return self.table.__class__(
-            *[
-                None if con is None else con[sli]
-                for con in self.table.raw_constructs.values()
-            ],
+        return self.table.replace(
+            **{
+                con.name: getattr(self.table, con.raw_name)[sli] if getattr(self.table, con.raw_name) is not None else None
+                for con in self.table._constructs
+            },
             labels=self.table.labels.slice(
                 self.table.t[start],
                 self.table.t[stop - 1] + self.table.dt[stop - 1],

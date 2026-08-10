@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from functools import cached_property
+from numbers import Number
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -12,12 +14,13 @@ from schemas import fcj
 
 from flightdata import Environment, Flight, Flow, Origin
 from flightdata.base.table import Construct, Label, LabelGroups, Table
+from flightdata.state.interpolation import RotationInterpolator, SplineInterpolator
 
 
 class State(Table):
     _constructs: ClassVar[list[Construct]] = Table._constructs + [
-        Construct("pos", g.Point, ["x", "y", "z"] ),
-        Construct("att", g.Quaternion, ["rw", "rx", "ry", "rz"]),
+        Construct("pos", g.Point, ["x", "y", "z"], lazy=True),
+        Construct("att", g.Quaternion, ["rw", "rx", "ry", "rz"], lazy=True),
         Construct("vel", g.Point, ["u", "v", "w"], lazy=True),
         Construct("rvel", g.Point, ["p", "q", "r"], lazy=True),
         Construct("acc", g.Point, ["du", "dv", "dw"], lazy=True),
@@ -26,38 +29,81 @@ class State(Table):
     def __init__(
         self,
         time: g.Time,
-        pos: g.Point,
-        att: g.Quaternion,
+        pos: g.Point | None = None,
+        att: g.Quaternion | None = None,
         vel: g.Point | None = None,
         rvel: g.Point | None = None,
         acc: g.Point | None = None,
-        labels: LabelGroups | None = None
+        labels: LabelGroups | None = None,
+        translation_interpolation: SplineInterpolator | None = None,
+        rotation_interpolation: RotationInterpolator | None = None,
     ):
-        self.pos = pos
-        self.att = att
+        assert isinstance(time, g.Time), "time must be a g.Time object"
+        assert (att is not None and pos is not None) or (
+            translation_interpolation is not None and rotation_interpolation is not None
+        ), (
+            "Must have either att and pos or translation_interpolation and rotation_interpolation"
+        )
+        self._pos = pos
+        self._att = att
         self._vel = vel
         self._rvel = rvel
         self._acc = acc
+        self.translation_interpolation = translation_interpolation
+        self.rotation_interpolation = rotation_interpolation
         super().__init__(time, labels=labels)
 
     @property
-    def vel(self) -> npt.NDArray:
+    def pos(self) -> g.Point:
+        if self._pos is None:
+            if self.translation_interpolation is not None:
+                self.load_translation_points()
+            else:
+                self._pos = self.att.inverse().transform_point(
+                    g.Point.concatenate([g.P0(), self.vel.diff(self.time.dt)])
+                )
+        return self._pos
+
+    @property
+    def att(self) -> g.Quaternion:
+        if self._att is None:
+            if self.rotation_interpolation is not None:
+                self.load_rotation_points()
+            else:
+                self._att = g.Quaternion.concatenate(
+                    [g.Q0(), g.Quaternion.from_axis_angle(self.rvel * self.dt)]
+                )
+        return self._att
+
+    @property
+    def vel(self) -> g.Point:
         if self._vel is None:
-            self._vel = self.att.inverse().transform_point(self.pos.diff(self.time.dt))
+            if self.translation_interpolation is not None:
+                self.load_translation_points()
+            else:
+                self._vel = self.att.inverse().transform_point(
+                    self.pos.diff(self.time.dt)
+                )
         return self._vel
 
     @property
-    def rvel(self) -> npt.NDArray:
+    def rvel(self) -> g.Point:
         if self._rvel is None:
-            self._rvel = self.att.body_diff(self.dt)
+            if self.rotation_interpolation is not None:
+                self.load_rotation_points()
+            else:
+                self._rvel = self.att.body_diff(self.dt)
         return self._rvel
 
     @property
-    def acc(self) -> npt.NDArray:
+    def acc(self) -> g.Point:
         if self._acc is None:
-            self._acc = self.att.inverse().transform_point(
-                self.att.transform_point(self.vel).diff(self.dt) + g.PZ(9.81)
-            )
+            if self.translation_interpolation is not None:
+                self.load_translation_points()
+            else:
+                self._acc = self.att.inverse().transform_point(
+                    self.att.transform_point(self.vel).diff(self.dt) + g.PZ(9.81)
+                )
         return self._acc
 
     @cached_property
@@ -96,6 +142,28 @@ class State(Table):
     def wz(self) -> g.Point:
         return self.att.transform_point(g.PZ())
 
+    def load_rotation_points(self):
+        if self.rotation_interpolation is not None:
+            self._att, self._rvel = self.rotation_interpolation(self.time.t)
+
+    def load_translation_points(self):
+        if self.translation_interpolation is not None:
+            self._pos, wvel, wacc = self.translation_interpolation(self.time.t)
+            self._vel = self.att.inverse().transform_point(wvel)
+            self._acc = self.att.inverse().transform_point(wacc - g.PZ(9.81))
+
+    def create_interpolators(self: State, smoothing=0.05) -> State:
+        return State(
+            self.time,
+            translation_interpolation=SplineInterpolator(
+                self.time, self.pos, mode="Univariate", smoothing=smoothing
+            ),
+            rotation_interpolation=RotationInterpolator(
+                self.time, self.att, mode="RotationSpline"
+            ),
+            labels=self.labels,
+        )
+
     @staticmethod
     def from_transform(transform: g.Transformation = None, **kwargs) -> State:
         if transform is None:
@@ -106,6 +174,25 @@ class State(Table):
             )
         return State(pos=transform.p, att=transform.q, **kwargs)
 
+    def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> State:
+        if isinstance(sli, Number) and (sli == 0 or sli == -1):
+            return self.iloc[sli]
+
+        if (
+            self.translation_interpolation is not None
+            and self.rotation_interpolation is not None
+        ):
+            sli = np.atleast_1d(sli)
+            _time = g.Time.from_t(sli)
+            return State(
+                _time,
+                translation_interpolation=self.translation_interpolation,
+                rotation_interpolation=self.rotation_interpolation,
+                labels=self.labels.slice(_time.t[0], _time.t[-1]),
+            )
+
+        else:
+            return super().__getitem__(sli)
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame
@@ -209,7 +296,7 @@ class State(Table):
         return State(df.set_index("t", drop=False))
 
     @staticmethod
-    def from_flight(flight: Flight, origin: Origin | str | None = None) -> State:
+    def from_flight(flight: Flight, origin: Origin | str | None = None, smoothing: bool=False) -> State:
         if isinstance(origin, str):
             extension = Path(origin).split()[1]
             if extension == "f3a":
@@ -229,31 +316,43 @@ class State(Table):
             )
 
         att = origin.rotation * g.Euler(flight.attitude.ffill().bfill())
-
-        return State(
-            g.Time.from_t(np.array(flight.data.time_flight)),
-            pos,
-            att,
-            (
-                att.inverse().transform_point(
-                    origin.rotation.transform_point(
-                        g.Point(flight.velocity.ffill().bfill())
+        time = g.Time.from_t(np.array(flight.data.time_flight))
+        if smoothing:
+            return State(
+                time,
+                translation_interpolation=SplineInterpolator(
+                    time, pos, mode="Univariate", smoothing=0.05
+                ),
+                rotation_interpolation=RotationInterpolator(
+                    time, att, mode="RotationSpline"
+                ),
+            )
+        else:
+            return State(
+                time,
+                pos,
+                att,
+                (
+                    att.inverse().transform_point(
+                        origin.rotation.transform_point(
+                            g.Point(flight.velocity.ffill().bfill())
+                        )
                     )
-                )
-                if all(flight.contains("velocity"))
-                else None
-            ),
-            (
-                g.Point(flight.axisrate.ffill().bfill())
-                if all(flight.contains("axisrate"))
-                else None
-            ),
-            (
-                g.Point(flight.acceleration.ffill().bfill())
-                if all(flight.contains("acceleration"))
-                else None
-            ),
-        )
+                    if all(flight.contains("velocity"))
+                    else None
+                ),
+                (
+                    g.Point(flight.axisrate.ffill().bfill())
+                    if all(flight.contains("axisrate"))
+                    else None
+                ),
+                (
+                    g.Point(flight.acceleration.ffill().bfill())
+                    if all(flight.contains("acceleration"))
+                    else None
+                ),
+            )
+
 
     def splitter_labels(
         self: State,

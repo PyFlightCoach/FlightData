@@ -33,6 +33,7 @@ def test_extrapolate_rot():
     extrapolated = initial.extrapolate(10)
     checks.assert_almost_equal(extrapolated.pos[-1], g.P0(), 0)
 
+
 #    checkst = State.from_constructs(
 #        extrapolated.time, extrapolated.pos, extrapolated.att
 #    )
@@ -66,7 +67,6 @@ def test_fc_json(fcjson: fcj.FCJ):
     assert st.z.mean() > 0
 
 
-
 def test_fill():
     t = g.Time.from_t(np.linspace(0, 1, 11))
     st0 = State.from_transform(vel=g.PX(10))
@@ -75,6 +75,7 @@ def test_fill():
     assert st.pos.x[0] == approx(0)
     assert st.pos.x[-1] == approx(10)
 
+
 def test_fill_zero_v():
     t = g.Time.from_t(np.linspace(0, 1, 11))
     st0 = State.from_transform(vel=g.P0(), rvel=g.P0())
@@ -82,6 +83,7 @@ def test_fill_zero_v():
     assert len(st) == 11
     assert st.pos.x[0] == approx(0)
     assert st.pos.x[-1] == approx(0)
+
 
 def test_fill_vart():
     _dt = np.full(11, 0.1)
@@ -109,10 +111,11 @@ def test_st_from_bindata(flbd: State):
     assert isinstance(st, State)
 
 
-
 def test_st_slice():
-    st = State.from_transform(vel=g.PX(30), rvel=g.PY(np.pi/4)).fill(g.Time.from_t(np.arange(5)))
-    #st.plot().show(nmodels=100, scale=1)
+    st = State.from_transform(vel=g.PX(30), rvel=g.PY(np.pi / 4)).fill(
+        g.Time.from_t(np.arange(5))
+    )
+    # st.plot().show(nmodels=100, scale=1)
 
     att0 = st.interpolate(1).att
     att1 = st.interpolate(1.5).att
@@ -127,8 +130,8 @@ def test_st_slice():
 
     pass
 
-
-
     st_sliced = st[0.5:3.5]
+
+
 #
 #    st_sliced.plot().show(nmodels=100, scale=1)
