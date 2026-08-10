@@ -156,7 +156,7 @@ class State(Table):
         return State(
             self.time,
             translation_interpolation=SplineInterpolator(
-                self.time, self.pos, mode="Univariate", smoothing=smoothing
+                self.time, self.pos, self.vel, mode="Univariate", smoothing=smoothing
             ),
             rotation_interpolation=RotationInterpolator(
                 self.time, self.att, mode="RotationSpline"
@@ -321,7 +321,7 @@ class State(Table):
             return State(
                 time,
                 translation_interpolation=SplineInterpolator(
-                    time, pos, mode="Univariate", smoothing=0.05
+                    time, pos, mode="Smoothing", smoothing=0.05
                 ),
                 rotation_interpolation=RotationInterpolator(
                     time, att, mode="RotationSpline"

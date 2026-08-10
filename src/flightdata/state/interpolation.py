@@ -5,7 +5,7 @@ from typing import Literal
 import geometry as g
 import numpy as np
 import numpy.typing as npt
-from scipy.interpolate import CubicSpline, UnivariateSpline
+from scipy.interpolate import CubicSpline, UnivariateSpline, make_interp_spline
 from scipy.spatial.transform import Rotation, RotationSpline
 
 
@@ -15,7 +15,7 @@ class SplineInterpolator:
     pos: g.Point
     vel: g.Point
     acc: g.Point | None = None
-    mode: Literal["Univariate", "Cubic", "CubicHermite", "QuinticHermite"] = None
+    mode: Literal["Smoothing", "Quintic", "QuinticHermite"] = None
     smoothing: float = 0.01
 
     _pos_spline: tuple[UnivariateSpline | CubicSpline, ...] | None = field(
@@ -37,30 +37,23 @@ class SplineInterpolator:
             )
 
         if self.mode is None:
-            if self.vel is not None:
-                if self.acc is not None:
+            if self.vel is not None and self.acc is not None:
                     self.mode = "QuinticHermite"
-                else:
-                    self.mode = "CubicHermite"
             else:
-                self.mode = "Univariate"
+                self.mode = "Smoothing"
 
         match self.mode:
-            case "Univariate":
+            case "Smoothing":
                 self._pos_spline = tuple(
                     UnivariateSpline(
                         self.time.t, self.pos.data[:, i], k=3, s=self.smoothing
                     )
                     for i in range(3)
                 )
-            case "Cubic":
+            case "Quintic":
                 self._pos_spline = tuple(
-                    CubicSpline(self.time.t, self.pos.data[:, i], bc_type="natural")
+                    make_interp_spline(self.time.t, self.pos.data[:, i], k=5)
                     for i in range(3)
-                )
-            case "CubicHermite":
-                assert self.vel is not None, (
-                    "Velocity must be provided for Cubic Hermite interpolation"
                 )
             case "QuinticHermite":
                 assert self.vel is not None, (
@@ -82,7 +75,7 @@ class SplineInterpolator:
         t_q = np.atleast_1d(t_query).astype(float)
         t_clipped = np.clip(t_q, self.time.t[0], self.time.t[-1])
 
-        if self.mode in ["Cubic", "Univariate"]:
+        if self.mode in ["Quintic", "Smoothing"]:
             return self._evaluate_position_spline(t_clipped)
 
         # 1. Locate indices and compute normalized time metrics
@@ -119,7 +112,7 @@ class SplineInterpolator:
                 [
                     (
                         spline.derivative(1)(t)
-                        if self.mode == "UnivariateSpline"
+                        if self.mode == "SmoothingSpline"
                         else spline(t, 1)
                     )
                     for spline in self._pos_spline
@@ -132,7 +125,7 @@ class SplineInterpolator:
                 [
                     (
                         spline.derivative(2)(t)
-                        if self.mode == "UnivariateSpline"
+                        if self.mode == "SmoothingSpline"
                         else spline(t, 2)
                     )
                     for spline in self._pos_spline
