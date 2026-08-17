@@ -34,14 +34,6 @@ def test_extrapolate_rot():
     checks.assert_almost_equal(extrapolated.pos[-1], g.P0(), 0)
 
 
-#    checkst = State.from_constructs(
-#        extrapolated.time, extrapolated.pos, extrapolated.att
-#    )
-
-#    checks.assert_almost_equal(checkst.vel, extrapolated.vel)
-#    checks.assert_almost_equal(checkst.rvel, extrapolated.rvel)
-#    checks.assert_almost_equal(checkst.acc, extrapolated.acc)
-
 
 def test_from_flight(flight: Flight, state: State):
     assert len(state) == len(flight)
@@ -93,7 +85,7 @@ def test_fill_vart():
     st0 = State.from_transform(g.Transformation.zero(), vel=g.PX(10), rvel=g.PY(q))
     st = st0.fill(_t)
     np.testing.assert_array_equal(st.q, np.full(11, q))
-    assert st.zero_g_acc().z == approx(-6.28318531)
+    assert st.acc_zero_g.z == approx(-6.28318531)
 
 
 @fixture(scope="session")

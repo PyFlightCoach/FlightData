@@ -1,6 +1,6 @@
 
-from typing import Union, Self
 from itertools import chain
+from typing import Self
 
 
 class Field:
@@ -23,7 +23,7 @@ class Field:
         return f'{self.column}_{self.i}'
     
 class Fields:
-    def __init__(self, data: Union[list[Field], dict[str: Field]]):
+    def __init__(self, data: list[Field] | dict[str:Field]):
         if isinstance(data, list):
             data = {f.column: f for f in data}
         self.data = data

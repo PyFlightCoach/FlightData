@@ -1,8 +1,10 @@
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-import logging
 
 logger = logging.getLogger(__name__)
 

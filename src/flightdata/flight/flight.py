@@ -29,7 +29,7 @@ from scipy.signal import butter, filtfilt
 from flightdata import Origin
 from flightdata.base.numpy_encoder import NumpyEncoder
 
-from .ardupilot import flightmodes
+from ..ardupilot.flightmodes import flightmodes
 from .fields import Field, fields
 
 
@@ -613,13 +613,14 @@ class Flight:
         indf: pd.DataFrame, colmap: dict[str, str], instancecol="Instance"
     ):
         """Where an instance column exists in an input df split the values into two columns"""
+        col = indf[instancecol].astype(int) 
         instances = (
-            sorted(indf[instancecol].unique()) if instancecol in indf.columns else [0]
+            sorted(col.unique()) if instancecol in indf.columns else [0]
         )
         dfs = []
         for i in instances:
             _subdf = (
-                indf.loc[indf[instancecol] == i, :]
+                indf.loc[col == i, :]
                 if instancecol in indf.columns
                 else indf
             )

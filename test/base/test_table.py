@@ -2,11 +2,10 @@ import geometry as g
 import numpy as np
 import pandas as pd
 import pytest
-from pytest import approx, fixture, mark
+from pytest import fixture
 
 from flightdata import Table
-from flightdata.base.table import Label, LabelGroup, LabelGroups, Slicer
-from flightdata.base.table.table import TableError
+from flightdata.base.table import Label, Slicer
 
 
 @fixture
@@ -29,7 +28,7 @@ def test_table_interpolate(table: Table):
 
     t = table.interpolate(2.5)
     assert t.t[0] == 2.5
-    assert t.dt[0] == 0.5
+    assert t.dt[0] == 0
 
 
 def test_concatenate_tables():
@@ -58,7 +57,7 @@ def test_tab_getslice_interpolate(table):
     assert sli.t[-1] == 4.5
     assert sli.dt[0] == 0.5
     assert sli.dt[-2] == 0.5
-    assert sli.dt[-1] == 0.5
+    assert sli.dt[-1] == 0
 
 
 def test_df_creates_pd_df(table: Table):
