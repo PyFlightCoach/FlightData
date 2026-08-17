@@ -1,6 +1,6 @@
-from fastdtw.fastdtw import fastdtw
-import numpy as np
 import geometry as g
+import numpy as np
+from fastdtw.fastdtw import fastdtw
 
 
 def test_dtw_all_indices_returned():

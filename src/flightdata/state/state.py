@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import re
+from collections.abc import Callable
 from functools import cached_property
-from numbers import Number
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -10,11 +9,14 @@ import geometry as g
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from ardupilot_log_reader import Ardupilot
 from schemas import fcj
 
 from flightdata import Environment, Flight, Flow, Origin
+from flightdata.ardupilot import Field, StateData
 from flightdata.base.table import Construct, Label, LabelGroups, Table
-from flightdata.state.interpolation import RotationInterpolator, SplineInterpolator
+from flightdata.bindata import BinData
+from flightdata.state.spline_interpolation import SplineState
 
 
 class State(Table):
@@ -35,29 +37,25 @@ class State(Table):
         rvel: g.Point | None = None,
         acc: g.Point | None = None,
         labels: LabelGroups | None = None,
-        translation_interpolation: SplineInterpolator | None = None,
-        rotation_interpolation: RotationInterpolator | None = None,
+        splines: SplineState | None = None,
     ):
         assert isinstance(time, g.Time), "time must be a g.Time object"
-        assert (att is not None and pos is not None) or (
-            translation_interpolation is not None and rotation_interpolation is not None
-        ), (
-            "Must have either att and pos or translation_interpolation and rotation_interpolation"
+        assert (att is not None and pos is not None) or (splines is not None), (
+            "Must have either att and pos or splines"
         )
         self._pos = pos
         self._att = att
         self._vel = vel
         self._rvel = rvel
         self._acc = acc
-        self.translation_interpolation = translation_interpolation
-        self.rotation_interpolation = rotation_interpolation
+        self.splines = splines
         super().__init__(time, labels=labels)
 
     @property
     def pos(self) -> g.Point:
         if self._pos is None:
-            if self.translation_interpolation is not None:
-                self.load_translation_points()
+            if self.splines is not None:
+                self._pos = self.splines.pos(self.time.t)
             else:
                 self._pos = self.att.inverse().transform_point(
                     g.Point.concatenate([g.P0(), self.vel.diff(self.time.dt)])
@@ -67,8 +65,8 @@ class State(Table):
     @property
     def att(self) -> g.Quaternion:
         if self._att is None:
-            if self.rotation_interpolation is not None:
-                self.load_rotation_points()
+            if self.splines is not None:
+                self._att = self.splines.att(self.time.t)
             else:
                 self._att = g.Quaternion.concatenate(
                     [g.Q0(), g.Quaternion.from_axis_angle(self.rvel * self.dt)]
@@ -78,8 +76,8 @@ class State(Table):
     @property
     def vel(self) -> g.Point:
         if self._vel is None:
-            if self.translation_interpolation is not None:
-                self.load_translation_points()
+            if self.splines is not None:
+                self._vel = self.splines.vel(self.time.t)
             else:
                 self._vel = self.att.inverse().transform_point(
                     self.pos.diff(self.time.dt)
@@ -89,8 +87,8 @@ class State(Table):
     @property
     def rvel(self) -> g.Point:
         if self._rvel is None:
-            if self.rotation_interpolation is not None:
-                self.load_rotation_points()
+            if self.splines is not None:
+                self._rvel = self.splines.rvel(self.time.t)
             else:
                 self._rvel = self.att.body_diff(self.dt)
         return self._rvel
@@ -98,8 +96,8 @@ class State(Table):
     @property
     def acc(self) -> g.Point:
         if self._acc is None:
-            if self.translation_interpolation is not None:
-                self.load_translation_points()
+            if self.splines is not None:
+                self._acc = self.splines.acc(self.time.t)
             else:
                 self._acc = self.att.inverse().transform_point(
                     self.att.transform_point(self.vel).diff(self.dt) + g.PZ(9.81)
@@ -127,6 +125,10 @@ class State(Table):
         return self.wacc - g.PZ(9.81)
 
     @cached_property
+    def acc_zero_g(self) -> g.Point:
+        return self.att.inverse().transform_point(self.wacc_zero_g)
+
+    @cached_property
     def wrvel(self) -> g.Point:
         return self.att.transform_point(self.rvel)
 
@@ -142,27 +144,24 @@ class State(Table):
     def wz(self) -> g.Point:
         return self.att.transform_point(g.PZ())
 
-    def load_rotation_points(self):
-        if self.rotation_interpolation is not None:
-            self._att, self._rvel = self.rotation_interpolation(self.time.t)
+    @classmethod
+    def splice(Cls, sts: list[State]):
+        if len(sts) == 1:
+            return sts[0]
+        if all(st.splines is not None for st in sts):
+            sps = sts[0].splines
+            assert all(st.splines is sps for st in sts[1:]), (
+                "All tables must have the same spline object to splice"
+            )
 
-    def load_translation_points(self):
-        if self.translation_interpolation is not None:
-            self._pos, wvel, wacc = self.translation_interpolation(self.time.t)
-            self._vel = self.att.inverse().transform_point(wvel)
-            self._acc = self.att.inverse().transform_point(wacc - g.PZ(9.81))
-
-    def create_interpolators(self: State, smoothing=0.05) -> State:
-        return State(
-            self.time,
-            translation_interpolation=SplineInterpolator(
-                self.time, self.pos, self.vel, mode="Univariate", smoothing=smoothing
-            ),
-            rotation_interpolation=RotationInterpolator(
-                self.time, self.att, mode="RotationSpline"
-            ),
-            labels=self.labels,
-        )
+            t = np.unique(np.sort(np.concatenate([st.t for st in sts])))
+            return Cls(
+                g.Time.from_t(t),
+                labels=LabelGroups.concat(*[st.labels for st in sts]),
+                splines=sps,
+            )
+        else:
+            return super().splice(sts)
 
     @staticmethod
     def from_transform(transform: g.Transformation = None, **kwargs) -> State:
@@ -174,25 +173,23 @@ class State(Table):
             )
         return State(pos=transform.p, att=transform.q, **kwargs)
 
-    def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> State:
-        if isinstance(sli, Number) and (sli == 0 or sli == -1):
-            return self.iloc[sli]
-
-        if (
-            self.translation_interpolation is not None
-            and self.rotation_interpolation is not None
-        ):
-            sli = np.atleast_1d(sli)
-            _time = g.Time.from_t(sli)
-            return State(
-                _time,
-                translation_interpolation=self.translation_interpolation,
-                rotation_interpolation=self.rotation_interpolation,
-                labels=self.labels.slice(_time.t[0], _time.t[-1]),
+    def interpolate(self, t: float | npt.NDArray) -> State:
+        if self.splines is not None:
+            return self.__class__(
+                self._get_interpolator("time")(t),
+                splines=self.splines,
+                labels=self.labels.copy(),
             )
-
         else:
-            return super().__getitem__(sli)
+            return self.__class__(
+                *[
+                    self._get_interpolator(con.name)(t)
+                    if getattr(self, con.raw_name) is not None
+                    else None
+                    for con in self._constructs
+                ],
+                labels=self.labels.copy(),
+            )
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame
@@ -260,15 +257,65 @@ class State(Table):
 
         return plot_regions(self, label, **kwargs)
 
-    def extrapolate(self, duration: float, min_len=3) -> State:
+    def extrapolate(self, duration: float, min_len=3, freq: float = 25.0) -> State:
         """Extrapolate the input state assuming uniform circular motion and small angles"""
-        npoints = np.max([int(np.ceil(duration / self.dt[0])), min_len])
+        npoints = np.max([int(np.ceil(duration * freq)), min_len])
         time = g.Time.from_t(np.linspace(0, duration, npoints))
         return self.fill(time)
 
+    def to_dict(
+        self, legacy: bool = False, include_data: bool=False
+    ) -> dict[str, list[float]] | list[dict[str, float]]:
+        if legacy:
+            return super().to_dict()
+        else:
+            if include_data:
+                data = {"data": pd.concat([self.to_dataframe(labels=True, col_subset=["time", "pos", "att"])])}
+            else:
+                data = {}
+            if self.splines is not None:
+                return {
+                    "t": self.time.t.tolist(),
+                    "splines": self.splines.to_dict(),
+                    "labels": self.labels.to_dict(),
+                    **data
+                }
+            else:
+                return {
+                    "t": self.time.t.tolist(),
+                    "pos": self.pos.to_dict(),
+                    "att": self.att.to_dict(),
+                    "vel": self.vel.to_dict(),
+                    "rvel": self.rvel.to_dict(),
+                    "acc": self.acc.to_dict(),
+                    "labels": self.labels.to_dict(),
+                    **data
+                }
+
     @classmethod
     def from_dict(Cls, data: list[dict[str, float | str]] | dict[str, dict]) -> State:
-        if isinstance(data, list):
+        def checkcol(name: str, type, func: Callable):
+            _vals = data.get(name, None)
+            if _vals is not None:
+                return func(_vals)
+
+        if hasattr(data, "splines") and data.splines is not None:
+            return State(
+                g.Time.from_t(np.array(data["t"])),
+                splines=checkcol("splines", SplineState, SplineState.from_dict),
+                labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
+            )
+        elif hasattr(data, "pos") and hasattr(data, "att"):
+            return State(
+                g.Time.from_t(np.array(data["t"])),
+                pos=g.Point.from_dict(data["pos"]),
+                att=g.Quaternion.from_dict(data["att"]),
+                vel=checkcol("vel", g.Point, g.Point.from_dict),
+                rvel=checkcol("rvel", g.Point, g.Point.from_dict),
+                acc=checkcol("acc", g.Point, g.Point.from_dict),
+                labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
+            )
+        else:
             # need to reorder the label columns to make sure the labels are nested correctly
             df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
             if "manoeuvre" in df.columns and "element" in df.columns:
@@ -280,7 +327,7 @@ class State(Table):
                     cols[max(iman, iel)] = "element"
                     df = df.reindex(cols, axis=1)
                     data = df.to_dict("records")
-        return super().from_dict(data)
+            return super().from_dict(data)
 
     @staticmethod
     def from_csv(filename) -> State:
@@ -296,7 +343,9 @@ class State(Table):
         return State(df.set_index("t", drop=False))
 
     @staticmethod
-    def from_flight(flight: Flight, origin: Origin | str | None = None, smoothing: bool=False) -> State:
+    def from_flight(
+        flight: Flight, origin: Origin | str | None = None, smoothing: bool = False
+    ) -> State:
         if isinstance(origin, str):
             extension = Path(origin).split()[1]
             if extension == "f3a":
@@ -320,11 +369,11 @@ class State(Table):
         if smoothing:
             return State(
                 time,
-                translation_interpolation=SplineInterpolator(
-                    time, pos, mode="Smoothing", smoothing=0.05
-                ),
-                rotation_interpolation=RotationInterpolator(
-                    time, att, mode="RotationSpline"
+                splines=SplineState.build(
+                    StateData(
+                        time,
+                        Field(time, att),
+                    )
                 ),
             )
         else:
@@ -353,6 +402,26 @@ class State(Table):
                 ),
             )
 
+    @staticmethod
+    def read_bin(
+        binfile: Path | str | BinData | Ardupilot | StateData,
+        origin: Origin | None = None,
+        freq: float = 25.0,
+        s: float=10,
+    ) -> State:
+        """Create a State from a bin file"""
+
+        _data = (
+            binfile
+            if isinstance(binfile, StateData)
+            else StateData.parse_bin(binfile, origin)
+        )
+        return State(
+            g.Time.from_t(
+                np.linspace(_data.t0, _data.t1, int((_data.t1 - _data.t0) * freq))
+            ),
+            splines=SplineState.build(_data, s),
+        )
 
     def splitter_labels(
         self: State,
@@ -408,38 +477,27 @@ class State(Table):
         if len(r) == len(self):
             rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")[:-1]])
 
-        return State(
-            time=self.time,
-            pos=self.pos,
+        return self.replace(
             att=att,
             vel=q.transform_point(self.vel),
             rvel=rvel,
             acc=q.transform_point(self.acc),
-        ).label(**self.labels)
+            splines=None,
+        )
 
     def scale(self: State, factor: float) -> State:
-        df = self.data.copy()
-
-        df["x"] *= factor
-        df["y"] *= factor
-        df["z"] *= factor
-
-        df["u"] *= factor
-        df["v"] *= factor
-        df["w"] *= factor
-
-        return State(df, self.labels)
+        return self.replace(
+            pos=self.pos * factor,
+            vel=self.vel * factor,
+            acc=self.acc * factor,
+            splines=None,
+        )
 
     def mirror_zy(self: State) -> State:
         att = g.Quaternion.from_euler(
             (self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1)
         )
-        return State(
-            time=self.time,
-            pos=self.pos * g.Point(-1, 1, 1),
-            att=att,  # g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
-            vel=self.vel,
-        ).label(**self.labels)
+        return self.replace(pos=self.pos * g.Point(-1, 1, 1), att=att, splines=None)
 
     def to_track(self: State) -> State:
         """This rotates the body so the x axis is in the velocity vector"""
@@ -753,11 +811,8 @@ class State(Table):
 
         return self.superimpose_angles(angles, reference)
 
-    def zero_g_acc(self):
-        return self.att.inverse().transform_point(g.PZ(-9.81)) + self.acc
-
     def arc_centre(self) -> g.Point:
-        acc = g.point.vector_rejection(self.zero_g_acc(), self.vel)
+        acc = g.point.vector_rejection(self.acc_zero_g, self.vel)
         with np.errstate(invalid="ignore"):
             return acc.unit() * abs(self.vel) ** 2 / abs(acc)
 
@@ -765,7 +820,7 @@ class State(Table):
         """Returns the curvature of the path in 1/m, axis is the desired axial direction
         in the world frame"""
         trfl = self.to_track()
-        body_curvature = g.point.cross((-trfl.zero_g_acc() / trfl.u**2), g.PX())
+        body_curvature = g.point.cross((-trfl.acc_zero_g / trfl.u**2), g.PX())
         world_curvature = trfl.att.transform_point(body_curvature)
 
         return g.point.scalar_projection(world_curvature, axis)
@@ -779,7 +834,7 @@ class State(Table):
 
     def F_inertia(self, mass: g.Mass):
         """Returns the inertial force in N"""
-        return mass.m * (self.zero_g_acc() + g.point.cross(self.rvel, self.vel))
+        return mass.m * (self.acc_zero_g + g.point.cross(self.rvel, self.vel))
 
     def M_inertia(self, mass: g.Mass):
         """return the inertial moment in Nm"""
@@ -819,7 +874,7 @@ class State(Table):
         t0: float,
         t1: float,
         iatt: g.Quaternion,
-        axis: g.Point,
+        axis: g.Point = None,
         delta: float = 0.001,
     ) -> tuple[float, float, float]:
 
@@ -835,7 +890,7 @@ class State(Table):
         axis: g.Point = None,
     ) -> float | tuple[float, float, float]:
         """measure the roll rate, asuming it started at t0 and finished at t1."""
-        return np.sum((self.p * self.dt)[:-1]) / self.duration
+        return np.sum(self.p * self.dt) / self.duration
 
     def measure_speed(
         self,
@@ -845,7 +900,7 @@ class State(Table):
         """measure the speed of the flown line assuming it started at t0 and finished at t1.
         Linearly interpolate between datapoints
         """
-        return np.sum((self.u * self.dt)[:-1]) / self.duration
+        return np.sum(self.u * self.dt) / self.duration
 
     def measure_length(self, iatt: g.Quaternion, axis: g.Point = None) -> float:
         """measure the length of the flown line assuming it started at t0 and finished at t1.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property, partial
+from inspect import signature
 from numbers import Number
 from time import time
 from typing import Annotated, ClassVar, Literal, Self
@@ -83,12 +84,17 @@ class Table:
         def _copy(x):
             return x.copy() if copy and hasattr(x, "copy") else x
 
+        _misc_fields = list(signature(self.__class__.__init__).parameters.keys())[
+            len(self.constructs) + 2 :
+        ]
+
         return self.__class__(
             *[
                 kwargs.get(con.name, _copy(getattr(self, con.raw_name)))
                 for con in self._constructs
             ],
             labels=kwargs.get("labels", self.labels),
+            **{k: kwargs.get(k, getattr(self, k)) for k in _misc_fields},
         )
 
     @classmethod
@@ -184,14 +190,14 @@ class Table:
 
         raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dataframe(self, labels: bool = True) -> pd.DataFrame:
+    def to_dataframe(self, labels: bool = True, col_subset=None) -> pd.DataFrame:
         df = pd.DataFrame(
             np.column_stack(
                 [
                     getattr(self, con.raw_name).data
                     if getattr(self, con.raw_name) is not None
                     else np.full((len(self), len(con.cols)), np.nan)
-                    for con in self._constructs
+                    for con in self._constructs if col_subset is None or con.name in col_subset
                 ]
             ),
             columns=self.columns,
@@ -205,15 +211,9 @@ class Table:
     def df(self) -> pd.DataFrame:
         return self.to_dataframe()
 
-    def to_dict(self, legacy: boolean = False) -> dict[str, dict]:
-        if legacy:
-            return self.df.to_dict(orient="records")
-        else:
-            return {
-                "data": self.df.to_dict(orient="list"),
-                "labels": self.labels.to_dict(),
-            }
-
+    def to_dict(self) -> dict[str, dict]:
+        return self.df.to_dict(orient="records")
+        
     @classmethod
     def from_df(Cls, data: pd.DataFrame, lgs: LabelGroups = None) -> Self:
         cons = []
@@ -268,7 +268,7 @@ class Table:
         return self.__dict__[key]
 
     def interpolate(self, t: float | npt.NDArray) -> Self:
-        
+
         return self.__class__(
             *[
                 self._get_interpolator(con.name)(t)
@@ -304,6 +304,23 @@ class Table:
         if isinstance(sli, Number) and (sli == 0 or sli == -1):
             return self.iloc[sli]
 
+        if isinstance(sli, slice):
+            start = sli.start if sli.start is not None else self.t[0]
+            istart = np.searchsorted(self.t, start, "left")
+            stop = sli.stop if sli.stop is not None else self.t[-1]
+            istop = np.searchsorted(self.t, stop, "right") - 1
+
+            sli = []
+
+            if start >= self.t[0] and start <= self.t[-1] and self.t[istart] != start:
+                sli.append(self._get_interpolator("time")(start))
+
+            sli.append(self.time[istart : istop + 1])
+
+            if stop >= self.t[0] and stop <= self.t[-1] and self.t[istop] != stop:
+                sli.append(self._get_interpolator("time")(stop))
+            sli = g.Time.concatenate(sli).t
+
         if isinstance(sli, Number | np.ndarray | list):
             sli = np.array(sli)
             sli = np.where(sli < 0, len(self) + sli, sli)
@@ -313,36 +330,6 @@ class Table:
             return self.interpolate(sli).label(
                 self.labels.slice(_label_start, _label_stop)
             )
-
-        if isinstance(sli, slice):
-            start = sli.start if sli.start is not None else self.t[0]
-            istart = np.searchsorted(self.t, start, "left")
-            stop = sli.stop if sli.stop is not None else self.t[-1]
-            istop = np.searchsorted(self.t, stop, "right") - 1
-
-            frames = []
-
-            if start >= self.t[0] and start <= self.t[-1] and self.t[istart] != start:
-                frames.append(self.interpolate(start))
-
-            frames.append(
-                self.__class__(
-                    *[
-                        getattr(self, con)[istart : istop + 1]
-                        for con in self.construct_names
-                    ]
-                )
-            )
-
-            if stop >= self.t[0] and stop <= self.t[-1] and self.t[istop] != stop:
-                frames.append(self.interpolate(stop))
-
-            return self.__class__.concatenate(frames).label(
-                self.labels.slice(start, stop)
-            )
-
-        if hasattr(sli, "__len__"):
-            return self.interpolate(np.array(sli)).label(self.labels)
 
         raise TypeError(f"Expected Number, slice or array, got {type(sli).__name__}")
 
@@ -428,7 +415,7 @@ class Table:
         newst = sts[0]
         if len(sts) > 1:
             for i, st in enumerate(sts[1:], 1):
-                _t_offset = newst.t[-1] - st.t[0] + (0 if overlap else st.dt[0])
+                _t_offset = newst.t[-1] - st.t[0] + (0 if overlap else st.dt[-1])
 
                 _st = st.replace(
                     time=st.time + _t_offset, labels=st.labels.offset(_t_offset)
@@ -488,15 +475,17 @@ class Table:
         the time of the first table is preserved and the time of the last table is preserved
         if indeces are repeated the first table with that index is used, the others are ignored
         """
+        
         data = np.vstack([st.to_numpy(False) for st in sts])
 
-        new_tab = (
-            Cls.from_numpy(data[data[:, 0].argsort(), :])
+        return (
+            Cls.from_numpy(
+                data[data[:, 0].argsort(), :],
+                LabelGroups.concat(*[st.labels for st in sts]),
+            )
             .remove_duplicate_ts()
             .recalculate_dt()
         )
-
-        return new_tab.label(LabelGroups.concat(*[st.labels for st in sts]))
 
     def label(
         self,
@@ -575,7 +564,6 @@ class Table:
     def remove_labels(self) -> Self:
         return self.replace(labels=LabelGroups())
 
-
     @staticmethod
     def copy_labels(
         template: Table,
@@ -640,9 +628,7 @@ class Table:
         )
 
     def set_boundaries(self, group: str, boundaries: npt.NDArray) -> Self:
-        return self.replace(
-            labels=self.labels.set_boundaries(group, boundaries)
-        )
+        return self.replace(labels=self.labels.set_boundaries(group, boundaries))
 
 
 @dataclass
@@ -667,7 +653,9 @@ class _ILocer:
 
         return self.table.replace(
             **{
-                con.name: getattr(self.table, con.raw_name)[sli] if getattr(self.table, con.raw_name) is not None else None
+                con.name: getattr(self.table, con.raw_name)[sli]
+                if getattr(self.table, con.raw_name) is not None
+                else None
                 for con in self.table._constructs
             },
             labels=self.table.labels.slice(
