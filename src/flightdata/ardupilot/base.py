@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TypeVar
 
 import geometry as g
@@ -26,3 +27,9 @@ class Field[T]:
 
     def to_dict(self) -> dict[str, npt.NDArray[np.float64]]:
         return {"t": self.t, "data": self.data.to_dict()}
+
+    @cached_property
+    def freq(self) -> float:
+        """Estimate the frequency of the data in Hz"""
+        dt = np.diff(self.t)
+        return 1 / np.median(dt[dt > 0])

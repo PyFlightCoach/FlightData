@@ -6,11 +6,13 @@ from pathlib import Path
 
 import geometry as g
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from ardupilot_log_reader import Ardupilot
 
-import flightdata.ardupilot.messages as bin
+import flightdata.ardupilot.messages as msgs
 from flightdata import Origin
+from flightdata.ardupilot.base import BinFunc
 from flightdata.bindata import BinData
 
 from .base import Field
@@ -33,34 +35,6 @@ class StateData:
         return np.min([_g.t[-1] for _g in [self.att, self.rvel, self.pos, self.vel, self.acc]])
 
     @staticmethod
-    def parse_fields(
-        fields: dict[str, pd.DataFrame], origin: Origin
-    ) -> dict[str, g.Time | Field[g.Point | g.Quaternion]]:
-        """
-        Create a dictionary of state entities from the bin file fields and origin.
-        """
-        active_core = bin.primary_core_at_time(fields)
-
-        imu = bin.IMU.load(fields, active_core)
-        xkf1 = bin.XKF1.load(fields, active_core, origin)
-        xkf2 = bin.XKF2.load(fields, active_core, origin)
-        pos = bin.Pos.load(fields, origin)
-        att = bin.Att.load_att(fields, origin)
-
-        xkf2_att = att.att.rotation_spline(att.t)(xkf2.t)
-
-        return StateData(
-            Field(att.t, att.att),
-            Field(xkf1.t, imu.gyro.interp_spline(imu.t)(xkf1.t) - xkf1.gyro_bias),
-            Field(pos.t, pos.pos),
-            Field(
-                xkf1.t,
-                origin.rotation.transform_point(xkf1.wvel)
-            ),
-            Field(xkf2.t, xkf2_att.transform_point(imu.acc.interp_spline(imu.t)(xkf2.t) - xkf2.acc_bias)),
-        )
-
-    @staticmethod
     def parse_bin(
         bin_file: Path | str | BinData | Ardupilot, origin: Origin | None = None
     ) -> StateData:
@@ -73,6 +47,70 @@ class StateData:
             origin = Origin("bin_orgn", g.GPS(bin_file.ORGN.iloc[0].Lat, bin_file.ORGN.iloc[0].Lng, bin_file.ORGN.iloc[0].Alt), 0)
 
         return StateData.parse_fields(bin_file.dfs, origin)
+
+    @staticmethod
+    def parse_fields(
+        fields: dict[str, pd.DataFrame], origin: Origin
+    ) -> dict[str, g.Time | Field[g.Point | g.Quaternion]]:
+        """
+        Create a dictionary of state entities from the bin file fields and origin.
+        """
+        active_core = msgs.primary_core_at_time(fields)
+        imu_msg = msgs.IMU.load(fields, active_core)
+        xkf1_msg = msgs.XKF1.load(fields, active_core, origin)
+        xkf2_msg = msgs.XKF2.load(fields, active_core, origin)
+        pos_msg = msgs.Pos.load(fields, origin)
+        att_msg = msgs.Att.load_att(fields, origin)
+
+        att = Field(att_msg.t, att_msg.att)
+        gyro = Field(imu_msg.t, imu_msg.gyro)
+        gyro_bias = Field(xkf1_msg.t, xkf1_msg.gyro_bias)
+        rvel = Field(
+            gyro.t, gyro.data - gyro_bias.data.linterp(gyro_bias.t, "nearest")(gyro.t)
+        )
+
+        pos = Field(pos_msg.t, pos_msg.pos)
+        vel = Field(xkf1_msg.t, xkf1_msg.vel)
+        accelerometer = Field(imu_msg.t, imu_msg.acc)
+        accelerometer_bias = Field(xkf2_msg.t, xkf2_msg.acc_bias)
+        acc = Field(
+            accelerometer.t,
+            accelerometer.data
+            - accelerometer_bias.data.linterp(accelerometer_bias.t, "nearest")(
+                accelerometer.t
+            ),
+        )
+
+        return StateData( att, rvel, pos, vel, acc)
+
+    @staticmethod
+    def parse_messages(
+        imu_msg: msgs.IMU, 
+        xkf1_msg: msgs.XKF1, 
+        xkf2_msg: msgs.XKF2, 
+        pos_msg: msgs.Pos, 
+        att_msg: msgs.Att,
+    ):
+        att = Field(att_msg.t, att_msg.att)
+        gyro = Field(imu_msg.t, imu_msg.gyro)
+        gyro_bias = Field(xkf1_msg.t, xkf1_msg.gyro_bias)
+        rvel = Field(
+            gyro.t, gyro.data - gyro_bias.data.linterp(gyro_bias.t, "nearest")(gyro.t)
+        )
+
+        pos = Field(pos_msg.t, pos_msg.pos)
+        vel = Field(xkf1_msg.t, xkf1_msg.vel)
+        accelerometer = Field(imu_msg.t, imu_msg.acc)
+        accelerometer_bias = Field(xkf2_msg.t, xkf2_msg.acc_bias)
+        acc = Field(
+            accelerometer.t,
+            accelerometer.data
+            - accelerometer_bias.data.linterp(accelerometer_bias.t, "nearest")(
+                accelerometer.t
+            ),
+        )
+
+        return StateData( att, rvel, pos, vel, acc)
 
     def slice(self, start: float, end: float) -> StateData:
         return StateData(

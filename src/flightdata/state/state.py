@@ -407,7 +407,7 @@ class State(Table):
         binfile: Path | str | BinData | Ardupilot | StateData,
         origin: Origin | None = None,
         freq: float = 25.0,
-        s: float=10,
+        **kwargs
     ) -> State:
         """Create a State from a bin file"""
 
@@ -420,7 +420,7 @@ class State(Table):
             g.Time.from_t(
                 np.linspace(_data.t0, _data.t1, int((_data.t1 - _data.t0) * freq))
             ),
-            splines=SplineState.build(_data, s),
+            splines=SplineState.build(_data, **kwargs),
         )
 
     def splitter_labels(
@@ -478,6 +478,7 @@ class State(Table):
             rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")[:-1]])
 
         return self.replace(
+            pos=self.pos,
             att=att,
             vel=q.transform_point(self.vel),
             rvel=rvel,

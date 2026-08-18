@@ -16,7 +16,7 @@ from .base import BinFunc
 class XKF1:
     t: npt.NDArray[np.float64]
     att: g.Quaternion
-    wvel: g.Point
+    vel: g.Point
     gyro_bias: g.Point
 
     @staticmethod
@@ -28,11 +28,12 @@ class XKF1:
         """Get the xkf1 data for the primary core only"""
         xkf1 = filter_core(fields["XKF1"], "C", primary_core).dropna()
         _rotation = origin.rotation if origin is not None else g.Q0()
-
+        att = _rotation * g.Euldeg(xkf1.Roll, xkf1.Pitch, xkf1.Yaw)
+        wvel = _rotation.transform_point(g.Point(xkf1.VN, xkf1.VE, xkf1.VD))
         return XKF1(
             (xkf1.TimeUS / 1e6).to_numpy(),
-            _rotation * g.Euldeg(xkf1.Roll, xkf1.Pitch, xkf1.Yaw),
-            _rotation.transform_point(g.Point(xkf1.VN, xkf1.VE, xkf1.VD).radians()),
+            att,
+            att.inverse().transform_point(wvel),
             g.Point(xkf1.GX, xkf1.GY, xkf1.GZ).radians(),
         )
 
@@ -113,7 +114,7 @@ class IMU:
 
         return IMU(
             (imu.TimeUS / 1e6).to_numpy(),
-            g.Point(imu.GyrX, imu.GyrY, imu.GyrZ).radians(),
+            g.Point(imu.GyrX, imu.GyrY, imu.GyrZ),
             g.Point(imu.AccX, imu.AccY, imu.AccZ),
         )
 

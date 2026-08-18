@@ -41,10 +41,18 @@ class SplineState:
     @staticmethod
     def build(
         data: StateData,
-        s: float = 10,
-    ):
-        rspline = RSpline.rotation_spline(data.att, data.rvel)
-        tspline = TSpline.independent(data.pos, data.vel, data.acc, s=s)
+        auto_s=True,
+        auto_s_cutoff_freq=5,
+    ) -> SplineState:
+
+        rspline = RSpline.independent(
+            data.att, data.rvel, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq
+        )
+        wvel = Field(data.vel.t, rspline.att(data.vel.t).transform_point(data.vel.data))
+        wacc = Field(data.acc.t, rspline.att(data.acc.t).transform_point(data.acc.data))
+        tspline = TSpline.independent(
+            data.pos, wvel, wacc, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq
+        )
         return SplineState(rspline, tspline)
 
     def to_dict(self) -> dict[str, dict[str, str | npt.NDArray[np.float64]]]:
@@ -54,11 +62,14 @@ class SplineState:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, dict[str, str | npt.NDArray[np.float64]]]) -> SplineState:
+    def from_dict(
+        data: dict[str, dict[str, str | npt.NDArray[np.float64]]],
+    ) -> SplineState:
         return SplineState(
             rotation=RSpline.from_dict(data["rotation"]),
             translation=TSpline.from_dict(data["translation"]),
         )
+
 
 @dataclass
 class RSpline:
@@ -67,7 +78,14 @@ class RSpline:
     att: Callable[[npt.NDArray[np.float64]], g.Quaternion]
     rvel: Callable[[npt.NDArray[np.float64]], g.Point]
     mode: Literal["slerp", "squad", "rotation_spline"]
-    obj: g.splines.RotationSplineFunction | g.splines.SquadFunction | g.splines.SlerpFunction
+    obj: (
+        g.quaternion.RotationSplineFunction
+        | g.quaternion.SquadFunction
+        | g.quaternion.SlerpFunction
+        | dict[
+            str, g.quaternion.RotationSplineFunction | g.point.UnivariateSplineFunction
+        ]
+    )
 
     @staticmethod
     def slerp(att: Field[g.Quaternion], rvel: Field[g.Point] | None = None) -> RSpline:
@@ -76,7 +94,7 @@ class RSpline:
             att=lambda t: _slerp(t, axis_rates=False, mode="body"),
             rvel=lambda t: _slerp(t, mode="body", axis_rates=True)[1],
             mode="slerp",
-            obj=_slerp
+            obj=_slerp,
         )
 
     @staticmethod
@@ -89,7 +107,7 @@ class RSpline:
             att=lambda t: _squad(t)[0],
             rvel=lambda t: _squad(t, mode="body")[1],
             mode="squad",
-            obj=_squad
+            obj=_squad,
         )
 
     @staticmethod
@@ -101,13 +119,33 @@ class RSpline:
             att=lambda t: _spline(t, 0),
             rvel=lambda t: _spline(t, 1),
             mode="rotation_spline",
-            obj=_spline
+            obj=_spline,
+        )
+
+    @staticmethod
+    def independent(
+        att: Field[g.Quaternion],
+        rvel: Field[g.Point],
+        **kwargs,
+    ) -> RSpline:
+        _attspline = att.data.rotation_spline(att.t)
+        _rvelspline = rvel.data.univariate_spline(rvel.t, **kwargs)
+        return RSpline(
+            att=lambda t: _attspline(t, 0),
+            rvel=lambda t: _rvelspline(t, 0),
+            mode="independent",
+            obj={
+                "att": _attspline,
+                "rvel": _rvelspline,
+            },
         )
 
     def to_dict(self) -> dict[str, str | npt.NDArray[np.float64]]:
         return {
             "mode": self.mode,
-            "spline": self.obj.to_dict()
+            "spline": {key: value.to_dict() for key, value in self.obj.items()}
+            if isinstance(self.obj, dict)
+            else self.obj.to_dict(),
         }
 
     @staticmethod
@@ -115,30 +153,46 @@ class RSpline:
         mode = data["mode"]
         match mode:
             case "slerp":
-                _slerp = g.splines.SlerpFunction.from_dict(data["spline"])
+                _slerp = g.quaternion.SlerpFunction.from_dict(data["spline"])
                 return RSpline(
                     att=lambda t: _slerp(t, axis_rates=False, mode="body"),
                     rvel=lambda t: _slerp(t, mode="body", axis_rates=True)[1],
                     mode="slerp",
-                    obj=_slerp
+                    obj=_slerp,
                 )
 
             case "squad":
-                _squad = g.splines.SquadFunction.from_dict(data["spline"])
+                _squad = g.quaternion.SquadFunction.from_dict(data["spline"])
                 return RSpline(
                     att=lambda t: _squad(t)[0],
                     rvel=lambda t: _squad(t, mode="body")[1],
                     mode="squad",
-                    obj=_squad
+                    obj=_squad,
                 )
             case "rotation_spline":
-                _spline = g.splines.RotationSplineFunction.from_dict(data["spline"])
+                _spline = g.quaternion.RotationSplineFunction.from_dict(data["spline"])
                 return RSpline(
                     att=lambda t: _spline(t, 0),
                     rvel=lambda t: _spline(t, 1),
                     mode="rotation_spline",
-                    obj=_spline
-                )    
+                    obj=_spline,
+                )
+            case "independent":
+                _spline = {
+                    "att": g.quaternion.RotationSplineFunction.from_dict(
+                        data["spline"]["att"]
+                    ),
+                    "rvel": g.point.UnivariateSplineFunction.from_dict(
+                        data["spline"]["rvel"]
+                    ),
+                }
+                return RSpline(
+                    att=lambda t: _spline["att"](t, 0),
+                    rvel=lambda t: _spline["rvel"](t, 0),
+                    mode="independent",
+                    obj=_spline,
+                )
+
 
 @dataclass
 class TSpline:
@@ -241,9 +295,7 @@ class TSpline:
         mode = data["mode"]
         match mode:
             case "independent":
-                return TSpline(
-                    pos=BSpline(data["pos"].values())
-                )
+                return TSpline(pos=BSpline(data["pos"].values()))
             case "smoothing" | "interpolating":
                 return TSpline.interpolating(
                     pos=Field.from_dict(data["pos"]),
