@@ -191,6 +191,25 @@ class State(Table):
                 labels=self.labels.copy(),
             )
 
+    def create_splines(
+        self, auto_s: bool = True, auto_s_cutoff_freq: float = 5.0
+    ) -> State:
+        return State(
+            self.time,
+            splines=SplineState.build(
+                StateData(
+                    Field(self.time.t, self.att),
+                    Field(self.time.t, self.rvel),
+                    Field(self.time.t, self.pos),
+                    Field(self.time.t, self.vel),
+                    Field(self.time.t, self.acc),
+                ),
+                auto_s,
+                auto_s_cutoff_freq,
+            ),
+            labels=self.labels.copy(),
+        )
+
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame
 
@@ -264,13 +283,21 @@ class State(Table):
         return self.fill(time)
 
     def to_dict(
-        self, legacy: bool = False, include_data: bool=False
+        self, legacy: bool = False, include_data: bool = False
     ) -> dict[str, list[float]] | list[dict[str, float]]:
         if legacy:
             return super().to_dict()
         else:
             if include_data:
-                data = {"data": pd.concat([self.to_dataframe(labels=True, col_subset=["time", "pos", "att"])])}
+                data = {
+                    "data": pd.concat(
+                        [
+                            self.to_dataframe(
+                                labels=True, col_subset=["time", "pos", "att"]
+                            )
+                        ]
+                    )
+                }
             else:
                 data = {}
             if self.splines is not None:
@@ -278,7 +305,7 @@ class State(Table):
                     "t": self.time.t.tolist(),
                     "splines": self.splines.to_dict(),
                     "labels": self.labels.to_dict(),
-                    **data
+                    **data,
                 }
             else:
                 return {
@@ -289,7 +316,7 @@ class State(Table):
                     "rvel": self.rvel.to_dict(),
                     "acc": self.acc.to_dict(),
                     "labels": self.labels.to_dict(),
-                    **data
+                    **data,
                 }
 
     @classmethod
@@ -299,13 +326,13 @@ class State(Table):
             if _vals is not None:
                 return func(_vals)
 
-        if hasattr(data, "splines") and data.splines is not None:
+        if data.get("splines") is not None:
             return State(
                 g.Time.from_t(np.array(data["t"])),
                 splines=checkcol("splines", SplineState, SplineState.from_dict),
                 labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
             )
-        elif hasattr(data, "pos") and hasattr(data, "att"):
+        elif data.get("pos") and data.get("att"):
             return State(
                 g.Time.from_t(np.array(data["t"])),
                 pos=g.Point.from_dict(data["pos"]),
@@ -407,7 +434,7 @@ class State(Table):
         binfile: Path | str | BinData | Ardupilot | StateData,
         origin: Origin | None = None,
         freq: float = 25.0,
-        **kwargs
+        **kwargs,
     ) -> State:
         """Create a State from a bin file"""
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property, partial
 from inspect import signature
+from itertools import chain
 from numbers import Number
 from time import time
 from typing import Annotated, ClassVar, Literal, Self
-from xmlrpc.client import boolean
 
 import geometry as g
 import numpy as np
@@ -200,7 +200,7 @@ class Table:
                     for con in self._constructs if col_subset is None or con.name in col_subset
                 ]
             ),
-            columns=self.columns,
+            columns=list(chain(*[con.cols for con in self._constructs if col_subset is None or con.name in col_subset])),
             index=self.t,
         ).dropna(axis=1)
         if labels:
