@@ -78,19 +78,30 @@ def test_to_old_dict():
     assert "t" in data[0]
     assert "element" in data[0]
 
-def test_to_new_dict():
+def test_to_new_dict_data_only():
     st = State.from_transform(vel=g.PX(20)).extrapolate(0.5).label(element="e1")
-    data = st.to_dict()
+    data = st.to_dict(legacy=False, include_data=True)
     assert isinstance(data, dict)
     assert "data" in data
     assert "labels" in data
 
-def test_to_from_new_dict():
+def test_to_from_new_dict_data_only():
     st = State.from_transform(vel=g.PX(20)).extrapolate(0.5).label(element="e1")
-    data = st.to_dict()
+    data = st.to_dict(legacy=False, include_data=False)
     st2 = State.from_dict(data)
     assert st.almost_equal(st2)
     assert st.labels == st2.labels
+
+def test_to_from_new_dict_with_splines():
+    st = State.from_transform(vel=g.PX(20)).extrapolate(0.5).label(element="e1")
+    ss = st.create_splines()
+    data = ss.to_dict(legacy=False, include_data=True)
+
+    ss2 = State.from_dict(data)
+    assert ss.almost_equal(ss2)
+
+
+
 
 @mark.skip
 def test_align():
