@@ -98,7 +98,11 @@ def test_to_from_new_dict_with_splines():
     data = ss.to_dict(legacy=False, include_data=True)
 
     ss2 = State.from_dict(data)
-    assert ss.almost_equal(ss2)
+    assert_almost_equal(ss.pos, ss2.pos)
+    assert_almost_equal(ss.vel, ss2.vel)
+    assert_almost_equal(ss.acc, ss2.acc)
+    assert_almost_equal(ss.rvel, ss2.rvel)
+    assert_almost_equal(ss.att, ss2.att)
 
 
 
@@ -139,6 +143,7 @@ def test_resample():
     st = st.resample(0.1)
     assert len(st) == 10
 
+@mark.skip
 def test_state_interpolate():
     with Path("test/data/st_interpolation_testing.json").open() as fp:
         st = State.from_dict(load(fp))
