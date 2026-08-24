@@ -13,7 +13,6 @@ from ardupilot_log_reader import Ardupilot
 import flightdata.ardupilot.messages as msgs
 from flightdata import Origin
 from flightdata.ardupilot.base import BinFunc
-from flightdata.bindata import BinData
 
 from .base import Field
 
@@ -36,9 +35,9 @@ class StateData:
 
     @staticmethod
     def parse_bin(
-        bin_file: Path | str | BinData | Ardupilot, origin: Origin | None = None
+        bin_file: Path | str | Ardupilot, origin: Origin | None = None
     ) -> StateData:
-        if not isinstance(bin_file, (BinData, Ardupilot)):
+        if not isinstance(bin_file, Ardupilot):
             bin_file = Ardupilot.parse(
                 Path(bin_file), ["ATT", "POS", "IMU", "XKF1", "XKF2", "ERR", "GPS", "ORGN"]
             )

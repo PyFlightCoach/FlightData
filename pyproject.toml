@@ -10,6 +10,7 @@ dependencies = [
     "pandas>=3.0.5",
     "pfc-geometry>=0.2.23",
     "pfcschemas>=0.1.15",
+    "ardupilot_log_reader",
     "scipy>=1.15.2",
     "simplejson>=3.20.1",
 ]
@@ -24,7 +25,7 @@ build-backend = "hatchling.build"
 
 
 [project.optional-dependencies]
-dataflash = ["ardupilot_log_reader"]
+dataflash = ["ardupilot_log_reader[pymavlink]"]
 
 [dependency-groups]
 dev = ["pytest>=8.3.3"]

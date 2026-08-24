@@ -15,7 +15,6 @@ from schemas import fcj
 from flightdata import Environment, Flight, Flow, Origin
 from flightdata.ardupilot import Field, StateData
 from flightdata.base.table import Construct, Label, LabelGroups, Table
-from flightdata.bindata import BinData
 from flightdata.state.spline_interpolation import SplineState
 
 
@@ -192,8 +191,10 @@ class State(Table):
             )
 
     def create_splines(
-        self, auto_s: bool = True, auto_s_cutoff_freq: float = 5.0
+        self, auto_s: bool = True, auto_s_cutoff_freq: float = 5.0, replace: bool = False
     ) -> State:
+        if self.splines is not None and not replace:
+            return self
         return State(
             self.time,
             splines=SplineState.build(
@@ -301,14 +302,13 @@ class State(Table):
             else:
                 data = {}
             if self.splines is not None:
-                return {
+                data = data | {
                     "t": self.time.t.tolist(),
                     "splines": self.splines.to_dict(),
                     "labels": self.labels.to_dict(),
-                    **data,
                 }
             else:
-                return {
+                data = data | {
                     "t": self.time.t.tolist(),
                     "pos": self.pos.to_dict(),
                     "att": self.att.to_dict(),
@@ -316,8 +316,8 @@ class State(Table):
                     "rvel": self.rvel.to_dict(),
                     "acc": self.acc.to_dict(),
                     "labels": self.labels.to_dict(),
-                    **data,
                 }
+            return data | {"contents": "statedata"}
 
     @classmethod
     def from_dict(Cls, data: list[dict[str, float | str]] | dict[str, dict]) -> State:
@@ -325,6 +325,9 @@ class State(Table):
             _vals = data.get(name, None)
             if _vals is not None:
                 return func(_vals)
+
+        if isinstance(data, list):
+            data = {"data": data}
 
         if data.get("splines") is not None:
             return State(
@@ -343,8 +346,9 @@ class State(Table):
                 labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
             )
         else:
+            
             # need to reorder the label columns to make sure the labels are nested correctly
-            df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
+            df = pd.DataFrame.from_dict(data.get("data", data)).set_index("t", drop=False)
             if "manoeuvre" in df.columns and "element" in df.columns:
                 iman = df.columns.get_loc("manoeuvre")
                 iel = df.columns.get_loc("element")
@@ -431,7 +435,7 @@ class State(Table):
 
     @staticmethod
     def read_bin(
-        binfile: Path | str | BinData | Ardupilot | StateData,
+        binfile: Path | str | Ardupilot | StateData,
         origin: Origin | None = None,
         freq: float = 25.0,
         **kwargs,

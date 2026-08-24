@@ -295,10 +295,19 @@ class TSpline:
         mode = data["mode"]
         match mode:
             case "independent":
-                return TSpline(pos=BSpline(data["pos"].values()))
+                return TSpline(
+                    pos=g.point.UnivariateSplineFunction.from_dict(data["pos"]),
+                    vel=g.point.UnivariateSplineFunction.from_dict(data["vel"]),
+                    acc=g.point.UnivariateSplineFunction.from_dict(data["acc"]),
+                    mode="independent",
+                )
             case "smoothing" | "interpolating":
-                return TSpline.interpolating(
-                    pos=Field.from_dict(data["pos"]),
+                _pos = g.point.InterpSplineFunction.from_dict(data["pos"])
+                return TSpline(
+                    pos=lambda t: _pos(t, 0),
+                    vel=lambda t: _pos(t, 1),
+                    acc=lambda t: _pos(t, 2),
+                    mode=mode,
                 )
             case "quintic_hermite":
                 return TSpline.quintic_hermite(
