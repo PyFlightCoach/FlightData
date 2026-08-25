@@ -47,12 +47,20 @@ class SplineState:
 
         rspline = RSpline.independent(
             data.att, data.rvel, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq
-        )
-        wvel = Field(data.vel.t, rspline.att(data.vel.t).transform_point(data.vel.data))
-        wacc = Field(data.acc.t, rspline.att(data.acc.t).transform_point(data.acc.data))
-        tspline = TSpline.independent(
-            data.pos, wvel, wacc, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq
-        )
+        ) if data.rvel is not None else RSpline.rotation_spline(data.att)
+
+
+        if data.vel is not None:
+            wvel = Field(data.vel.t, rspline.att(data.vel.t).transform_point(data.vel.data))
+        
+            wacc = Field(data.acc.t, rspline.att(data.acc.t).transform_point(data.acc.data)) if data.acc is not None else None
+            tspline = TSpline.independent(
+                data.pos, wvel, wacc, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq
+            )
+        
+        else:
+            tspline = TSpline.smoothing(data.pos, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq)
+
         return SplineState(rspline, tspline)
 
     def to_dict(self) -> dict[str, dict[str, str | npt.NDArray[np.float64]]]:
@@ -214,11 +222,12 @@ class TSpline:
         acc_kwargs: dict[str, object] | None = None,
         **kwargs,
     ) -> TSpline:
+        vspline = vel.data.univariate_spline(vel.t, **(kwargs | (vel_kwargs or {})))
 
         return TSpline(
             pos=pos.data.univariate_spline(pos.t, **(kwargs | (pos_kwargs or {}))),
-            vel=vel.data.univariate_spline(vel.t, **(kwargs | (vel_kwargs or {}))),
-            acc=acc.data.univariate_spline(acc.t, **(kwargs | (acc_kwargs or {}))),
+            vel=vspline,
+            acc=acc.data.univariate_spline(acc.t, **(kwargs | (acc_kwargs or {}))) if acc is not None else lambda t: vspline(t, 1),
             mode="independent",
         )
 
@@ -249,6 +258,7 @@ class TSpline:
             vel=lambda t: pos_spline(t, 1),
             acc=lambda t: pos_spline(t, 2),
             mode="smoothing",
+            obj=pos_spline,
         )
 
     @staticmethod
@@ -276,11 +286,11 @@ class TSpline:
                 return odata | {
                     "pos": self.pos.to_dict(),
                     "vel": self.vel.to_dict(),
-                    "acc": self.acc.to_dict(),
+                    "acc": self.acc.to_dict() if hasattr(self.acc, "to_dict") else None,
                 }
             case "smoothing" | "interpolating":
                 return odata | {
-                    "pos": self.pos.to_dict(),
+                    "obj": self.obj.to_dict(),
                 }
             case "quintic_hermite":
                 return odata | {
@@ -295,19 +305,30 @@ class TSpline:
         mode = data["mode"]
         match mode:
             case "independent":
+                vspline = g.point.UnivariateSplineFunction.from_dict(data["vel"])
                 return TSpline(
                     pos=g.point.UnivariateSplineFunction.from_dict(data["pos"]),
-                    vel=g.point.UnivariateSplineFunction.from_dict(data["vel"]),
-                    acc=g.point.UnivariateSplineFunction.from_dict(data["acc"]),
+                    vel=vspline,
+                    acc=g.point.UnivariateSplineFunction.from_dict(data["acc"]) if data["acc"] is not None else lambda t: vspline(t, 1),
                     mode="independent",
                 )
-            case "smoothing" | "interpolating":
-                _pos = g.point.InterpSplineFunction.from_dict(data["pos"])
+            case "smoothing":
+                _pos = g.point.UnivariateSplineFunction.from_dict(data["obj"])
                 return TSpline(
                     pos=lambda t: _pos(t, 0),
                     vel=lambda t: _pos(t, 1),
                     acc=lambda t: _pos(t, 2),
                     mode=mode,
+                    obj=_pos,
+                )
+            case "interpolating":
+                _pos = g.point.InterpolatingSplineFunction.from_dict(data["pos"])
+                return TSpline(
+                    pos=lambda t: _pos(t, 0),
+                    vel=lambda t: _pos(t, 1),
+                    acc=lambda t: _pos(t, 2),
+                    mode=mode,
+                    obj=_pos
                 )
             case "quintic_hermite":
                 return TSpline.quintic_hermite(
