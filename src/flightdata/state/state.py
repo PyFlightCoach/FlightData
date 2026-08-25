@@ -297,7 +297,7 @@ class State(Table):
                                 labels=True, col_subset=["time", "pos", "att"]
                             )
                         ]
-                    )
+                    ).to_dict("records")
                 }
             else:
                 data = {}
@@ -357,8 +357,9 @@ class State(Table):
                     cols[min(iman, iel)] = "manoeuvre"
                     cols[max(iman, iel)] = "element"
                     df = df.reindex(cols, axis=1)
-                    data = df.to_dict("records")
-            return super().from_dict(data)
+                    df = df.to_dict("records")
+            return State.from_df(df)
+#            return super().from_dict(data)
 
     @staticmethod
     def from_csv(filename) -> State:
