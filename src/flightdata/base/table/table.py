@@ -127,6 +127,10 @@ class Table:
     def constructs(self) -> dict[str, g.GBase]:
         return {con.name: con.type for con in self._constructs}
 
+    @cached_property
+    def construct_dict(self) -> dict[str, Construct]:
+        return {con.name: con for con in self._constructs}
+
     @property
     def raw_constructs(self) -> dict[str, g.GBase | None]:
         return {con.name: getattr(self, con.raw_name) for con in self._constructs}
@@ -190,17 +194,13 @@ class Table:
 
         raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dataframe(self, labels: bool = True, col_subset=None) -> pd.DataFrame:
+    def to_dataframe(self, labels: bool = True, con_subset=None) -> pd.DataFrame:
+        if con_subset is None:
+           con_subset = [con for con in self._constructs if getattr(self, con.raw_name) is not None]
+
         df = pd.DataFrame(
-            np.column_stack(
-                [
-                    getattr(self, con.raw_name).data
-                    if getattr(self, con.raw_name) is not None
-                    else np.full((len(self), len(con.cols)), np.nan)
-                    for con in self._constructs if col_subset is None or con.name in col_subset
-                ]
-            ),
-            columns=list(chain(*[con.cols for con in self._constructs if col_subset is None or con.name in col_subset])),
+            np.column_stack([getattr(self, con).data for con in con_subset]),
+            columns=list(chain(*[self.construct_dict[con].cols for con in con_subset])),
             index=self.t,
         ).dropna(axis=1)
         if labels:

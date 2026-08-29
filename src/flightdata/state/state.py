@@ -191,7 +191,10 @@ class State(Table):
             )
 
     def create_splines(
-        self, auto_s: bool = True, auto_s_cutoff_freq: float = 5.0, replace: bool = False
+        self,
+        auto_s: bool = True,
+        auto_s_cutoff_freq: float = 5.0,
+        replace: bool = False,
     ) -> State:
         if self.splines is not None and not replace:
             return self
@@ -289,35 +292,26 @@ class State(Table):
         if legacy:
             return super().to_dict()
         else:
+            data = {
+                "contents": "statedata",
+                "t": self.time.t.tolist(),
+                "labels": self.labels.to_dict()
+            }
             if include_data:
-                data = {
-                    "data": pd.concat(
-                        [
-                            self.to_dataframe(
-                                labels=True, col_subset=["time", "pos", "att"]
-                            )
-                        ]
-                    ).to_dict("records")
-                }
-            else:
-                data = {}
+                data["data"] = pd.concat(
+                    [self.to_dataframe(True, ["time", "pos", "att"])]
+                ).to_dict("records")
+            
             if self.splines is not None:
-                data = data | {
-                    "t": self.time.t.tolist(),
-                    "splines": self.splines.to_dict(),
-                    "labels": self.labels.to_dict(),
-                }
+                data["splines"] = self.splines.to_dict()
             else:
-                data = data | {
-                    "t": self.time.t.tolist(),
-                    "pos": self.pos.to_dict(),
-                    "att": self.att.to_dict(),
-                    "vel": self.vel.to_dict(),
-                    "rvel": self.rvel.to_dict(),
-                    "acc": self.acc.to_dict(),
-                    "labels": self.labels.to_dict(),
-                }
-            return data | {"contents": "statedata"}
+                data["pos"] = self.pos.to_dict()
+                data["att"] = self.att.to_dict()
+                data["vel"] = self.vel.to_dict()
+                data["rvel"] = self.rvel.to_dict()
+                data["acc"] = self.acc.to_dict()
+            
+            return data
 
     @classmethod
     def from_dict(Cls, data: list[dict[str, float | str]] | dict[str, dict]) -> State:
@@ -346,9 +340,10 @@ class State(Table):
                 labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
             )
         else:
-            
             # need to reorder the label columns to make sure the labels are nested correctly
-            df = pd.DataFrame.from_dict(data.get("data", data)).set_index("t", drop=False)
+            df = pd.DataFrame.from_dict(data.get("data", data)).set_index(
+                "t", drop=False
+            )
             if "manoeuvre" in df.columns and "element" in df.columns:
                 iman = df.columns.get_loc("manoeuvre")
                 iel = df.columns.get_loc("element")
@@ -359,7 +354,8 @@ class State(Table):
                     df = df.reindex(cols, axis=1)
                     df = df.to_dict("records")
             return State.from_df(df)
-#            return super().from_dict(data)
+
+    #            return super().from_dict(data)
 
     @staticmethod
     def from_csv(filename) -> State:
@@ -939,10 +935,8 @@ class State(Table):
         """measure the length of the flown line assuming it started at t0 and finished at t1.
         Linearly interpolate between datapoints
         """
-        pos = self.pos
-        return g.point.scalar_projection(
-            pos[-1] - pos[0], iatt.transform_point(g.PX())
-        )[0]
+
+        return np.sum(abs(self.vel) * self.dt)
 
     def measure_duration(self, iatt: g.Quaternion, axis: g.Point = None) -> float:
         """measure the duration of the flown line assuming it started at t0 and finished at t1.
