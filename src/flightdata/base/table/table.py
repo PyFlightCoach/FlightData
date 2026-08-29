@@ -80,7 +80,8 @@ class Table:
 
     def replace(self, copy: bool = False, **kwargs) -> Self:
         """Return a new instance of the table with the specified attributes replaced."""
-        _copy = lambda x: x.copy() if copy and hasattr(x, "copy") else x
+        def _copy(x):
+            return x.copy() if copy and hasattr(x, "copy") else x
 
         return self.__class__(
             *[
