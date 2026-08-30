@@ -14,6 +14,7 @@ class Label:
     """Indicates the range where a label is active.
     The range is inclusive
     """
+
     start: float
     stop: float
     sublabels: LabelGroups = field(default_factory=lambda: LabelGroups({}))
@@ -26,7 +27,9 @@ class Label:
         """Check if this label intersects the table"""
         return self.start <= tstop and self.stop > tstart
 
-    def contains(self, t: npt.NDArray | Number | list[Number], inclusive: bool=True) -> npt.NDArray:
+    def contains(
+        self, t: npt.NDArray | Number | list[Number], inclusive: bool = True
+    ) -> npt.NDArray:
         if isinstance(t, Number):
             t = [t]
         t = np.array(t)
@@ -39,7 +42,9 @@ class Label:
         return res
 
     def to_iloc(self, t: npt.NDArray):
-        return Label(get_index(t, self.start), get_index(t, self.stop, direction="backward"))
+        return Label(
+            get_index(t, self.start), get_index(t, self.stop, direction="backward")
+        )
 
     def to_t(self, t: npt.NDArray):
         return Label(get_value(t, self.start), get_value(t, self.stop))
@@ -79,19 +84,28 @@ class Label:
         return self.start < self.stop
 
     def to_dict(self):
-        return {"start": self.start, "stop": self.stop, "sublabels": self.sublabels.to_dict()}
+        return {
+            "start": self.start,
+            "stop": self.stop,
+            "sublabels": self.sublabels.to_dict(),
+        }
 
     @staticmethod
     def from_dict(data):
-        return Label(data['start'], data['stop'], LabelGroups.from_dict(data['sublabels']))
+        return Label(
+            data["start"],
+            data["stop"],
+            LabelGroups.from_dict(data.get("sublabels", {})),
+        )
 
     def shift(self, t: npt.NDArray, steps: int):
         """shift the end point by steps timesteps"""
         ilab = self.to_iloc(t)
         ilab.stop += steps
         return ilab.to_t(t)
-    
+
     def copy(self):
         return Label(self.start, self.stop, self.sublabels.copy())
+
 
 from .labelgroups import LabelGroups
