@@ -194,13 +194,14 @@ class Table:
 
         raise AttributeError(f"Unknown column or construct {name}")
 
-    def to_dataframe(self, labels: bool = True, con_subset=None) -> pd.DataFrame:
+    def to_dataframe(self, labels: bool = True, con_subset: list[str]|None=None) -> pd.DataFrame:
         if con_subset is None:
-           con_subset = [con for con in self._constructs if getattr(self, con.raw_name) is not None]
-
+           cons = [con for con in self._constructs if getattr(self, con.raw_name) is not None]
+        else:
+            cons = [self.construct_dict[con] for con in con_subset]
         df = pd.DataFrame(
-            np.column_stack([getattr(self, con).data for con in con_subset]),
-            columns=list(chain(*[self.construct_dict[con].cols for con in con_subset])),
+            np.column_stack([getattr(self, con.name).data for con in cons]),
+            columns=list(chain(*[con.cols for con in cons])),
             index=self.t,
         ).dropna(axis=1)
         if labels:
