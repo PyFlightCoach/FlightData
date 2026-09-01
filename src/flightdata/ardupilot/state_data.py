@@ -6,13 +6,11 @@ from pathlib import Path
 
 import geometry as g
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 from ardupilot_log_reader import Ardupilot
 
 import flightdata.ardupilot.messages as msgs
 from flightdata import Origin
-from flightdata.ardupilot.base import BinFunc
 
 from .base import Field
 
@@ -22,16 +20,28 @@ class StateData:
     att: Field[g.Quaternion]
     rvel: Field[g.Point] | None
     pos: Field[g.Point]
-    vel: Field[g.Point]
+    vel: Field[g.Point] | None
     acc: Field[g.Point] | None
-    
-    @cached_property
-    def t0(self) -> float:
-        return np.max([_g.t[0] for _g in [self.att, self.rvel, self.pos, self.vel, self.acc] if _g is not None])
 
-    @cached_property
-    def t1(self) -> float:
-        return np.min([_g.t[-1] for _g in [self.att, self.rvel, self.pos, self.vel, self.acc] if _g is not None])
+    start: float | None = None
+    end: float | None = None
+
+    def __post_init__(self):
+        fields = [
+            self.att,
+            self.rvel,
+            self.pos,
+            self.vel,
+            self.acc,
+        ]
+
+        available = [f for f in fields if f is not None]
+
+        if self.start is None:
+            self.start = max(f.t[0] for f in available)
+
+        if self.end is None:
+            self.end = min(f.t[-1] for f in available)
 
     @staticmethod
     def parse_bin(
@@ -50,7 +60,7 @@ class StateData:
     @staticmethod
     def parse_fields(
         fields: dict[str, pd.DataFrame], origin: Origin
-    ) -> dict[str, g.Time | Field[g.Point | g.Quaternion]]:
+    ) -> StateData:
         """
         Create a dictionary of state entities from the bin file fields and origin.
         """
@@ -69,7 +79,7 @@ class StateData:
         xkf2_msg: msgs.XKF2 | None, 
         pos_msg: msgs.Pos, 
         att_msg: msgs.Att,
-    ):
+    ) -> StateData:
         att = Field(att_msg.t, att_msg.att)
         pos = Field(pos_msg.t, pos_msg.pos)
 
@@ -105,4 +115,6 @@ class StateData:
             self.pos.slice(start, end),
             self.vel.slice(start, end) if self.vel is not None else None,
             self.acc.slice(start, end) if self.acc is not None else None,
+            start,
+            end
         )

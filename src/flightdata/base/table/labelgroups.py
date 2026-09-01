@@ -8,6 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from geometry import Time
+from schemas import flightdata as fds
 
 from .labelgroup import LabelGroup
 
@@ -125,6 +126,10 @@ class LabelGroups:
     @staticmethod
     def from_dict(data: dict[str, dict]):
         return LabelGroups({k: LabelGroup.from_dict(v) for k, v in data.items()})
+
+    @staticmethod
+    def parse(data: fds.LabelGroups):
+        return LabelGroups.from_dict(data.model_dump())
 
     def whole(self, time: Time):
         """Return only labels that span more than one timestep expanded to cover the removed labels"""

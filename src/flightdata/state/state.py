@@ -9,6 +9,7 @@ import geometry as g
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import schemas.flightdata as fds
 from ardupilot_log_reader import Ardupilot
 from schemas import fcj
 
@@ -295,13 +296,13 @@ class State(Table):
             data = {
                 "contents": "statedata",
                 "t": self.time.t.tolist(),
-                "labels": self.labels.to_dict()
+                "labels": self.labels.to_dict(),
             }
             if include_data:
                 data["data"] = pd.concat(
                     [self.to_dataframe(True, ["time", "pos", "att"])]
                 ).to_dict("records")
-            
+
             if self.splines is not None:
                 data["splines"] = self.splines.to_dict()
             else:
@@ -310,52 +311,77 @@ class State(Table):
                 data["vel"] = self.vel.to_dict()
                 data["rvel"] = self.rvel.to_dict()
                 data["acc"] = self.acc.to_dict()
-            
+
             return data
 
-    @classmethod
-    def from_dict(Cls, data: list[dict[str, float | str]] | dict[str, dict]) -> State:
-        def checkcol(name: str, type, func: Callable):
-            _vals = data.get(name, None)
-            if _vals is not None:
-                return func(_vals)
+    def dump(
+        self, legacy: bool = False, include_data: bool = False
+    ) -> fds.NewState | fds.LegacyState:
+        if legacy or include_data:
+            _ = self.pos
+            _ = self.att
+            data = fds.LegacyState.model_validate(self.df.to_dict(orient="records"))
+            if legacy:
+                return data
+        else:
+            data = None
+        # fmt: off
+        return fds.NewState(
+            contents="statedata",
+            t=self.t.tolist(),
+            labels=fds.LabelGroups.model_validate(self.labels.to_dict()),
+            data = data,
+            pos = fds.Point.model_validate(self.pos.to_dict()) if self.splines is None else None,
+            att = fds.Quaternion.model_validate(self.att.to_dict()) if self.splines is None else None,
+            vel = fds.Point.model_validate(self.vel.to_dict()) if self.splines is None and self._vel is not None else None,
+            rvel = fds.Point.model_validate(self.rvel.to_dict()) if self.splines is None and self._vel is not None else None,
+            acc = fds.Point.model_validate(self.acc.to_dict()) if self.splines is None and self._vel is not None else None,
+            splines = self.splines.to_dict() if self.splines is not None else None,
+        )    
+        # fmt: on
 
-        if isinstance(data, list):
-            data = {"data": data}
-
-        if data.get("splines") is not None:
-            return State(
-                g.Time.from_t(np.array(data["t"])),
-                splines=checkcol("splines", SplineState, SplineState.from_dict),
-                labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
+    @staticmethod
+    def parse(s: fds.NewState | fds.LegacyState) -> State:
+        if isinstance(s, fds.LegacyState):
+            return State.from_df(
+                pd.DataFrame.from_dict(s.model_dump()).set_index("t", drop=False)
             )
-        elif data.get("pos") and data.get("att"):
+        elif isinstance(s, fds.NewState):
             return State(
-                g.Time.from_t(np.array(data["t"])),
-                pos=g.Point.from_dict(data["pos"]),
-                att=g.Quaternion.from_dict(data["att"]),
-                vel=checkcol("vel", g.Point, g.Point.from_dict),
-                rvel=checkcol("rvel", g.Point, g.Point.from_dict),
-                acc=checkcol("acc", g.Point, g.Point.from_dict),
-                labels=checkcol("labels", LabelGroups, LabelGroups.from_dict),
+                g.Time.from_t(np.array(s.t)),
+                pos=g.Point.from_dict(s.pos.model_dump()) if s.pos else None,
+                att=g.Quaternion.from_dict(s.att.model_dump()) if s.att else None,
+                vel=g.Point.from_dict(s.vel.model_dump()) if s.vel else None,
+                rvel=g.Point.from_dict(s.rvel.model_dump()) if s.rvel else None,
+                acc=g.Point.from_dict(s.acc.model_dump()) if s.acc else None,
+                labels=LabelGroups.parse(s.labels) if s.labels else None,
+                splines=SplineState.from_dict(s.splines) if s.splines else None,
             )
         else:
-            # need to reorder the label columns to make sure the labels are nested correctly
-            df = pd.DataFrame.from_dict(data.get("data", data)).set_index(
-                "t", drop=False
-            )
-            if "manoeuvre" in df.columns and "element" in df.columns:
-                iman = df.columns.get_loc("manoeuvre")
-                iel = df.columns.get_loc("element")
-                if iman != -1 and iel != -1:
-                    cols = df.columns.to_list()
-                    cols[min(iman, iel)] = "manoeuvre"
-                    cols[max(iman, iel)] = "element"
-                    df = df.reindex(cols, axis=1)
-                    df = df.to_dict("records")
-            return State.from_df(df)
+            raise TypeError(f"Cannot parse state from {type(s)}")
 
-    #            return super().from_dict(data)
+    @classmethod
+    def from_dict(Cls, data: list | dict) -> State:
+        return State.parse(fds.State.model_validate(data).root)
+
+    @classmethod
+    def from_df(Cls, df: pd.DataFrame):
+        # need to reorder the label columns to make sure the labels are nested correctly
+        for _c in ["manoeuvre", "element"]:
+            if _c in df.columns and pd.isna(df[_c]).any():
+                if not pd.isna(df[_c]).all():
+                    raise ValueError(f"{_c} column contains NaN values")
+                df.drop(_c, axis=1, inplace=True)
+
+        if "manoeuvre" in df.columns and "element" in df.columns:
+            iman = df.columns.get_loc("manoeuvre")
+            iel = df.columns.get_loc("element")
+            if iman != -1 and iel != -1:
+                cols = df.columns.to_list()
+                cols[min(iman, iel)] = "manoeuvre"
+                cols[max(iman, iel)] = "element"
+                df = df.reindex(cols, axis=1)
+        return super().from_df(df)
 
     @staticmethod
     def from_csv(filename) -> State:
@@ -435,6 +461,8 @@ class State(Table):
         binfile: Path | str | Ardupilot | StateData,
         origin: Origin | None = None,
         freq: float = 25.0,
+        start: float | None = None,
+        end: float | None = None,
         **kwargs,
     ) -> State:
         """Create a State from a bin file"""
@@ -444,9 +472,14 @@ class State(Table):
             if isinstance(binfile, StateData)
             else StateData.parse_bin(binfile, origin)
         )
+        if start is not None or end is not None:
+            _data = _data.slice(start or _data.start, end or _data.end)
+
         return State(
             g.Time.from_t(
-                np.linspace(_data.t0, _data.t1, int((_data.t1 - _data.t0) * freq))
+                np.linspace(
+                    _data.start, _data.end, int((_data.end - _data.start) * freq)
+                )
             ),
             splines=SplineState.build(_data, **kwargs),
         )

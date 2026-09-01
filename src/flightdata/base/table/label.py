@@ -92,10 +92,11 @@ class Label:
 
     @staticmethod
     def from_dict(data):
+        
         return Label(
             data["start"],
             data["stop"],
-            LabelGroups.from_dict(data.get("sublabels", {})),
+            LabelGroups.from_dict(data.get("sublabels") or {}),
         )
 
     def shift(self, t: npt.NDArray, steps: int):
