@@ -11,7 +11,6 @@ from pytest import fixture
 import flightdata.ardupilot.messages as bf
 from flightdata import Flight
 from flightdata.ardupilot.state_data import StateData
-from flightdata.bindata import BinData
 
 
 @fixture

@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .label import Label
 from .labelgroup import LabelGroup
 
 
@@ -23,24 +22,23 @@ class Slicer:
         return name in self.labels
 
     def extract(self, name: str | Iterable[str]):
+        """
+        TODO check contents of iterable are contiguous and handle non-contiguous case
+        """
         if hasattr(name, "__iter__") and not isinstance(name, str):
-            return self.data.__class__.stack([self[n] for n in name])
+            name = list(name)
+            start = self.labels[name[0]].start
+            stop = self.labels[name[-1]].stop
+        else:
+            start = self.labels[name].start
+            stop = self.labels[name].stop
 
-        label = self.labels[name]
-        start = label.start if isinstance(label, Label) else label[0].start
-        stop = label.stop if isinstance(label, Label) else label[1].stop
-        res = self.data[start : stop]
-
-        if isinstance(label, Label) and len(label.sublabels) > 0:
-            res = res.label(label.sublabels)  
-
-        return res
-#        return self.data.__class__.stack({n: self[n] for n in names}, self.group)
+        return self.data[start:stop]
 
     @property
     def value(self):
         return self.labels.active(self.data.t[0])
-    
+
     def __iter__(self):
         for k in self.labels:
             yield self[k]
@@ -48,5 +46,6 @@ class Slicer:
     def items(self):
         for k in self.labels:
             yield k, self[k]
+
 
 from .table import Table

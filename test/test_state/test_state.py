@@ -93,7 +93,7 @@ def test_to_from_new_dict_data_only():
     assert st.labels == st2.labels
 
 def test_to_from_new_dict_with_splines():
-    st = State.from_transform(vel=g.PX(20)).extrapolate(0.5).label(element="e1")
+    st = State.from_transform(vel=g.PX(20)).extrapolate(5).label(element="e1")
     ss = st.create_splines()
     data = ss.to_dict(legacy=False, include_data=True)
 
@@ -104,7 +104,13 @@ def test_to_from_new_dict_with_splines():
     assert_almost_equal(ss.rvel, ss2.rvel)
     assert_almost_equal(ss.att, ss2.att)
 
+def test_slice_with_splines():
+    st = State.from_transform(vel=g.PX(20)).extrapolate(5).label(element="e1")
+    ss = st.create_splines()
 
+    sliced = ss[1:4]
+
+    assert sliced.splines is ss.splines
 
 
 @mark.skip

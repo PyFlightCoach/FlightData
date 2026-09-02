@@ -1,4 +1,4 @@
-from flightdata import Flight, Origin, BinData
+from flightdata import Flight, Origin
 from json import load
 from pytest import fixture, approx, mark
 import numpy as np

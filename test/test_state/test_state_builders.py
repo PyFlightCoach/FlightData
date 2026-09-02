@@ -7,7 +7,7 @@ from geometry import checks
 from pytest import approx, fixture, mark
 from schemas import fcj
 
-from flightdata import BinData, Flight, Origin, State
+from flightdata import Flight, Origin, State
 
 from ..conftest import fcjson, flight, origin, state
 
