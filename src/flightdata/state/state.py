@@ -327,7 +327,6 @@ class State(Table):
             data = None
         # fmt: off
         return fds.NewState(
-            contents="statedata",
             t=self.t.tolist(),
             labels=fds.LabelGroups.model_validate(self.labels.to_dict()),
             data = data,

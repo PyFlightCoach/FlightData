@@ -91,7 +91,7 @@ class RSpline:
         | g.quaternion.SquadFunction
         | g.quaternion.SlerpFunction
         | dict[
-            str, g.quaternion.RotationSplineFunction | g.point.UnivariateSplineFunction
+            str, g.quaternion.RotationSplineFunction | g.point.SmoothingSplineFunction
         ]
     )
 
@@ -137,7 +137,7 @@ class RSpline:
         **kwargs,
     ) -> RSpline:
         _attspline = att.data.rotation_spline(att.t)
-        _rvelspline = rvel.data.univariate_spline(rvel.t, **kwargs)
+        _rvelspline = rvel.data.smoothing_spline(rvel.t, **kwargs)
         return RSpline(
             att=lambda t: _attspline(t, 0),
             rvel=lambda t: _rvelspline(t, 0),
@@ -190,7 +190,7 @@ class RSpline:
                     "att": g.quaternion.RotationSplineFunction.from_dict(
                         data["spline"]["att"]
                     ),
-                    "rvel": g.point.UnivariateSplineFunction.from_dict(
+                    "rvel": g.point.SmoothingSplineFunction.from_dict(
                         data["spline"]["rvel"]
                     ),
                 }
@@ -222,12 +222,12 @@ class TSpline:
         acc_kwargs: dict[str, object] | None = None,
         **kwargs,
     ) -> TSpline:
-        vspline = vel.data.univariate_spline(vel.t, **(kwargs | (vel_kwargs or {})))
+        vspline = vel.data.smoothing_spline(vel.t, **(kwargs | (vel_kwargs or {})))
 
         return TSpline(
-            pos=pos.data.univariate_spline(pos.t, **(kwargs | (pos_kwargs or {}))),
+            pos=pos.data.smoothing_spline(pos.t, **(kwargs | (pos_kwargs or {}))),
             vel=vspline,
-            acc=acc.data.univariate_spline(acc.t, **(kwargs | (acc_kwargs or {}))) if acc is not None else lambda t: vspline(t, 1),
+            acc=acc.data.smoothing_spline(acc.t, **(kwargs | (acc_kwargs or {}))) if acc is not None else lambda t: vspline(t, 1),
             mode="independent",
         )
 
@@ -237,7 +237,7 @@ class TSpline:
         vel: Field[g.Point] | None = None,
         acc: Field[g.Point] | None = None,
     ) -> TSpline:
-        pos_spline = pos.data.interp_spline(pos.t)
+        pos_spline = pos.data.interpolating_spline(pos.t)
         return TSpline(
             pos=lambda t: pos_spline(t, 0),
             vel=lambda t: pos_spline(t, 1),
@@ -252,7 +252,7 @@ class TSpline:
         acc: Field[g.Point] | None = None,
         **kwargs,
     ) -> TSpline:
-        pos_spline = pos.data.univariate_spline(pos.t, **kwargs)
+        pos_spline = pos.data.smoothing_spline(pos.t, **kwargs)
         return TSpline(
             pos=lambda t: pos_spline(t, 0),
             vel=lambda t: pos_spline(t, 1),
@@ -305,15 +305,15 @@ class TSpline:
         mode = data["mode"]
         match mode:
             case "independent":
-                vspline = g.point.UnivariateSplineFunction.from_dict(data["vel"])
+                vspline = g.point.SmoothingSplineFunction.from_dict(data["vel"])
                 return TSpline(
-                    pos=g.point.UnivariateSplineFunction.from_dict(data["pos"]),
+                    pos=g.point.SmoothingSplineFunction.from_dict(data["pos"]),
                     vel=vspline,
-                    acc=g.point.UnivariateSplineFunction.from_dict(data["acc"]) if data["acc"] is not None else lambda t: vspline(t, 1),
+                    acc=g.point.SmoothingSplineFunction.from_dict(data["acc"]) if data["acc"] is not None else lambda t: vspline(t, 1),
                     mode="independent",
                 )
             case "smoothing":
-                _pos = g.point.UnivariateSplineFunction.from_dict(data["obj"])
+                _pos = g.point.SmoothingSplineFunction.from_dict(data["obj"])
                 return TSpline(
                     pos=lambda t: _pos(t, 0),
                     vel=lambda t: _pos(t, 1),
