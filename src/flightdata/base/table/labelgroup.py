@@ -222,6 +222,49 @@ class LabelGroup:
     def boundary_dict(self) -> dict[str, float]:
         return {k: v.stop for k, v in self.items()}
 
+    def boundary_sweep(self, key: str| int, n: int=20, min_w: float = 0.01, max_w = None):
+        index = list(self.keys()).index(key)[0] if isinstance(key, str) else key
+
+        t0 = self[index].start + min_w
+        t0 = max(t0, self[index].stop - max_w) if max_w is not None else t0
+        t1 = self[index+1].stop - min_w
+        t1 = min(t1, self[index].stop + max_w) if max_w is not None else t1
+
+        boundaries = self.boundaries
+
+        bs = []
+        for b in np.linspace(t0, t1, n):
+            _b= boundaries.copy()    
+            _b[index] = b
+            bs.append(_b)
+        return bs
+
+    def int_boundary_sweep(self, key: str| int, t: npt.NDArray, min_w: int = 3, max_w: int = None):
+        index = list(self.keys()).index(key)[0] if isinstance(key, str) else key
+
+        t0 = self[index].start
+        t1 = self[index].stop
+        t2 = self[index+1].stop
+
+        i0 = sum(t < t0) + min_w
+        if max_w is not None:
+            i0 = max(i0, sum(t<t1) - max_w )
+        i1 = len(t[t < t2]) - min_w
+        if max_w is not None:
+            i1 = min(i1, sum(t<t1) + max_w)+1
+
+        new_ts = t[i0:i1]
+
+        boundaries = np.tile(self.boundaries, (len(new_ts), 1))
+        boundaries[:, index] = new_ts
+        return boundaries
+
+
+
+
+
+
+
     def plot_boundaries(
         self,
         fig,

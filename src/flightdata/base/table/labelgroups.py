@@ -105,7 +105,7 @@ class LabelGroups:
             {k: v.to_array(t) for k, v in self.items()}, index=t
         )
 
-    def step_boundary(self, group: str, key: str, steps: int, t: npt.NDArray, min_len: int):
+    def step_boundary(self, group: str, key: str | int, steps: int, t: npt.NDArray, min_len: int):
         return LabelGroups({
             k: v.step_boundary(key, steps, t, min_len) if k == group else v for k, v in self.items()
         })

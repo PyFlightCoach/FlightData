@@ -603,14 +603,14 @@ class Table:
     def step_label(
         self,
         group: str,
-        name: str,
+        name: str | int,
         steps: int | Literal["left_limit", "right_limit"],
         min_len: int = 3,
     ) -> Self:
         """Shift the label by steps rows"""
         labels = self.labels[group].to_iloc(self.t)
 
-        label_index = list(labels.keys()).index(name)
+        label_index = list(labels.keys()).index(name) if isinstance(name, str) else name
 
         if steps == "left_limit":
             steps = -labels[name].width + min_len
@@ -624,9 +624,11 @@ class Table:
     def move_label(
         self, group: str, name: str, t: float, min_duration: float = 0
     ) -> Self:
-        return self.replace(
-            labels=self.labels.set_boundary(group, name, t, min_duration)
-        )
+        return self.set_boundary(group, name, t, min_duration)
+
+    def set_boundary(self, group: str, name_or_id: str | int, t: float, min_duration: float = 0) -> Self:
+
+        return self.replace(labels=self.labels.set_boundary(group, name_or_id, t, min_duration))
 
     def set_boundaries(self, group: str, boundaries: npt.NDArray) -> Self:
         return self.replace(labels=self.labels.set_boundaries(group, boundaries))
