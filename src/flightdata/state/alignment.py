@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Annotated, Literal
+
+import geometry as g
 import numpy as np
 import numpy.typing as npt
-from typing import Annotated, Literal
-import geometry as g
-from .state import State
 
+from .state import State
 
 type AlignRadiusOption = Literal["full"] | int
 
@@ -17,8 +19,8 @@ class Alignment:
     aligned: State
 
     def plot(self, template: State, step: float, offset: g.Point):
-        from plotting import plot_regions
         import plotly.graph_objects as go
+        from plotting import plot_regions
 
         if offset is None:
             offset = g.PY(30)

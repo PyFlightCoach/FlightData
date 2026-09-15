@@ -215,7 +215,7 @@ class LabelGroup:
         return [v.width for v in self.labels.values()]
 
     @property
-    def boundaries(self) -> list[float]:
+    def boundaries(self) -> npt.NDArray:
         return np.array([v.stop for v in self.values()])
 
     @property
