@@ -239,7 +239,7 @@ class LabelGroup:
             bs.append(_b)
         return bs
 
-    def int_boundary_sweep(self, key: str| int, t: npt.NDArray, min_w: int = 3, max_w: int = None):
+    def int_boundary_sweep(self, key: str| int, t: npt.NDArray, min_w: int = 3, max_w: int| None = None, step: int | None = 1):
         index = list(self.keys()).index(key)[0] if isinstance(key, str) else key
 
         t0 = self[index].start
@@ -253,7 +253,7 @@ class LabelGroup:
         if max_w is not None:
             i1 = min(i1, sum(t<t1) + max_w)+1
 
-        new_ts = t[i0:i1]
+        new_ts = t[i0:i1:step]
 
         boundaries = np.tile(self.boundaries, (len(new_ts), 1))
         boundaries[:, index] = new_ts

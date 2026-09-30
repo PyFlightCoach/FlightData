@@ -241,15 +241,15 @@ class State(Table):
 
         vel: g.Point = st.vel.tile(len(time))
         rvel = (
-            g.point.vector_rejection(self.rvel, self.vel).tile(len(time))
-            if self.vel != 0
-            else self.rvel.tile(len(time))
+            g.point.vector_rejection(st.rvel, st.vel).tile(len(time))
+            if st.vel != 0
+            else st.rvel.tile(len(time))
         )
         att: g.Quaternion = st.att.body_rotate(rvel * t)
-        wvel = att.transform_point(self.vel)
+        wvel = att.transform_point(st.vel)
         wrvel = att.transform_point(rvel)
 
-        if self.rvel != 0 and self.vel != 0:
+        if st.rvel != 0 and st.vel != 0:
             theta = wrvel * t
 
             r0 = (
@@ -258,14 +258,14 @@ class State(Table):
                 / abs(g.point.vector_rejection(wrvel[0], wvel[0]))[0]
             )
 
-            center = self.pos + r0
+            center = st.pos + r0
             radius = g.Quaternion.from_axis_angle(theta).transform_point(-r0)
             acc = -radius.unit() * abs(wvel[0]) ** 2 / abs(radius) + g.PZ(
                 9.81, len(time)
             )
             pos = center + radius
         else:
-            pos = self.pos + wvel[0] * t
+            pos = st.pos + wvel[0] * t
             acc = g.PZ(9.81, len(time))
 
         return State(time, pos, att, vel, rvel, att.inverse().transform_point(acc))
