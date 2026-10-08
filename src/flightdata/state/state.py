@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Literal, overload
+from typing import ClassVar, Literal
 
 import geometry as g
 import numpy as np
@@ -10,82 +10,91 @@ import numpy.typing as npt
 import pandas as pd
 from schemas import fcj
 
-from flightdata import Constructs, Environment, Flight, Flow, Origin, SVar, Table
-from flightdata.base.table.label import Label
-from flightdata.base.table.slicer import Slicer
-from flightdata.state.kinematics import interpolate
+from flightdata import Environment, Flight, Flow, Origin
+from flightdata.base.table import Construct, Label, LabelGroups, Table
 
 
-@dataclass(repr=False)
 class State(Table):
-    constructs: ClassVar[Constructs] = Table.constructs + Constructs(
-        [
-            SVar("pos", g.Point, ["x", "y", "z"], lambda self: g.P0(len(self))),
-            SVar(
-                "att",
-                g.Quaternion,
-                ["rw", "rx", "ry", "rz"],
-                lambda self: g.Q0(len(self)),
-            ),
-            SVar(
-                "vel",
-                g.Point,
-                ["u", "v", "w"],
-                lambda st: (
-                    g.P0()
-                    if len(st) == 1
-                    else st.att.inverse().transform_point(st.pos.diff(st.dt))
-                ),
-            ),
-            SVar(
-                "rvel",
-                g.Point,
-                ["p", "q", "r"],
-                lambda st: g.P0() if len(st) == 1 else st.att.body_diff(st.dt),
-            ),
-            SVar(
-                "acc",
-                g.Point,
-                ["du", "dv", "dw"],
-                lambda st: (
-                    g.P0()
-                    if len(st) == 1
-                    else st.att.inverse().transform_point(
-                        st.att.transform_point(st.vel).diff(st.dt) + g.PZ(9.81, len(st))
-                    )
-                ),
-            ),
-        ]
-    )
-    _construct_freq: ClassVar[float] = 25
+    _constructs: ClassVar[list[Construct]] = Table._constructs + [
+        Construct("pos", g.Point, ["x", "y", "z"] ),
+        Construct("att", g.Quaternion, ["rw", "rx", "ry", "rz"]),
+        Construct("vel", g.Point, ["u", "v", "w"], lazy=True),
+        Construct("rvel", g.Point, ["p", "q", "r"], lazy=True),
+        Construct("acc", g.Point, ["du", "dv", "dw"], lazy=True),
+    ]
 
-    @overload
-    def __getattr__(self, name: Literal["pos"]) -> g.Point: ...
-    @overload
-    def __getattr__(self, name: Literal["att"]) -> g.Quaternion: ...
-    @overload
-    def __getattr__(self, name: Literal["vel"]) -> g.Point: ...
-    @overload
-    def __getattr__(self, name: Literal["rvel"]) -> g.Point: ...
-    @overload
-    def __getattr__(self, name: Literal["acc"]) -> g.Point: ...
-    @overload
-    def __getattr__(
-        self, name: Literal["x,y,z,rw,rx,ry,rz,u,v,w,du,dv,dw"]
-    ) -> npt.NDArray: ...
-    @overload
-    def __getattr__(self, name: str) -> Slicer: ...
-
-    def __getattr__(self, key):
-        return super().__getattr__(key)
+    def __init__(
+        self,
+        time: g.Time,
+        pos: g.Point,
+        att: g.Quaternion,
+        vel: g.Point | None = None,
+        rvel: g.Point | None = None,
+        acc: g.Point | None = None,
+        labels: LabelGroups | None = None
+    ):
+        self.pos = pos
+        self.att = att
+        self._vel = vel
+        self._rvel = rvel
+        self._acc = acc
+        super().__init__(time, labels=labels)
 
     @property
+    def vel(self) -> npt.NDArray:
+        if self._vel is None:
+            self._vel = self.att.inverse().transform_point(self.pos.diff(self.time.dt))
+        return self._vel
+
+    @property
+    def rvel(self) -> npt.NDArray:
+        if self._rvel is None:
+            self._rvel = self.att.body_diff(self.dt)
+        return self._rvel
+
+    @property
+    def acc(self) -> npt.NDArray:
+        if self._acc is None:
+            self._acc = self.att.inverse().transform_point(
+                self.att.transform_point(self.vel).diff(self.dt) + g.PZ(9.81)
+            )
+        return self._acc
+
+    @cached_property
     def transform(self):
         return g.Transformation.build(self.pos, self.att)
 
-    @property
+    @cached_property
     def back_transform(self):
         return g.Transformation(-self.pos, self.att.inverse())
+
+    @cached_property
+    def wvel(self) -> g.Point:
+        return self.att.transform_point(self.vel)
+
+    @cached_property
+    def wacc(self) -> g.Point:
+        return self.att.transform_point(self.acc)
+
+    @cached_property
+    def wacc_zero_g(self) -> g.Point:
+        return self.wacc - g.PZ(9.81)
+
+    @cached_property
+    def wrvel(self) -> g.Point:
+        return self.att.transform_point(self.rvel)
+
+    @cached_property
+    def wx(self) -> g.Point:
+        return self.att.transform_point(g.PX())
+
+    @cached_property
+    def wy(self) -> g.Point:
+        return self.att.transform_point(g.PY())
+
+    @cached_property
+    def wz(self) -> g.Point:
+        return self.att.transform_point(g.PZ())
 
     @staticmethod
     def from_transform(transform: g.Transformation = None, **kwargs) -> State:
@@ -95,7 +104,8 @@ class State(Table):
             kwargs["time"] = g.Time.from_t(
                 np.linspace(0, State._construct_freq * len(transform), len(transform))
             )
-        return State.from_constructs(pos=transform.p, att=transform.q, **kwargs)
+        return State(pos=transform.p, att=transform.q, **kwargs)
+
 
     def body_to_world(self, pin: g.Point, rotation_only=False) -> g.Point:
         """Rotate a g.Point in the body frame to a g.Point in the data frame
@@ -117,34 +127,9 @@ class State(Table):
         else:
             return self.back_transform.point(pin)
 
-    @property
-    def wvel(self) -> g.Point:
-        return self.att.transform_point(self.vel)
-
-    @property
-    def wacc(self) -> g.Point:
-        return self.att.transform_point(self.acc)
-
-    @property
-    def wrvel(self) -> g.Point:
-        return self.att.transform_point(self.rvel)
-
-
-    @property
-    def wx(self) -> g.Point:
-        return self.att.transform_point(g.PX())
-    
-    @property
-    def wy(self) -> g.Point:
-        return self.att.transform_point(g.PY())
-    
-    @property
-    def wz(self) -> g.Point:
-        return self.att.transform_point(g.PZ())
-
     def fill(self, time: g.Time) -> State:
         """Project forward through time assuming uniform circular motion"""
-        st = self[-1]
+        st = self.iloc[-1]
         t = time.t - time.t[0]
 
         vel: g.Point = st.vel.tile(len(time))
@@ -176,14 +161,12 @@ class State(Table):
             pos = self.pos + wvel[0] * t
             acc = g.PZ(9.81, len(time))
 
-        return State.from_constructs(
-            time, pos, att, vel, rvel, att.inverse().transform_point(acc)
-        )
+        return State(time, pos, att, vel, rvel, att.inverse().transform_point(acc))
 
     def plot(self, **kwargs):
         from plotting import plotsec
 
-        return plotsec(self, **(dict(nmodels=10, ribb=True) | kwargs))
+        return plotsec(self, **({"nmodels": 10, "ribb": True} | kwargs))
 
     def plotlabels(self, label: str, **kwargs):
         from plotting import plot_regions
@@ -247,7 +230,7 @@ class State(Table):
 
         att = origin.rotation * g.Euler(flight.attitude.ffill().bfill())
 
-        return State.from_constructs(
+        return State(
             g.Time.from_t(np.array(flight.data.time_flight)),
             pos,
             att,
@@ -272,45 +255,10 @@ class State(Table):
             ),
         )
 
-    @staticmethod
-    def kinematic_interpolation(a: State, b: State):
-        def interp(fac: float):
-            t = a.t[0] + fac * (b.t[0] - a.t[0])
-            pos, vel, acc = interpolate(
-                a.t[0],
-                b.t[0],
-                a.pos[0],
-                b.pos[0],
-                a.att.transform_point(a.vel)[0],
-                b.att.transform_point(b.vel)[0],
-            )(t)
-            att = g.Quaternion.slerp(a.att[0], b.att[0])(fac)
-            rvel = g.Point.linterp(a.rvel[0], b.rvel[0])(fac)
-
-            return State.from_constructs(
-                g.Time(t, b.t[0] - t),
-                pos,
-                att,
-                att.inverse().transform_point(vel),
-                rvel,
-                att.inverse().transform_point(acc),
-            )
-
-        return interp
-
-    def interpolate_kinematic(self: State, t: float) -> State:
-        i0 = self.data.index.get_indexer([t], method="ffill")[0]
-        i1 = self.data.index.get_indexer([t], method="bfill")[0]
-        if i0 == i1:
-            return self.iloc[i0]
-        return State.kinematic_interpolation(self.iloc[i0], self.iloc[i1])(
-            (t - self.t[i0]) / (self.t[i1] - self.t[i0])
-        )
-
     def splitter_labels(
         self: State,
         mans: list[fcj.Man],
-        better_names: list[str] = None,
+        better_names: list[str] | None = None,
         target_col="manoeuvre",
         t0=0,
     ) -> State:
@@ -359,9 +307,9 @@ class State(Table):
         # TODO axis rates need to update, not just rotate
         rvel = q.transform_point(self.rvel)
         if len(r) == len(self):
-            rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")])
+            rvel = rvel + g.Point.concatenate([g.P0(), r.diff(self.dt, "diff")[:-1]])
 
-        return State.from_constructs(
+        return State(
             time=self.time,
             pos=self.pos,
             att=att,
@@ -371,20 +319,23 @@ class State(Table):
         ).label(**self.labels)
 
     def scale(self: State, factor: float) -> State:
-        return State.from_constructs(
-            time=self.time,
-            pos=self.pos * factor,
-            att=self.att,
-            vel=self.vel * factor,
-            rvel=self.rvel,
-            acc=self.acc * factor,
-        ).label(**self.labels)
+        df = self.data.copy()
+
+        df["x"] *= factor
+        df["y"] *= factor
+        df["z"] *= factor
+
+        df["u"] *= factor
+        df["v"] *= factor
+        df["w"] *= factor
+
+        return State(df, self.labels)
 
     def mirror_zy(self: State) -> State:
         att = g.Quaternion.from_euler(
             (self.att.to_euler() + g.Point(0, 0, np.pi)) * g.Point(-1, 1, -1)
         )
-        return State.from_constructs(
+        return State(
             time=self.time,
             pos=self.pos * g.Point(-1, 1, 1),
             att=att,  # g.Quaternion(self.att.w, self.att.x, -self.att.y, -self.att.z),
@@ -397,13 +348,13 @@ class State(Table):
 
     def body_to_stability(self: State, flow: Flow = None) -> State:
         if not flow:
-            env = Environment.from_constructs(self.time)
+            env = Environment(self.time)
             flow = Flow.from_state(self, env)
         return self.body_rotate(-g.Point(0, 1, 0) * flow.alpha)
 
     def stability_to_wind(self: State, flow: Flow = None) -> State:
         if not flow:
-            env = Environment.from_constructs(self.time)
+            env = Environment(self.time)
             flow = Flow.from_state(self, env)
         return self.body_rotate(g.Point(0, 0, 1) * flow.beta)
 
@@ -455,23 +406,23 @@ class State(Table):
         eul = transform.rotate(self.att).to_euler()
 
         fcd = pd.DataFrame(
-            data=dict(
-                time=(self.t * 1e6).astype(int),
-                N=self.x,
-                E=-self.y,
-                D=-self.z,
-                VN=wvels.x,
-                VE=-wvels.y,
-                VD=-wvels.z,
-                r=np.degrees(eul.x),
-                p=np.degrees(eul.y),
-                yw=np.degrees(eul.z),
-                wN=np.zeros(len(self)),
-                wE=np.zeros(len(self)),
-                roll=eul.x,
-                pitch=eul.y,
-                yaw=eul.z,
-            ),
+            data={
+                "time": (self.t * 1e6).astype(int),
+                "N": self.x,
+                "E": -self.y,
+                "D": -self.z,
+                "VN": wvels.x,
+                "VE": -wvels.y,
+                "VD": -wvels.z,
+                "r": np.degrees(eul.x),
+                "p": np.degrees(eul.y),
+                "yw": np.degrees(eul.z),
+                "wN": np.zeros(len(self)),
+                "wE": np.zeros(len(self)),
+                "roll": eul.x,
+                "pitch": eul.y,
+                "yaw": eul.z,
+            },
         )
 
         return [fcj.Data(**row) for row in fcd.to_dict("records")]
@@ -590,7 +541,7 @@ class State(Table):
 
     def move(self: State, transform: g.Transformation) -> State:
         """Move the state by a transformation"""
-        return State.from_constructs(
+        return State(
             time=self.time,
             pos=transform.point(self.pos),
             att=transform.rotate(self.att),
@@ -600,8 +551,8 @@ class State(Table):
         ).label(**self.labels)
 
     def move_back(self: State, transform: g.Transformation) -> State:
-        self = self.move(g.Transformation(-transform.pos, g.Q0()))
-        return self.move(g.Transformation(g.P0(), transform.att.inverse()))
+        _self = self.move(g.Transformation(-transform.pos, g.Q0()))
+        return _self.move(g.Transformation(g.P0(), transform.att.inverse()))
 
     def relocate(self: State, start_pos: g.Point) -> State:
         offset = start_pos - self.pos[0]
@@ -614,7 +565,7 @@ class State(Table):
 
         if reference == "body":
             rot = g.Quaternion.from_axis_angle(angles).inverse()
-            return State.from_constructs(
+            return State(
                 self.time,
                 self.pos,
                 self.att.body_rotate(angles),
@@ -625,15 +576,16 @@ class State(Table):
             ).label(**self.labels)
         else:
             att = self.att.rotate(angles)
-            return State.from_constructs(
+            inv = att.inverse()
+            return State(
                 self.time,
                 self.pos,
                 att,
-                att.inverse().transform_point(self.att.transform_point(self.vel)),
-                rvel=att.inverse().transform_point(
+                inv.transform_point(self.att.transform_point(self.vel)),
+                rvel=inv.transform_point(
                     self.att.transform_point(self.rvel) + angles.diff(self.dt)
                 ),
-                acc=att.inverse().transform_point(self.att.transform_point(self.acc)),
+                acc=inv.transform_point(self.att.transform_point(self.acc)),
             ).label(**self.labels)
 
     def superimpose_rotation(
@@ -728,18 +680,20 @@ class State(Table):
 
     def F_inertia(self, mass: g.Mass):
         """Returns the inertial force in N"""
-        return mass.m * (self.zero_g_acc() + g.Point.cross(self.rvel, self.vel))
+        return mass.m * (self.zero_g_acc() + g.point.cross(self.rvel, self.vel))
 
     def M_inertia(self, mass: g.Mass):
         """return the inertial moment in Nm"""
         h = mass.angular_momentum(self.rvel)
-        return h.diff(self.dt) + g.Point.cross(self.rvel, h)
+        return h.diff(self.dt) + g.point.cross(self.rvel, h)
 
     def get_rotation(self):
-        return np.cumsum(g.Point.scalar_projection(self.rvel, self.vel) * self.time.dt0)
+        return np.pad(
+            np.cumsum(g.point.scalar_projection(self.rvel, self.vel) * self.dt), (1, 0)
+        )[:-1]
 
     def roll_rotation(self):
-        return np.cumsum(self.rvel.x * self.time.dt0)
+        return np.pad(np.cumsum(self.rvel.x * self.dt), (1, 0))[:-1]
 
     def estimate_wind(self):
         """This is a very rough estimate of the wind, it is based on the assumption that
@@ -747,8 +701,87 @@ class State(Table):
         It will only work for flights with lots of different orientations.
         It also assumes the wind is constant in time and space
         """
-        body_slip=g.point.vector_rejection(self.vel, g.PX())
+        body_slip = g.point.vector_rejection(self.vel, g.PX())
         world_slip = self.att.transform_point(body_slip)
         confidence = abs(g.point.vector_rejection(world_slip, g.PZ())) / abs(self.vel)
+        confidence = np.nan_to_num(confidence)
         wind = (world_slip * confidence).sum() / (np.mean(confidence) * len(self))
         return g.point.vector_rejection(wind, g.PZ()), np.mean(confidence)
+
+    def boundary_measure(
+        self,
+        metric: Literal[
+            "measure_rate",
+            "measure_speed",
+            "measure_length",
+            "measure_duration",
+            "measure_radius",
+        ],
+        t0: float,
+        t1: float,
+        iatt: g.Quaternion,
+        axis: g.Point,
+        delta: float = 0.001,
+    ) -> tuple[float, float, float]:
+
+        m = getattr(self[t0:t1], metric)(iatt, axis)
+        m0 = getattr(self[t0 - delta : t1], metric)(iatt, axis)
+        m1 = getattr(self[t0 : t1 + delta], metric)(iatt, axis)
+
+        return m, (m - m0) / delta, (m1 - m) / delta
+
+    def measure_rate(
+        self,
+        iatt: g.Quaternion,
+        axis: g.Point = None,
+    ) -> float | tuple[float, float, float]:
+        """measure the roll rate, asuming it started at t0 and finished at t1."""
+        return np.sum((self.p * self.dt)[:-1]) / self.duration
+
+    def measure_speed(
+        self,
+        iatt: g.Quaternion,
+        axis: g.Point = None,
+    ) -> float:
+        """measure the speed of the flown line assuming it started at t0 and finished at t1.
+        Linearly interpolate between datapoints
+        """
+        return np.sum((self.u * self.dt)[:-1]) / self.duration
+
+    def measure_length(self, iatt: g.Quaternion, axis: g.Point = None) -> float:
+        """measure the length of the flown line assuming it started at t0 and finished at t1.
+        Linearly interpolate between datapoints
+        """
+        pos = self.pos
+        return g.point.scalar_projection(
+            pos[-1] - pos[0], iatt.transform_point(g.PX())
+        )[0]
+
+    def measure_duration(self, iatt: g.Quaternion, axis: g.Point = None) -> float:
+        """measure the duration of the flown line assuming it started at t0 and finished at t1.
+        Linearly interpolate between datapoints
+        """
+        return self.duration
+
+    def measure_radius(
+        self,
+        iatt: g.Quaternion,
+        axis: g.Point = None,
+    ) -> float:
+
+        centre = self.arc_centre()
+
+        bvec = self.att.inverse().transform_point(axis)
+        rads = abs(g.point.vector_rejection(centre, bvec))
+
+        angles = np.arctan(abs(self.vel) * self.dt / rads)
+        keep = ~np.isnan(rads * angles)
+
+        return np.sum((rads * angles)[keep][:-1]) / np.sum(angles[keep][:-1])
+
+    def measure_roll(self, *args, **kwargs) -> float:
+        return self.roll_rotation()[-1]
+
+    def measure_turns(self, *args, **kwargs) -> float:
+
+        return self.roll_rotation()[-1]

@@ -1,14 +1,16 @@
 from __future__ import annotations
+
+from dataclasses import dataclass
+from json import dump, load
+from typing import Self
+
 import geometry as g
 import numpy as np
-from json import load, dump
-from typing import Self
-from dataclasses import dataclass   
-from schemas import fcj  
+from schemas import fcj
 
 
 @dataclass
-class Origin(object):
+class Origin:
     '''This class defines an aerobatic box in the world, it uses the pilot position and the direction 
     in which the pilot is facing (normal to the main aerobatic manoeuvering plane)'''
     name: str
@@ -37,11 +39,11 @@ class Origin(object):
         return self.pos
 
     def to_dict(self) -> dict:
-        return dict(
-            name=self.name,
-            pos=self.pos.to_dict(),
-            heading=self.heading
-        )
+        return {
+            'name': self.name,
+            'pos': self.pos.to_dict(),
+            'heading': self.heading
+        }
 
     @staticmethod
     def from_dict(data: dict) -> Self:
@@ -73,7 +75,7 @@ class Origin(object):
         )
 
     def __str__(self):
-        return "Origin:{}".format(self.to_dict())
+        return f"Origin:{self.to_dict()}"
 
     def __repr__(self):
         return f'Origin(heading={np.degrees(self.heading)},pos={self.pilot_position})'

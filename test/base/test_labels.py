@@ -1,53 +1,40 @@
+import geometry as g
 import numpy as np
-import pandas as pd
-import pytest
-from geometry import Time
-from pytest import fixture, mark
+from pytest import fixture
 
 from flightdata import Table
-from flightdata.base.table import Label, LabelGroup, LabelGroups, Slicer
+from flightdata.base.table import Label, LabelGroup, LabelGroups
 
 
 @fixture
-def df():
-    df = pd.DataFrame(np.linspace(0, 5, 6), columns=["t"])
-    return df.set_index("t", drop=False)
+def table():
+    return Table(g.Time.from_t(np.arange(6)))
 
 
 @fixture
-def tab(df):
-    return Table(df, False)
+def label_array(table):
+    return np.array([f"a{int(i / 2)}" for i in range(len(table))])
 
 
 @fixture
-def tab_full(df):
-    return Table.build(df, fill=True)
+def tab_lab(table: Table, label_array):
+    return table.label(a=label_array)
 
 
-@fixture
-def label_array(tab_full):
-    return np.array([f"a{int(i / 2)}" for i in range(len(tab_full))])
-
-
-@fixture
-def tab_lab(tab_full: Table, label_array):
-    return tab_full.label(a=label_array)
-
-
-def test_labelgroup_read_array(tab_full, label_array):
-    lg = LabelGroup.read_array(tab_full.t, label_array)
+def test_labelgroup_read_array(table, label_array):
+    lg = LabelGroup.read_array(table.t, label_array)
     assert len(lg) == 3
-    assert lg.a0.start == tab_full.data.index[0]
-    assert lg.a0.stop == tab_full.data.index[2]
-    assert lg.a1.start == tab_full.data.index[2]
-    assert lg.a1.stop == tab_full.data.index[4]
-    assert lg.a2.start == tab_full.data.index[4]
-    assert lg.a2.stop == tab_full.data.index[-1]
+    assert lg.a0.start == table.t[0]
+    assert lg.a0.stop == table.t[2]
+    assert lg.a1.start == table.t[2]
+    assert lg.a1.stop == table.t[4]
+    assert lg.a2.start == table.t[4]
+    assert lg.a2.stop == table.t[-1]
 
 
-def test_labelgroup_read_array_repeats(tab_full):
+def test_labelgroup_read_array_repeats(table):
     label_array = np.array(["a0", "a0", "a1", "a1", "a0", "a0"])
-    lg = LabelGroup.read_array(tab_full.t, label_array)
+    lg = LabelGroup.read_array(table.t, label_array)
     assert len(lg) == 3
 
 
@@ -57,8 +44,8 @@ def test_label_array(tab_lab):
     assert len(tab_lab.labels["a"]) == 3
 
 
-def test_label_string(tab_full: Table):
-    tab_lab = tab_full.label(a="a0")
+def test_label_string(table: Table):
+    tab_lab = table.label(a="a0")
     assert len(tab_lab.labels) == 1
     assert isinstance(tab_lab.labels["a"], LabelGroup)
     assert len(tab_lab.labels["a"]) == 1
@@ -91,12 +78,12 @@ def test_interpolate_labelled(tab_lab: Table):
 
 
 @fixture
-def labst(tab_full):
+def labst(table):
     return Table.stack(
         [
-            tab_full.label(man="m1", el="e1"),
-            tab_full.label(man="m1", el="e2"),
-            tab_full.label(man="m2", el="e1"),
+            table.label(man="m1", el="e1"),
+            table.label(man="m1", el="e2"),
+            table.label(man="m2", el="e1"),
         ]
     )
 
@@ -106,9 +93,9 @@ def test_labels_dump_array(tab_lab: Table):
     assert all(arr == ["a0", "a0", "a1", "a1", "a2", "a2"])
 
 
-def test_labels_dump_array_full(tab_full: Table):
-    tlab = tab_full.label(a="a0")
-    arr = tlab.labels.a.to_array(tab_full.t)
+def test_labels_dump_array_full(table: Table):
+    tlab = table.label(a="a0")
+    arr = tlab.labels.a.to_array(table.t)
     assert all(arr == ["a0", "a0", "a0", "a0", "a0", "a0"])
 
 
@@ -117,26 +104,26 @@ def test_labelgroupss_to_df(tab_lab: Table):
     assert len(df) == 6
 
 
-def test_label_to_iloc(tab_full: Table):
-    lab = Label(2, 4).to_iloc(tab_full.t)
+def test_label_to_iloc(table: Table):
+    lab = Label(2, 4).to_iloc(table.t)
     assert lab.start == 2
     assert lab.stop == 4
-    lab = Label(2, 4).to_iloc(tab_full.t * 2)
+    lab = Label(2, 4).to_iloc(table.t * 2)
     assert lab.start == 1
     assert lab.stop == 2
-    lab = Label(2.5, 4.5).to_iloc(tab_full.t)
+    lab = Label(2.5, 4.5).to_iloc(table.t)
     assert lab.start == 2.5
     assert lab.stop == 4.5
 
 
-def test_label_to_t(tab_full: Table):
-    lab = Label(2, 4).to_t(tab_full.t)
+def test_label_to_t(table: Table):
+    lab = Label(2, 4).to_t(table.t)
     assert lab.start == 2
     assert lab.stop == 4
-    lab = Label(2, 4).to_t(tab_full.t * 2)
+    lab = Label(2, 4).to_t(table.t * 2)
     assert lab.start == 4
     assert lab.stop == 8
-    lab = Label(2.5, 4.5).to_t(tab_full.t)
+    lab = Label(2.5, 4.5).to_t(table.t)
     assert lab.start == 2.5
     assert lab.stop == 4.5
 

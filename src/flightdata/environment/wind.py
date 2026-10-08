@@ -1,7 +1,9 @@
+from collections.abc import Callable
+from dataclasses import dataclass
+
 import numpy as np
 from geometry import Point
-from typing import List, Tuple, Callable
-from dataclasses import dataclass
+
 
 class WindModel:
     def __init__(self, func, kind, args):
@@ -19,8 +21,8 @@ class WindModel:
 @dataclass
 class WindModelBuilder:
     builder: Callable
-    defaults: List[float]
-    bounds: List[Tuple[float]]
+    defaults: list[float]
+    bounds: list[tuple[float]]
 
     def __call__(self, params):
         return self.builder(params)

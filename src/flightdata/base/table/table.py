@@ -1,210 +1,285 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import cached_property, partial
 from numbers import Number
 from time import time
-from typing import Annotated, ClassVar, Literal, Self, overload
+from typing import Annotated, ClassVar, Literal, Self
 from xmlrpc.client import boolean
 
+import geometry as g
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import geometry as g
-
-from geometry.utils import get_value
-from flightdata.base.table.constructs import Constructs, SVar
 
 from .label import Label
 from .labelgroup import LabelGroup
 from .labelgroups import LabelGroups
 from .slicer import Slicer
 
-default_interpolators = dict(
-    Time="linterp",
-    Point="linterp",
-    Quaternion="slerp",
-    Air="linterp",
-    Attack="linterp",
-)
+default_interpolators = {
+    "Time": "linterp_recaclulate_dt",
+    "Point": "linterp",
+    "Quaternion": "slerp",
+    "Air": "linterp",
+    "Attack": "linterp",
+}
+
+
+class TableError(Exception):
+    """Base exception for table-related errors."""
 
 
 @dataclass
+class Construct:
+    name: str
+    type: g.GBase
+    cols: list[str]
+    lazy: bool = False
+
+    @cached_property
+    def raw_name(self) -> str:
+        return ("_" if self.lazy else "") + self.name
+
+
 class Table:
     """Base data structure, wraps around a pandas dataframe.
     All the columns are defined in the constructs class variable.
     A dictionary of labels is included, keys are label group names, values are instances of LabelGroup.
     """
 
-    constructs: ClassVar[Constructs] = Constructs(
-        [SVar("time", g.Time, ["t", "dt"], lambda tab: g.Time.from_t(tab.t))]
-    )
-    data: pd.DataFrame
-    labels: LabelGroups = field(default_factory=lambda: LabelGroups())
+    _construct_freq: ClassVar[float] = 25
+    _constructs: ClassVar[list[Construct]] = [Construct("time", g.Time, ["t", "dt"])]
 
-    @overload
-    def __getattr__(self, name: Literal["time"]) -> g.Time: ...
+    def __init__(self, time: g.Time, labels: LabelGroups = None):
+        if labels is None:
+            labels = LabelGroups()
+        self.time = time
+        self.labels = labels
 
-    @property
-    def t_end(self):
-        return self.t + self.dt
+        self._validate()
 
-    @property
-    def t0(self):
-        return self.t - self.t[0]
+    def _validate(self):
+        assert isinstance(self.time, g.Time), "time must be an instance of g.Time"
 
-    @classmethod
-    def build(
-        Cls,
-        data: pd.DataFrame | dict | pd.Series,
-        labels: LabelGroups = None,
-        fill=True,
-        min_len=1,
-    ):
-        labels = LabelGroups() if labels is None else labels
-        if isinstance(data, dict):
-            data = pd.Series(data)
-        if isinstance(data, pd.Series):
-            data = pd.DataFrame(data).T
+        for con in self._constructs[1:]:
+            _con = getattr(self, con.raw_name)
 
-        if len(data) < min_len:
-            raise Exception(
-                f"Table constructor length check failed, data length = {len(data)}, min_len = {min_len}"
-            )
+            if _con is not None:
+                if not isinstance(_con, con.type):
+                    raise TableError(
+                        f"Construct {con.name} must be of type {con.type.__name__}"
+                    )
+                if len(_con) != len(self.time):
+                    raise TableError(
+                        f"Construct {con.name} must have the same length as time"
+                    )
 
-        base_cols = [c for c in data.columns if c in Cls.constructs.cols()]
-        lab_cols = [c for c in data.columns if c not in base_cols]
-        labdf = data.loc[:, lab_cols]
+    def copy(self, **kwargs) -> Self:
+        return self.replace(copy=True, **kwargs)
 
-        if data.loc[:, base_cols].isnull().values.any():
-            raise ValueError("nan values in data")
+    def replace(self, copy: bool = False, **kwargs) -> Self:
+        """Return a new instance of the table with the specified attributes replaced."""
+        def _copy(x):
+            return x.copy() if copy and hasattr(x, "copy") else x
 
-        instance = (
-            Cls(data.loc[:, base_cols], labels).populate()
-            if fill
-            else Cls(data.loc[:, base_cols], labels)
+        return self.__class__(
+            *[
+                kwargs.get(con.name, _copy(getattr(self, con.raw_name)))
+                for con in self._constructs
+            ],
+            labels=kwargs.get("labels", self.labels),
         )
 
-        if len(labdf.columns) and not len(labels):
-            return instance.nest_labels(**labdf.to_dict(orient="list"))
-        else:
-            return instance
+    @classmethod
+    def get_columns(Cls) -> list[str]:
+        return [col for con in Cls._constructs for col in con.cols]
 
-    def populate(self):
-        newtab = self.__class__(self.data.copy(), self.labels)
-        missing = self.__class__.constructs.missing(self.data.columns)
-        for svar in missing:
-            newdata = (
-                svar.builder(newtab)
-                .to_pandas(columns=svar.keys, index=newtab.data.index)
-                .loc[:, [key for key in svar.keys if key not in newtab.data.columns]]
+    @cached_property
+    def columns(self) -> list[str]:
+        return self.__class__.get_columns()
+
+    @cached_property
+    def column_getters(self) -> dict[str, g.GBase]:
+        return {
+            col: partial(
+                lambda name, column: getattr(self, name).data[:, column], con.name, i
             )
-            newtab = self.__class__(
-                pd.concat([newtab.data, newdata], axis=1), self.labels
-            )
+            for con in self._constructs
+            for i, col in enumerate(con.cols)
+        }
 
-        return newtab
+    @cached_property
+    def construct_names(self) -> list[str]:
+        return [con.name for con in self._constructs]
 
-    def __getattr__(self, name: str) -> npt.NDArray | g.Time | g.Point | g.Quaternion:
-        if name in self.data.columns:
-            return self.data[name].to_numpy()
-        elif name in self.__class__.constructs.data.keys():
-            con: SVar = self.__class__.constructs[name]
-            return con.obj(self.data.loc[:, con.keys])
-        elif name in self.labels.lgs:
-            return Slicer(self.labels[name], self)
-        else:
-            raise AttributeError(f"Unknown column or construct {name}")
+    @cached_property
+    def raw_construct_names(self) -> list[str]:
+        return [con.raw_name for con in self._constructs]
+
+    @cached_property
+    def constructs(self) -> dict[str, g.GBase]:
+        return {con.name: con.type for con in self._constructs}
+
+    @property
+    def raw_constructs(self) -> dict[str, g.GBase | None]:
+        return {con.name: getattr(self, con.raw_name) for con in self._constructs}
+
+    @property
+    def loaded_constructs(self) -> dict[str, g.GBase]:
+        return {
+            con.name: getattr(self, con.raw_name)
+            for con in self._constructs
+            if getattr(self, con.raw_name) is not None
+        }
+
+    @cached_property
+    def t0(self) -> float:
+        return self.t - self.t[0]
+
+    def to_numpy(self, generate: bool = False) -> npt.NDArray:
+        """Return the data as a numpy array, if generate is True
+        the lazy attributes are generated and included in the output
+        otherwise the space is filled with NaNs
+        """
+        _condata = []
+        for con in self._constructs:
+            if con.lazy and (not generate) and (getattr(self, con.raw_name) is None):
+                _condata.append(np.full((len(self), len(con.cols)), np.nan))
+            else:
+                _condata.append(getattr(self, con.name).data)
+        return np.column_stack(_condata)
+
+    @classmethod
+    def from_numpy(Cls, data: npt.NDArray, labels: LabelGroups = None) -> Self:
+        if labels is None:
+            labels = LabelGroups()
+
+        _col = 0
+        _cons: list[g.GBase | None] = []
+        for con in Cls._constructs:
+            _data = data[:, _col : _col + len(con.cols)]
+            if np.any(np.isnan(_data)):
+                if not con.lazy:
+                    raise TableError(
+                        f"Construct {con.name} is not lazy but has NaN values in the data"
+                    )
+                _cons.append(None)
+            else:
+                _cons.append(con.type(data[:, _col : _col + len(con.cols)]))
+            _col += len(con.cols)
+
+        return Cls(
+            *_cons,
+            labels=labels,
+        )
+
+    def __getattr__(self, name: str):
+        if name in self.columns:
+            return self.column_getters[name]()
+        if self.labels is not None and name in self.labels.lgs:
+            value = Slicer(name, self.labels[name], self)
+            self.__dict__[name] = value
+            return value
+
+        raise AttributeError(f"Unknown column or construct {name}")
+
+    def to_dataframe(self, labels: bool = True) -> pd.DataFrame:
+        df = pd.DataFrame(
+            np.column_stack(
+                [
+                    getattr(self, con.raw_name).data
+                    if getattr(self, con.raw_name) is not None
+                    else np.full((len(self), len(con.cols)), np.nan)
+                    for con in self._constructs
+                ]
+            ),
+            columns=self.columns,
+            index=self.t,
+        ).dropna(axis=1)
+        if labels:
+            df = pd.concat([df, self.labels.to_df(self.t)], axis=1)
+        return df
+
+    @property
+    def df(self) -> pd.DataFrame:
+        return self.to_dataframe()
 
     def to_dict(self, legacy: boolean = False) -> dict[str, dict]:
         if legacy:
-            df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
-            return df.to_dict(orient="records")
+            return self.df.to_dict(orient="records")
         else:
-            return dict(
-                data=self.data.to_dict(orient="list"),
-                labels=self.labels.to_dict(),
-            )
+            return {
+                "data": self.df.to_dict(orient="list"),
+                "labels": self.labels.to_dict(),
+            }
+
+    @classmethod
+    def from_df(Cls, data: pd.DataFrame, lgs: LabelGroups = None) -> Self:
+        cons = []
+        for con in Cls._constructs:
+            if all(col in data.columns for col in con.cols):
+                cons.append(con.type(data[con.cols]))
+            else:
+                if not con.lazy:
+                    raise TableError(
+                        f"Construct {con.name} is not lazy but is missing from the dataframe"
+                    )
+                cons.append(None)
+
+        lab_cols = [c for c in data.columns if c not in Cls.get_columns()]
+
+        if lgs is None and len(lab_cols) > 0:
+            labdf = data.loc[:, lab_cols]
+
+            instance = Cls(*cons)
+            return instance.nest_labels(**labdf.to_dict(orient="list"))
+
+        else:
+            return Cls(*cons, labels=lgs)
 
     @classmethod
     def from_dict(Cls, data: dict | list[dict]) -> Self:
-        if not isinstance(data, list):
-            df = pd.DataFrame.from_dict(data["data"]).set_index("t", drop=False)
-            labels = LabelGroups.from_dict(data["labels"])
-            return Cls.build(df, labels, True)
-        else:
-            if "data" in data:
-                data = data["data"]
+        if isinstance(data, list):
             df = pd.DataFrame.from_dict(data).set_index("t", drop=False)
-            return Cls.build(df)
-
-    def to_parquet(self, path: str):
-        df: pd.DataFrame = pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
-        df.to_parquet(path, index=False)
-
-    @classmethod
-    def from_parquet(Cls, path: str) -> Self:
-        df = pd.read_parquet(path)
-        return Cls.build(df)
-
-    def to_pybytes(self, ascii: bool = False) -> bytes:
-        import pyarrow as pa
-        import base64
-
-        table = pa.Table.from_pandas(
-            pd.concat([self.data, self.labels.to_df(self.t)], axis=1)
-        )
-
-        sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, table.schema) as writer:
-            writer.write_table(table)
-
-        payload = sink.getvalue().to_pybytes()
-
-        return base64.b64encode(payload).decode("ascii") if ascii else payload
-
-    @classmethod
-    def from_pybytes(Cls, payload: bytes | str) -> Self:
-        import pyarrow as pa
-        import base64
-
-        if isinstance(payload, str):
-            payload = base64.b64decode(payload)
-
-        reader = pa.ipc.open_stream(pa.BufferReader(payload))
-        table = reader.read_all()
-        df = table.to_pandas().set_index("t", drop=False)
-        return Cls.build(df)
+            return Cls.from_df(df)
+        elif isinstance(data, dict):
+            df = pd.DataFrame.from_dict(data["data"]).set_index("t", drop=False)
+            df = df.drop(columns=["manoeuvre", "element"], errors="ignore")
+            labels = LabelGroups.from_dict(data["labels"])
+            return Cls.from_df(df, labels)
+        raise NotImplementedError("from_dict is not implemented yet")
 
     def __len__(self):
-        return len(self.data)
+        return len(self.time)
 
-    @property
+    @cached_property
     def duration(self):
-        return self.t[-1] - self.t[0]
+        return self.time.duration
 
-    def interpolate(self, t: npt.NDArray | float):
-        if isinstance(t, Number):
-            t = np.array([t])
-        new_table = self.__class__.from_constructs(
+    def _get_interpolator(self, con: str):
+        """caching for the interpoaltors"""
+        key = f"_interp_{con}"
+        if key not in self.__dict__:
+            geom: g.Base = getattr(self, con)
+            self.__dict__[key] = geom.interpolate(
+                self.t, default_interpolators[geom.__class__.__name__]
+            )
+        return self.__dict__[key]
+
+    def interpolate(self, t: float | npt.NDArray) -> Self:
+
+        return self.__class__(
             *[
-                getattr(self, con.name).interpolate(
-                    self.t, default_interpolators[con.obj.__name__]
-                )(t)
-                for con in self.constructs
-            ]
+                self._get_interpolator(con.name)(t)
+                if getattr(self, con.raw_name) is not None
+                else None
+                for con in self._constructs
+            ],
+            labels=self.labels.copy(),
         )
 
-        return new_table.label(self.labels)
-
-    #    def resample(self, new_t: g.Time) -> State:
-    #        return State.from_constructs(
-    #            *[
-    #                getattr(self, con.name).interpolate(self.t)(new_t)
-    #                for con in self.__class__.constructs
-    #            ]
-    #        )
-
-    def resample(self, dt: float = 1 / 25, sli: slice = None):
+    def resample(self, dt: float = 1 / 25, sli: slice | None = None):
         if sli is None or sli.start is None:
             start = self.t[0]
         else:
@@ -216,103 +291,94 @@ class Table:
 
         return self.interpolate(np.linspace(start, stop, int((stop - start) / dt)))
 
-    def __getitem__(self, sli: Number | slice) -> Self:
+    @cached_property
+    def _t_np(self):
+        return self.data.index.to_numpy()
+
+    @cached_property
+    def _dt_np(self):
+        return self.data["dt"].to_numpy()
+
+    def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Self:
+
+        if isinstance(sli, Number) and (sli == 0 or sli == -1):
+            return self.iloc[sli]
+
+        if isinstance(sli, Number | np.ndarray | list):
+            sli = np.array(sli)
+            sli = np.where(sli < 0, len(self) + sli, sli)
+
+            _label_start = np.min(sli)
+            _label_stop = np.max(sli)
+            return self.interpolate(sli).label(
+                self.labels.slice(_label_start, _label_stop)
+            )
+
         if isinstance(sli, slice):
-            middle = self.data.loc[
-                slice(
-                    self.t[0] if sli.start is None else sli.start,
-                    self.t[-1] + self.dt[-1] if sli.stop is None else sli.stop,
-                    sli.step,
+            start = sli.start if sli.start is not None else self.t[0]
+            istart = np.searchsorted(self.t, start, "left")
+            stop = sli.stop if sli.stop is not None else self.t[-1]
+            istop = np.searchsorted(self.t, stop, "right") - 1
+
+            frames = []
+
+            if start >= self.t[0] and start <= self.t[-1] and self.t[istart] != start:
+                frames.append(self.interpolate(start))
+
+            frames.append(
+                self.__class__(
+                    *[
+                        getattr(self, con)[istart : istop + 1]
+                        for con in self.construct_names
+                    ]
                 )
-            ].copy()
-            if sli.start is None or sli.start < self.data.index[0]:
-                first = None
-            else:
-                istart = self.data.index.get_indexer([sli.start])[0]
-                first = self.interpolate(sli.start) if istart == -1 else None
+            )
 
-            if sli.stop is None or sli.stop > self.data.index[-1]:
-                last = None
-            else:
-                iend = self.data.index.get_indexer([sli.stop])[0]
-                last = self.interpolate(sli.stop) if iend == -1 else None
+            if stop >= self.t[0] and stop <= self.t[-1] and self.t[istop] != stop:
+                frames.append(self.interpolate(stop))
 
-            if first is not None:
-                middle = pd.concat([first.data, middle], axis=0)
-            if last is not None:
-                middle.loc[middle.iloc[-1].name, "dt"] = (
-                    last.data.t - middle.iloc[-1].t
-                ).item()
-                middle = pd.concat([middle, last.data], axis=0)
+            return self.__class__.concatenate(frames).label(
+                self.labels.slice(start, stop)
+            )
 
-            res = self.__class__(middle)
-        elif isinstance(sli, Number):
-            if sli <= 0:
-                return self.__class__(self.data.iloc[[int(sli)], :])
-            i = self.data.index.get_indexer([sli])[0]
-            if i == -1:
-                res = self.interpolate(sli)
-            else:
-                res = self.__class__(pd.DataFrame(self.data.iloc[i, :]).T)
-        elif pd.api.types.is_list_like(sli):
-            res = self.concatenate([self[s] for s in sli])
-        else:
-            raise TypeError(f"Expected Number or slice, got {sli.__class__.__name__}")
+        if hasattr(sli, "__len__"):
+            return self.interpolate(np.array(sli)).label(self.labels)
 
-        return res.label(self.labels.slice(res.t[0], res.t[-1]))
+        raise TypeError(f"Expected Number, slice or array, got {type(sli).__name__}")
 
     @property
     def iloc(self):
-        @dataclass
-        class ILocer:
-            def __getitem__(_, sli: Number | slice) -> Table:
-                return self[get_value(self.t, sli)]
-
-        return ILocer()
+        return _ILocer(self)
 
     def __iter__(self):
-        for t in list(self.data.index):
+        for t in self.t:
             yield self[t]
 
+    def almost_equal(self, other: Self, tol: float = 1e-6) -> bool:
+        return (
+            np.all(
+                [
+                    con.almost_equal(other.raw_constructs[name], tol)
+                    for name, con in self.raw_constructs.items()
+                ]
+            )
+            and self.labels == other.labels
+        )
+
     def __eq__(self, other: Self):
-        return self.data.equals(other.data) and self.labels == other.labels
-
-    @classmethod
-    def from_constructs(Cls, *args, **kwargs) -> Self:
-        kwargs = dict(
-            **{list(Cls.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
-            **kwargs,
+        return (
+            all(
+                getattr(self, con) == getattr(other, con)
+                for con in self.raw_construct_names
+            )
+            and self.labels == other.labels
         )
 
-        df = pd.concat(
-            [
-                x.to_pandas(columns=Cls.constructs[key].keys, index=kwargs["time"].t)
-                for key, x in kwargs.items()
-                if x is not None
-            ],
-            axis=1,
-        )
-
-        return Cls.build(df)
+    def __str__(self):
+        return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs.keys()] if self.labels is not None else [])},duration={self.duration})"
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({','.join([str(l) for l in self.labels.lgs.keys()])},duration={self.duration})"
-
-    def copy(self, *args, **kwargs) -> Self:
-        kwargs = dict(
-            kwargs,
-            **{list(self.constructs.data.keys())[i]: arg for i, arg in enumerate(args)},
-        )  # add the args to the kwargs
-        old_constructs = {
-            key: self.__getattr__(key)
-            for key in self.constructs.existing(self.data.columns).data
-            if key not in kwargs
-        }
-        new_constructs = {
-            key: value
-            for key, value in list(kwargs.items()) + list(old_constructs.items())
-        }
-        return self.__class__.from_constructs(**new_constructs).label(self.labels)
+        return str(self)
 
     def append(self, other, timeoption: str = "dt"):
         if timeoption in ["now", "t"]:
@@ -334,22 +400,22 @@ class Table:
 
     def shift_time(self, offset: float):
         """Shift the time of the table by offset seconds"""
-        data = self.copy(time=self.time + offset).label(self.labels.offset(offset))
+        return self.replace(time=self.time + offset, labels=self.labels.offset(offset))
 
-        return data
+        # data = self.copy(time=self.time + offset).label(self.labels.offset(offset))
+
+        # return data
 
     @classmethod
     def stack(
         Cls,
         sts: list[Table] | dict[str, Table],
-        label_title: str = None,
-        label_values: list[str] = None,
-        overlap: Literal[0, 1] = 1,
+        label_title: str | None = None,
+        label_values: list[str] | None = None,
+        overlap: bool = True,
     ) -> Self:
-        """Stack a list of Tables on top of each other.
-        The overlap is the number of rows to overlap between each st.
-        Existing labels will be moved to sublabels if label_title is not None
-        otherwise they will be concatenated.
+        """Stack a list of Tables on top of each other and sort out the times.
+        if overlap is True the last row of the previous table is removed.
         """
         if isinstance(sts, dict):
             label_values = list(sts.keys())
@@ -362,44 +428,58 @@ class Table:
         newst = sts[0]
         if len(sts) > 1:
             for i, st in enumerate(sts[1:], 1):
-                if overlap > 0:
-                    next_t = newst.t[-overlap]
-                    newst = Cls(newst.data.iloc[:-overlap, :]).label(newst.labels)
-                else:
-                    next_t = newst.t[-1] + newst.dt[-1]
+                _t_offset = newst.t[-1] - st.t[0] + (0 if overlap else st.dt[0])
+
+                _st = st.replace(
+                    time=st.time + _t_offset, labels=st.labels.offset(_t_offset)
+                )
 
                 if label_title:
-                    st = st.over_label(label_title, label_values[i])
+                    _st = _st.over_label(label_title, label_values[i])
 
-                newst = Cls.concatenate(
-                    [
-                        newst,
-                        st.shift_time(next_t - st.data.index[0]),
-                    ]
-                )
+                if len(newst) > 1 or not overlap:
+                    if overlap:
+                        newst = Cls(
+                            *[
+                                getattr(newst, con)[:-1]
+                                for con in newst.construct_names
+                            ],
+                            labels=newst.labels,
+                        )
+
+                    newst = Cls.concatenate(
+                        [
+                            newst,
+                            _st,
+                        ]
+                    )
+                else:
+                    newst = _st
 
         return newst
 
     def recalculate_dt(self):
-        t = g.Time.from_t(self.data.t.to_numpy())
-        _ndf = self.data.assign(
-            t=t.t,
-            dt=t.dt,
-        )
-        assert _ndf.index.is_monotonic_increasing
-        return self.__class__(_ndf, self.labels)
+        newt = g.Time.from_t(self.time.t)
+        return self.replace(time=newt, labels=self.labels)
 
     @classmethod
     def concatenate(Cls, sts: list[Table] | dict[Table]) -> Self:
-        """Concatenate a list of Tables and recalculate the timesteps"""
-        df = pd.concat(
-            [st.data for st in (sts if isinstance(sts, list) else sts.values())], axis=0
-        )
-        t = g.Time.from_t(df.t.to_numpy())
-        df.t = t.t
-        df.dt = t.dt
-        assert df.index.is_monotonic_increasing
-        return Cls(df).label(LabelGroups.concat(*[st.labels for st in sts]))
+        """Concatenate a list of Tables and recalculate the timesteps
+        The times are exprected to be correct in the input tables and the tables
+        must be passed in order. No checks are performed to ensure the resulting time is monotonic
+        """
+
+        return Cls(
+            *[
+                GCls.concatenate([getattr(st, con) for st in sts])
+                for con, GCls in sts[0].constructs.items()
+            ]
+        ).label(LabelGroups.concat(*[st.labels for st in sts]))
+
+    def remove_duplicate_ts(self) -> Self:
+        """Remove duplicate time steps from the table"""
+        _, idx = np.unique(self.t, return_index=True)
+        return self.iloc[idx]
 
     @classmethod
     def splice(Cls, sts: list[Table]):
@@ -408,18 +488,15 @@ class Table:
         the time of the first table is preserved and the time of the last table is preserved
         if indeces are repeated the first table with that index is used, the others are ignored
         """
+        data = np.vstack([st.to_numpy(False) for st in sts])
 
-        newdf = (
-            pd.concat(
-                [st.data for st in sts],
-                axis=0,
-            )
-            .drop_duplicates(subset="t")
-            .sort_values(by="t")
-            .reset_index(drop=True)
+        new_tab = (
+            Cls.from_numpy(data[data[:, 0].argsort(), :])
+            .remove_duplicate_ts()
+            .recalculate_dt()
         )
-        
-        return Cls(newdf).recalculate_dt().label(LabelGroups.concat(*[st.labels for st in sts]))
+
+        return new_tab.label(LabelGroups.concat(*[st.labels for st in sts]))
 
     def label(
         self,
@@ -446,11 +523,21 @@ class Table:
         new_lgs = LabelGroups(labelgroups)
         if inplace:
             self.labels = new_lgs
-        return self.__class__(self.data, new_lgs)
+        return self.__class__(
+            *[getattr(self, con) for con in self.construct_names],
+            labels=new_lgs,
+        )
+
+    def shift_labels(self, lg: str, boundaries: list[float]) -> Self:
+        new_lg = self.labels[lg].set_boundaries(boundaries)
+        _newlgs = self.labels.copy()
+        del _newlgs.lgs[lg]
+        _newlgs.lgs[lg] = new_lg
+        return self.__class__(self.data, _newlgs)
 
     def nest_labels(self, **kwargs: dict[str, npt.NDArray]) -> Self:
-        first_key = list(kwargs.keys())[0]
-        first_values = list(kwargs.values())[0]
+        first_key = next(iter(kwargs.keys()))
+        first_values = next(iter(kwargs.values()))
         newst = self.label(**{first_key: first_values})
 
         if len(kwargs) == 1:
@@ -471,7 +558,7 @@ class Table:
             )
 
     def over_label(
-        self, title: str, value: str, child_groups: list[str] = None
+        self, title: str, value: str, child_groups: list[str] | None = None
     ) -> Self:
         """label with the value, make existing labels sublabels of the new label
         if child_groups is not None, only the child groups are made sublabels"""
@@ -487,11 +574,11 @@ class Table:
         )
 
     def remove_labels(self) -> Self:
-        return self.__class__(self.data)
+        return self.__class__(*[getattr(self, con) for con in self.construct_names])
 
     @staticmethod
     def labselect(
-        data: pd.DataFrame, test: str = None, offset=False, **kwargs
+        data: pd.DataFrame, test: str | None = None, offset=False, **kwargs
     ) -> pd.DataFrame:
         """Select rows from a dataframe based on the values in the kwargs
         in kwargs, keys are column names and values are the values to select
@@ -545,20 +632,24 @@ class Table:
         return newtab
 
     def step_label(
-        self, group: str, name: str, steps: int | Literal["left_limit", "right_limit"], t: npt.NDArray , min_len: int
+        self,
+        group: str,
+        name: str,
+        steps: int | Literal["left_limit", "right_limit"],
+        min_len: int = 3,
     ) -> Self:
         """Shift the label by steps rows"""
         labels = self.labels[group].to_iloc(self.t)
 
         label_index = list(labels.keys()).index(name)
 
-        if steps=="left_limit":
+        if steps == "left_limit":
             steps = -labels[name].width + min_len
-        elif steps=="right_limit":
-            next_label = list(labels.keys())[min(len(labels)-1, label_index+1)]
+        elif steps == "right_limit":
+            next_label = list(labels.keys())[min(len(labels) - 1, label_index + 1)]
             steps = labels[next_label].width - min_len - 1
-        return self.__class__(self.data).label(
-            self.labels.step_boundary(group, name, steps, t, min_len)
+        return self.replace(
+            labels=self.labels.step_boundary(group, name, steps, self.t, min_len)
         )
 
     def move_label(
@@ -572,3 +663,63 @@ class Table:
         return self.__class__(self.data).label(
             self.labels.set_boundaries(group, boundaries)
         )
+
+
+@dataclass
+class _ILocer:
+    table: Table
+
+    def int_items(self, sli: slice | list[int] | npt.NDArray) -> dict[str, g.GBase]:
+        """Return a dictionary of the constructs sliced by the given slice or list of indices"""
+        if isinstance(sli, slice):
+            sli = slice(sli.start, sli.stop + 1 if sli.stop else None)
+            start = sli.start if sli.start is not None else 0
+            stop = sli.stop if sli.stop is not None else len(self.table)
+
+        elif isinstance(sli, (list, np.ndarray)):
+            sli = np.array(sli).astype(int)
+            start = np.min(sli)
+            stop = np.max(sli) + 1
+        else:
+            sli = int(sli)
+            start = sli
+            stop = sli + 1
+
+        return self.table.__class__(
+            *[
+                None if con is None else con[sli]
+                for con in self.table.raw_constructs.values()
+            ],
+            labels=self.table.labels.slice(
+                self.table.t[start],
+                self.table.t[stop - 1] + self.table.dt[stop - 1],
+            ),
+        )
+
+    def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Table:
+
+        if isinstance(sli, Number | np.ndarray | list):
+            if np.all(np.array(sli).astype(int) == np.array(sli)):
+                return self.int_items(sli)
+            else:
+                return self.table[self.table.time.get_value(np.array(sli))]
+        elif isinstance(sli, slice):
+            assert sli.step is None, "Slicing with step is not supported"
+            if (sli.start is None or int(sli.start) == sli.start) and (
+                sli.stop is None or int(sli.stop) == sli.stop
+            ):
+                return self.int_items(sli)
+            else:
+                return self.table[
+                    slice(
+                        self.table.time.get_value(sli.start)
+                        if sli.start is not None
+                        else None,
+                        self.table.time.get_value(sli.stop)
+                        if sli.stop is not None
+                        else None,
+                        None,
+                    )
+                ]
+
+        return self.table[sli]

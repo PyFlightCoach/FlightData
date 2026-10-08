@@ -1,70 +1,58 @@
-import pytest
-from flightdata import Table
+import geometry as g
 import numpy as np
 import pandas as pd
-from geometry import Time
+import pytest
+from pytest import approx, fixture, mark
 
-from pytest import fixture, mark
-from flightdata.base.table import Slicer, Label, LabelGroup, LabelGroups
-
-
-@fixture
-def df():
-    df = pd.DataFrame(np.linspace(0, 5, 6), columns=["t"])
-    return df.set_index("t", drop=False)
+from flightdata import Table
+from flightdata.base.table import Label, LabelGroup, LabelGroups, Slicer
+from flightdata.base.table.table import TableError
 
 
 @fixture
-def tab(df):
-    return Table(df, False)
+def table():
+    return Table(g.Time.from_t(np.arange(6)))
 
 
-@fixture
-def tab_full(df):
-    return Table.build(df, fill=True)
+def test_table_get_svar(table: Table):
+    assert isinstance(table.time, g.Time)
 
 
-def test_table_init(tab_full: Table):
-    np.testing.assert_array_equal(tab_full.data.columns, ["t", "dt"])
+def test_table_get_a_column_of_time(table: Table):
+    assert isinstance(table.t, np.ndarray)
+    assert isinstance(table.dt, np.ndarray)
 
 
-def test_table_init_junk_cols(df: pd.DataFrame):
-    df = df.assign(junk=6)
-    tab = Table.build(df)
-    assert len(tab.data.columns) == 2
-    assert "junk" not in tab.data.columns
+def test_table_interpolate(table: Table):
+    with pytest.raises(g.base.ExtrapolationError):
+        t = table.interpolate(7)
 
-
-def test_table_get_svar(tab_full: Table):
-    assert isinstance(tab_full.time, Time)
-
-
-def test_table_get_column(tab_full: Table):
-    assert isinstance(tab_full.t, np.ndarray)
-    assert isinstance(tab_full.dt, np.ndarray)
-
-
-def test_table_interpolate(tab_full: Table):
-    with pytest.raises(Exception):
-        t = tab_full.interpolate(7)
-
-    t = tab_full.interpolate(2.5)
+    t = table.interpolate(2.5)
     assert t.t[0] == 2.5
     assert t.dt[0] == 0.5
 
 
-def test_tab_getitem(tab_full):
-    assert tab_full[2].t[0] == 2
-    assert tab_full[2.6].t[0] == 2.6
+def test_concatenate_tables():
+    t1 = Table(g.Time.from_t(np.arange(6)))
+    t2 = Table(g.Time.from_t(np.arange(7, 11)))
+    t3 = Table.concatenate([t1, t2])
+    assert len(t3) == 10
+    assert t3.t[0] == 0
+    assert t3.t[-1] == 10
 
 
-def test_tab_getslice_exact(tab_full):
-    assert len(tab_full[2:4]) == 3
-    assert tab_full[2:4].t[-1] == 4
+def test_tab_getitem_single_value(table):
+    assert table[2].t[0] == 2
+    assert table[2.6].t[0] == 2.6
 
 
-def test_tab_getslice_interpolate(tab_full):
-    sli = tab_full[2.5:4.5]
+def test_tab_getslice_exact(table):
+    assert len(table[2:4]) == 3
+    assert table[2:4].t[-1] == 4
+
+
+def test_tab_getslice_interpolate(table):
+    sli = table[2.5:4.5]
     assert len(sli) == 4
     assert sli.t[0] == 2.5
     assert sli.t[-1] == 4.5
@@ -73,15 +61,19 @@ def test_tab_getslice_interpolate(tab_full):
     assert sli.dt[-1] == 0.5
 
 
+def test_df_creates_pd_df(table: Table):
+    df = table.to_dataframe()
+    assert isinstance(df, pd.DataFrame)
+    assert "t" in df.columns
+    assert "dt" in df.columns
+    
+@fixture
+def label_array(table):
+    return np.array([f"a{int(i / 2)}" for i in range(len(table))])
 
 @fixture
-def label_array(tab_full):
-    return np.array([f"a{int(i / 2)}" for i in range(len(tab_full))])
-
-
-@fixture
-def tab_lab(tab_full: Table, label_array):
-    return tab_full.label(a=label_array)
+def tab_lab(table: Table, label_array):
+    return table.label(a=label_array)
 
 
 
@@ -104,18 +96,10 @@ def test_slice_labels(tab_lab: Table):
     assert sli.labels["a"].labels["a0"].stop == 1
 
 
-def test_copy(tab_full: Table):
-    tab2 = tab_full.copy()
-    np.testing.assert_array_equal(tab2.t, tab_full.t)
-
-    tab3 = tab_full.copy(time=Time.from_t(tab_full.t + 10))
-
-    np.testing.assert_array_equal(tab3.t, tab_full.t + 10)
-
 
 def test_copy_labels_no_path(tab_lab: Table):
 #    path=np.array([[0,0], [1,1], [2,2], [3,3], [4,4], [5,5]])
-    tfull = Table.from_constructs(Time.from_t(np.arange(2*len(tab_lab))))
+    tfull = Table(g.Time.from_t(np.arange(2*len(tab_lab))))
     tlab2 = Table.copy_labels(tab_lab, tfull)
     assert "a" in tlab2.labels.lgs
 
@@ -146,60 +130,83 @@ def test_unsquash_labels(tab_lab: Table):
     
 
 
-def test_shift_time(tab_lab):
+def test_shift_time(tab_lab: Table):
     new_lab = tab_lab.shift_time(2)
     assert new_lab.t[0] == 2
     assert new_lab.labels["a"].labels["a0"].start == 2
     assert new_lab.labels["a"].labels["a0"].stop == 4
 
 
-
-def test_stack_no_overlap(tab_full: Table):
-    tfn = Table.stack(
-        [tab_full.label(element="e0"), tab_full.label(element="e1")], overlap=0
-    )
-    assert tfn.duration == 2 * tab_full.duration + tab_full.dt[-1]
-    assert len(tfn) == 2 * len(tab_full)
-
-    assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == tab_full.duration
-    assert tfn.element.e1.t[0] == tab_full.duration + tab_full.dt[-1]
-    assert tfn.element.e1.duration == tab_full.duration
-
-
-
-
-def test_stack_three_tables_two_one_long(tab_full: Table):
-
-    stacked = Table.stack([tab_full[0], tab_full, tab_full[-1]])
-    assert len(stacked) == len(tab_full) 
-    
-    
-
-
-def test_iloc(tab_full: Table):
-    t = tab_full.iloc[2:4]
+def test_iloc(table: Table):
+    t = table.iloc[2:4]
     assert len(t) == 3
     assert t.t[0] == 2
     assert t.t[-1] == 4
 
-def test_iloc_list(tab_full: Table):
-    t = tab_full.iloc[[0, -1]]
+def test_iloc_list(table: Table):
+    t = table.iloc[[0, -1]]
     assert len(t) == 2
     assert t.t[0] == 0
-    assert t.t[-1] == tab_full.t[-1]
+    assert t.t[-1] == table.t[-1]
 
-def test_stack_overlap(tab_full):
+
+
+def test_stack_no_overlap(table: Table):
     tfn = Table.stack(
-        [tab_full.label(element="e0"), tab_full.label(element="e1")], overlap=1
+        [table.label(element="e0"), table.label(element="e1")], overlap=False
     )
-    assert tfn.duration == 2 * tab_full.duration
-    assert len(tfn) == 2 * len(tab_full) - 1
+    assert tfn.duration == 2 * table.duration + table.dt[-1]
+    assert len(tfn) == 2 * len(table)
 
     assert "element" in tfn.labels.lgs
-    assert tfn.element.e0.duration == tab_full.duration
-    assert tfn.element.e1.t[0] == tab_full.duration
-    assert tfn.element.e1.duration == tab_full.duration
+    assert tfn.element.e0.duration == table.duration
+    assert tfn.element.e1.t[0] == table.duration + table.dt[-1]
+    assert tfn.element.e1.duration == table.duration
+
+
+def test_stack_overlap(table):
+    tfn = Table.stack(
+        [table.label(element="e0"), table.label(element="e1")], overlap=True
+    )
+    assert tfn.duration == 2 * table.duration 
+    assert len(tfn) == 2 * len(table) -1
+
+    assert "element" in tfn.labels.lgs
+    assert tfn.element.e0.duration == table.duration 
+    assert tfn.element.e1.t[0] == table.duration
+    assert tfn.element.e1.duration == table.duration
+
+
+
+
+
+def test_stack_three_tables_two_one_long(table: Table):
+
+    stacked = Table.stack([table[0], table, table[-1]])
+    assert len(stacked) == len(table) 
+
+
+def test_stack_labels_tesselate(table: Table):
+    t1 = table.label(element="e0")
+    t2 = table.label(element="e1")
+
+    stacked = Table.stack([t1, t2], overlap=1)
+    assert len(stacked) == 2 * len(table) - 1
+    assert stacked.labels.element.e0.stop == table.t[-1]
+    assert stacked.labels.element.e1.start == table.t[-1]
+
+    assert stacked.element.e0.t[-1] == table.t[-1]
+    assert stacked.element.e1.t[0] == table.t[-1]
+
+
+def test_to_dateframe(table: Table):
+    df = table.label(element="e0").to_dataframe()
+    assert isinstance(df, pd.DataFrame)
+    assert "t" in df.columns
+    assert "dt" in df.columns
+    assert "element" in df.columns
+
+
 
 
 def test_over_label(tab_lab: Table):
@@ -211,11 +218,11 @@ def test_over_label(tab_lab: Table):
     assert len(tol.b["b1"].a["a2"]) == 2
 
 
-def test_sublabels(tab_full: Table):
+def test_sublabels(table: Table):
     tl = Table.stack(
         [
-            tab_full.label(b=["b1", "b1", "b1", "b2", "b2", "b2"]),
-            tab_full.label(b=["b2", "b2", "b1", "b2", "b2", "b2"]),
+            table.label(b=["b1", "b1", "b1", "b2", "b2", "b2"]),
+            table.label(b=["b2", "b2", "b1", "b2", "b2", "b2"]),
         ],
         "a",
         ["a1", "a2"],
@@ -245,14 +252,14 @@ def test_set_boundary(tab_lab: Table):
 
 
 def test_nest_labels_single():
-    table = Table.from_constructs(Time.from_t(np.arange(10)))
+    table = Table(g.Time.from_t(np.arange(10)))
     a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
     tlab = table.nest_labels(a=a)
     assert tlab.labels.a.a1 == Label(0, 5)
     assert tlab.labels.a.a2 == Label(5, 9)
 
 def test_nest_labels_multi():
-    table = Table.from_constructs(Time.from_t(np.arange(10)))
+    table = Table(g.Time.from_t(np.arange(10)))
     a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
 
     b=np.concatenate([np.full(2, "b1"), np.full(3, "b2"), np.full(2, "b1"), np.full(3, "b2")])
@@ -265,9 +272,22 @@ def test_nest_labels_multi():
     assert tlab.a.a2.labels.b.b2 == Label(7, 9)
     
 
-def test_splice_sts_inserts_new_indeces(tab_full: Table):
-        tab_full = tab_full.label(element="e0")
-        tf = Table.splice([tab_full, tab_full.iloc[[0.5, 1.5, 2.5]]])
+def test_splice_sts_inserts_new_indeces_but_not_existing_ones(table: Table):
+        table = table.label(element="e0")
+        tf = Table.splice([table, table.iloc[[0.5, 1.0, 1.5, 2.5]]])
         assert len(tf) == 9
         assert tf.t[1] == 0.5
-        assert "element" in tf.labels.keys()
+        assert "element" in tf.labels
+
+        e0 = tf.element.e0
+        assert e0.t[-1] == 5.0
+        pass
+
+def test_step_label(table: Table):
+
+    tab_lab = Table.stack({"a0": table, "a1": table}, "a")
+
+    step = tab_lab.step_label("a", "a0", 1)
+    
+    assert step.labels.a.a0.start == 0
+    assert step.labels.a.a0.stop == 6

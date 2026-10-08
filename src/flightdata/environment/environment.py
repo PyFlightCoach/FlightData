@@ -1,34 +1,44 @@
-from typing import ClassVar, overload, Literal
-from dataclasses import dataclass
+from typing import ClassVar
 
+import geometry as g
 import numpy as np
 import numpy.typing as npt
-import geometry as g
-from flightdata import Constructs, Flight, Origin, SVar, Table
+
+from flightdata import Flight, Origin, Table
+from flightdata.base.table import Construct
+from flightdata.base.table.labelgroups import LabelGroups
 from flightdata.environment.wind import WindModel
 
 
-@dataclass(repr=False)
 class Environment(Table):
-    constructs: ClassVar[Constructs] = Table.constructs + Constructs(
-        [
-            SVar(
-                "atm", g.Air, ["P", "T", "rho"], lambda tab: g.Air.iso_sea_level(len(tab))
-            ),
-            SVar("wind", g.Point, ["wvx", "wvy", "wvz"], lambda tab: g.P0(len(tab))),
-        ]
-    )
+    _constructs: ClassVar[list[Construct]] = Table._constructs + [
+        Construct("atm", g.Air, ["P", "T", "rho"], lazy=True),
+        Construct("wind", g.Point, ["x", "y", "z"], lazy=True),
+    ]
 
-    @overload
-    def __getattr__(self, key: Literal["atm"]) -> g.Air: ...
-    @overload
-    def __getattr__(self, key: Literal["wind"]) -> g.Point: ...
-    def __getattr__(self, key):
-        return super().__getattr__(key)
+    def __init__(self, time: g.Time, atm: g.Air = None, wind: g.Point = None, labels: LabelGroups = None):
+        self._atm = atm
+        self._wind = wind
+        super().__init__(time=time, labels=labels)
+        
+
+    @property
+    def atm(self) -> g.Air:
+        if self._atm is None:
+            self._atm = g.Air.iso_sea_level(len(self))
+        return self._atm
+
+    @property 
+    def wind(self) -> g.Point:
+        if self._wind is None:
+            self._wind = g.P0(len(self))
+        return self._wind
     
+
+        
     @staticmethod
     def zero(t: npt.NDArray):
-        return Environment.from_constructs(
+        return Environment(
             time=g.Time.from_t(t),
             atm=g.Air.iso_sea_level(len(t)),
             wind=g.P0(len(t))           
@@ -49,7 +59,7 @@ class Environment(Table):
     @staticmethod
     def from_flight(flight: Flight, origin: Origin = None):
         origin = flight.origin if origin is None else origin
-        return Environment.from_constructs(
+        return Environment(
             g.Time.from_t(np.array(flight.data.time_flight)),
             g.Air.from_pt(
                 flight.air_pressure.to_numpy(),
