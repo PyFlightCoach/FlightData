@@ -699,11 +699,7 @@ class Flight:
 
         df = Flight.build_cols(
             time_flight=np.linspace(0, t.iloc[-1], len(t)),
-<<<<<<< HEAD
-            time_actual=_time/1e6,
-=======
             time_actual=_time / 1e6,
->>>>>>> dev
             attitude_roll=np.radians(df.ROLL),
             attitude_pitch=np.radians(df.PITCH),
             attitude_yaw=np.radians(df.YAW),
