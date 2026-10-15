@@ -235,7 +235,8 @@ class State(Table):
             return self.back_transform.point(pin)
 
     def fill(self, time: g.Time) -> State:
-        """Project forward through time assuming uniform circular motion"""
+        """Project forward through time assuming uniform circular motion
+        ignores the component of rvel parallel to the velocity vector"""
         st = self.iloc[-1]
         t = time.t - time.t[0]
 
@@ -249,7 +250,7 @@ class State(Table):
         wvel = att.transform_point(st.vel)
         wrvel = att.transform_point(rvel)
 
-        if st.rvel != 0 and st.vel != 0:
+        if rvel[0] != 0 and vel[0] != 0:
             theta = wrvel * t
 
             r0 = (

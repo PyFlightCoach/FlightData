@@ -384,7 +384,7 @@ class Table:
         )
 
     def zero_index(self):
-        return self.shift_time(-self.data.index[0])
+        return self.shift_time(-self.t[0])
 
     def shift_time(self, offset: float):
         """Shift the time of the table by offset seconds"""
