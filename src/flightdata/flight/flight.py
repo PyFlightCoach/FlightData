@@ -613,7 +613,11 @@ class Flight:
         indf: pd.DataFrame, colmap: dict[str, str], instancecol="Instance"
     ):
         """Where an instance column exists in an input df split the values into two columns"""
-        col = indf[instancecol].astype(int) 
+        if instancecol not in indf.columns:
+            instancecol = {"Inst": "Instance", "Instance": "Inst"}.get(
+                instancecol, instancecol
+            )
+        col = indf[instancecol].astype(int) if instancecol in indf.columns else None
         instances = (
             sorted(col.unique()) if instancecol in indf.columns else [0]
         )
