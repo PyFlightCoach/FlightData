@@ -462,9 +462,14 @@ class State(Table):
         freq: float = 25.0,
         start: float | None = None,
         end: float | None = None,
+        no_splines: bool = False,
         **kwargs,
     ) -> State:
-        """Create a State from a bin file"""
+        """Create a State from a bin file.
+
+        ``no_splines`` uses directly interpolated table values, avoiding the
+        relatively expensive spline build.
+        """
 
         _data = (
             binfile
@@ -474,14 +479,29 @@ class State(Table):
         if start is not None or end is not None:
             _data = _data.slice(start or _data.start, end or _data.end)
 
-        return State(
-            g.Time.from_t(
-                np.linspace(
-                    _data.start, _data.end, int((_data.end - _data.start) * freq)
-                )
-            ),
-            splines=SplineState.build(_data, **kwargs),
+        time = g.Time.from_t(
+            np.linspace(
+                _data.start, _data.end, int((_data.end - _data.start) * freq)
+            )
         )
+        if no_splines:
+            def interpolate(field):
+                return (
+                    field.data.linterp(field.t, "nearest")(time.t)
+                    if field is not None
+                    else None
+                )
+
+            return State(
+                time,
+                interpolate(_data.pos),
+                interpolate(_data.att),
+                interpolate(_data.vel),
+                interpolate(_data.rvel),
+                interpolate(_data.acc),
+            )
+
+        return State(time, splines=SplineState.build(_data, **kwargs))
 
     def splitter_labels(
         self: State,
