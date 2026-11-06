@@ -5,9 +5,10 @@ import geometry as g
 import numpy as np
 import pandas as pd
 from geometry.checks import assert_almost_equal, assert_equal
-from pytest import fixture, mark
+from pytest import fixture, mark, raises
 
 from flightdata import State
+from flightdata.state.spline_interpolation import SplineState
 from flightdata.state.alignment import Alignment
 
 
@@ -103,6 +104,18 @@ def test_to_from_new_dict_with_splines():
     assert_almost_equal(ss.acc, ss2.acc)
     assert_almost_equal(ss.rvel, ss2.rvel)
     assert_almost_equal(ss.att, ss2.att)
+
+
+def test_create_splines_rejects_excessively_long_state():
+    st = State(
+        time=g.Time.uniform(0.04, SplineState.MAX_SAMPLES + 1),
+        pos=g.PX(np.arange(SplineState.MAX_SAMPLES + 1)),
+        att=g.upright().tile(SplineState.MAX_SAMPLES + 1),
+    )
+
+    with raises(ValueError, match="maximum is 2500"):
+        st.create_splines()
+
 
 def test_slice_with_splines():
     st = State.from_transform(vel=g.PX(20)).extrapolate(5).label(element="e1")

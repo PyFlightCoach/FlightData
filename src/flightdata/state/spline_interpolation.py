@@ -14,6 +14,8 @@ from flightdata.ardupilot import Field, StateData
 
 @dataclass
 class SplineState:
+    MAX_SAMPLES = 2500
+
     rotation: RSpline
     translation: TSpline
 
@@ -44,6 +46,13 @@ class SplineState:
         auto_s=True,
         auto_s_cutoff_freq=5,
     ) -> SplineState:
+        sample_count = len(data.att.t)
+        if sample_count > SplineState.MAX_SAMPLES:
+            raise ValueError(
+                "Refusing to build splines for "
+                f"{sample_count} samples; the maximum is {SplineState.MAX_SAMPLES}. "
+                "Crop the input data before creating splines."
+            )
 
         rspline = RSpline.independent(
             data.att, data.rvel, auto_s=auto_s, auto_s_cutoff_freq=auto_s_cutoff_freq
