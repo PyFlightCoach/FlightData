@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -957,11 +958,14 @@ class State(Table):
         iatt: g.Quaternion,
         axis: g.Point = None,
         delta: float = 0.001,
+        *,
+        _segment: Callable[[float, float], State] | None = None,
     ) -> tuple[float, float, float]:
 
-        m = getattr(self[t0:t1], metric)(iatt, axis)
-        m0 = getattr(self[t0 - delta : t1], metric)(iatt, axis)
-        m1 = getattr(self[t0 : t1 + delta], metric)(iatt, axis)
+        segment = _segment if _segment is not None else lambda start, stop: self[start:stop]
+        m = getattr(segment(t0, t1), metric)(iatt, axis)
+        m0 = getattr(segment(t0 - delta, t1), metric)(iatt, axis)
+        m1 = getattr(segment(t0, t1 + delta), metric)(iatt, axis)
 
         return m, (m - m0) / delta, (m1 - m) / delta
 
