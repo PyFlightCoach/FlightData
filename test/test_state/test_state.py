@@ -65,11 +65,14 @@ def test_from_old_dict():
     assert len(st.manoeuvre.sql) == len(df.loc[df.manoeuvre == "sql"]) 
     assert len(st.manoeuvre.hSqL) == len(df.loc[df.manoeuvre == "hSqL"]) + 1
 
-    assert len(st.labels) == 1
+    # old format columns each become a flat label group
+    assert list(st.labels.keys()) == ["manoeuvre", "element"]
     assert len(st.labels.manoeuvre) == 2
-    assert len(st.manoeuvre.sql.labels) == 1
+    assert len(st.manoeuvre.sql.labels) == 2
 
-    assert len(st.manoeuvre.hSqL.element.entry_line) == 4
+    # element names repeated between manoeuvres are suffixed
+    assert len(st.labels.element) == 4
+    assert len(st.element.entry_line_1) == 3
 
 
 def test_to_old_dict():

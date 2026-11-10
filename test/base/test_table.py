@@ -5,7 +5,7 @@ import pytest
 from pytest import fixture
 
 from flightdata import Table
-from flightdata.base.table import Label, Slicer
+from flightdata.base.table import Label, LabelGroups, Slicer
 
 
 @fixture
@@ -208,28 +208,18 @@ def test_to_dateframe(table: Table):
 
 
 
-def test_over_label(tab_lab: Table):
-    tol = tab_lab.over_label("b", "b1")
-    assert len(tol.labels) == 1
-    assert len(tol.labels.b.b1.sublabels.a) == 3
-    assert len(tol.b.b1.a.labels) == 3
-    assert len(tol.b.b1.labels) == 1
-    assert len(tol.b["b1"].a["a2"]) == 2
+def test_stack_with_title_replaces_existing_labels(table: Table):
+    t = table.label(b=["b1", "b1", "b1", "b2", "b2", "b2"])
+    stacked = Table.stack([t, t], "a", ["a1", "a2"], 1)
+
+    assert list(stacked.labels.keys()) == ["a"]
+    assert stacked.a.a1.duration == table.duration
+    assert stacked.a.a2.duration == table.duration
 
 
-def test_sublabels(table: Table):
-    tl = Table.stack(
-        [
-            table.label(b=["b1", "b1", "b1", "b2", "b2", "b2"]),
-            table.label(b=["b2", "b2", "b1", "b2", "b2", "b2"]),
-        ],
-        "a",
-        ["a1", "a2"],
-        1,
-    )
-
-    assert tl.a.a1.b.b1.duration == 3
-    assert tl.a.a2.b.b1.duration == 1
+def test_stack_with_title_single_row(table: Table):
+    stacked = Table.stack([table[0:1], table[0:1]], "a", ["a1", "a2"], False)
+    assert list(stacked.labels.a.keys()) == ["a1", "a2"]
 
 
 def test_set_boundaries(tab_lab: Table):
@@ -250,26 +240,45 @@ def test_set_boundary(tab_lab: Table):
         newlabs = tab_lab.labels.a.set_boundary("a0", 4, 1)
 
 
-def test_nest_labels_single():
+def test_label_single():
     table = Table(g.Time.from_t(np.arange(10)))
     a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
-    tlab = table.nest_labels(a=a)
+    tlab = table.label(a=a)
     assert tlab.labels.a.a1 == Label(0, 5)
     assert tlab.labels.a.a2 == Label(5, 9)
 
-def test_nest_labels_multi():
+
+def test_label_multi_is_flat():
     table = Table(g.Time.from_t(np.arange(10)))
     a=np.concatenate([np.full(5, "a1"), np.full(5, "a2")])
-
     b=np.concatenate([np.full(2, "b1"), np.full(3, "b2"), np.full(2, "b1"), np.full(3, "b2")])
-    tlab = table.nest_labels(a=a, b=b)
-    assert tlab.labels.a.a1 == Label(0, 5)
+    tlab = table.label(a=a, b=b)
     assert tlab.labels.a.a2 == Label(5, 9)
-    assert tlab.a.a1.labels.b.b1 == Label(0, 2)
-    assert tlab.a.a1.labels.b.b2 == Label(2, 5)
-    assert tlab.a.a2.labels.b.b1 == Label(5, 7)
-    assert tlab.a.a2.labels.b.b2 == Label(7, 9)
-    
+    assert tlab.labels.b.b1 == Label(0, 2)
+    assert tlab.labels.b.b2 == Label(2, 5)
+    assert tlab.labels.b.b1_1 == Label(5, 7)
+    assert tlab.labels.b.b2_1 == Label(7, 9)
+
+
+def test_legacy_sublabels_are_ignored_on_load():
+    legacy = {
+        "a": {
+            "a1": {
+                "start": 0,
+                "stop": 5,
+                "sublabels": {"b": {"b1": {"start": 0, "stop": 2, "sublabels": {}}}},
+            },
+            "a2": {"start": 5, "stop": 9},
+        }
+    }
+    lgs = LabelGroups.from_dict(legacy)
+    assert lgs.a.a1 == Label(0, 5)
+    assert lgs.a.a2 == Label(5, 9)
+    assert "b" not in lgs
+    assert len(lgs.a.a1.sublabels) == 0
+    # flat labels serialise as before
+    assert lgs.a.a2.to_dict() == {"start": 5, "stop": 9, "sublabels": {}}
+
 
 def test_splice_sts_inserts_new_indeces_but_not_existing_ones(table: Table):
         table = table.label(element="e0")

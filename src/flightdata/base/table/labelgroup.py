@@ -173,16 +173,12 @@ class LabelGroup:
 
     def scale(self, factor: float):
         return self.update(
-            lambda v: Label(
-                v.start * factor, v.stop * factor, v.sublabels.scale(factor)
-            )
+lambda v: Label(v.start * factor, v.stop * factor)
         )
 
     def offset(self, offset: float):
         return self.update(
-            lambda v: Label(
-                v.start + offset, v.stop + offset, v.sublabels.offset(offset)
-            )
+lambda v: Label(v.start + offset, v.stop + offset)
         )
 
     def transfer(
@@ -378,7 +374,6 @@ class LabelGroup:
         """Split a label at the propotion prop (between 0 and 1). give the new label the key new_k.
         if prop ==0, the original label will have length minl
         if prop ==1, the new label will have length minl.
-        TODO handle sublabels
         """
         new_labs = {}
         for k, v in self.items():

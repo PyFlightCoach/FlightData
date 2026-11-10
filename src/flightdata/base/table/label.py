@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from numbers import Number
 from typing import Annotated, Literal
 
@@ -17,7 +17,12 @@ class Label:
 
     start: float
     stop: float
-    sublabels: LabelGroups = field(default_factory=lambda: LabelGroups({}))
+
+    @property
+    def sublabels(self) -> LabelGroups:
+        """Deprecated: nested sublabels are no longer supported, always empty.
+        Retained as a read-only shim for flightanalysis.definition.manparms."""
+        return LabelGroups({})
 
     @property
     def width(self):
@@ -50,11 +55,7 @@ class Label:
         return Label(get_value(t, self.start), get_value(t, self.stop))
 
     def slice(self, tstart: float, tstop: float):
-        return Label(
-            max(self.start, tstart),
-            min(self.stop, tstop),
-            self.sublabels.slice(tstart, tstop),
-        )
+        return Label(max(self.start, tstart), min(self.stop, tstop))
 
     def transfer(
         self,
@@ -74,7 +75,7 @@ class Label:
         # get the time in b
         b_t = b_iloc.to_t(b)
 
-        return Label(b_t.start, b_t.stop, self.sublabels.transfer(a, b, path))
+        return Label(b_t.start, b_t.stop)
 
     def __eq__(self, other: Label):
         return self.start == other.start and self.stop == other.stop
@@ -87,17 +88,13 @@ class Label:
         return {
             "start": self.start,
             "stop": self.stop,
-            "sublabels": self.sublabels.to_dict(),
+            "sublabels": {},
         }
 
     @staticmethod
     def from_dict(data):
-        
-        return Label(
-            data["start"],
-            data["stop"],
-            LabelGroups.from_dict(data.get("sublabels") or {}),
-        )
+        # legacy data may carry a nested "sublabels" field, it is ignored
+        return Label(data["start"], data["stop"])
 
     def shift(self, t: npt.NDArray, steps: int):
         """shift the end point by steps timesteps"""
@@ -106,7 +103,7 @@ class Label:
         return ilab.to_t(t)
 
     def copy(self):
-        return Label(self.start, self.stop, self.sublabels.copy())
+        return Label(self.start, self.stop)
 
 
 from .labelgroups import LabelGroups

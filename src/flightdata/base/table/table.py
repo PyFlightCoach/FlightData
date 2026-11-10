@@ -234,7 +234,7 @@ class Table:
             labdf = data.loc[:, lab_cols]
 
             instance = Cls(*cons)
-            return instance.nest_labels(**labdf.to_dict(orient="list"))
+            return instance.label(**labdf.to_dict(orient="list"))
 
         else:
             return Cls(*cons, labels=lgs)
@@ -411,7 +411,7 @@ class Table:
 
         if label_title:
             assert len(label_values) == len(sts)
-            sts[0] = sts[0].over_label(label_title, label_values[0])
+            sts[0] = sts[0].with_single_label(label_title, label_values[0])
 
         newst = sts[0]
         if len(sts) > 1:
@@ -423,7 +423,7 @@ class Table:
                 )
 
                 if label_title:
-                    _st = _st.over_label(label_title, label_values[i])
+                    _st = _st.with_single_label(label_title, label_values[i])
 
                 if len(newst) > 1 or not overlap:
                     if overlap:
@@ -524,42 +524,13 @@ class Table:
         _newlgs.lgs[lg] = new_lg
         return self.replace(labels=_newlgs)
 
-    def nest_labels(self, **kwargs: dict[str, npt.NDArray]) -> Self:
-        first_key = next(iter(kwargs.keys()))
-        first_values = next(iter(kwargs.values()))
-        newst = self.label(**{first_key: first_values})
-
-        if len(kwargs) == 1:
-            return newst
-        else:
-            sts = []
-            for name, label in newst.labels[first_key].items():
-                iloc = label.to_iloc(newst.t)
-                sublabels = {
-                    k: v[iloc.start : iloc.stop]
-                    for k, v in kwargs.items()
-                    if k != first_key
-                }
-                sts.append(getattr(newst, first_key)[name].nest_labels(**sublabels))
-
-            return self.__class__.stack(
-                sts, first_key, pd.unique(np.array(first_values))
+    def with_single_label(self, title: str, value: str) -> Self:
+        """Replace all labels with a single label group containing one label
+        spanning the whole table (also valid for single row tables)."""
+        return self.replace(
+            labels=LabelGroups(
+                {title: LabelGroup({value: Label(self.t[0], self.t[-1])})}
             )
-
-    def over_label(
-        self, title: str, value: str, child_groups: list[str] | None = None
-    ) -> Self:
-        """label with the value, make existing labels sublabels of the new label
-        if child_groups is not None, only the child groups are made sublabels"""
-        child_groups = (
-            list(self.labels.keys()) if child_groups is None else child_groups
-        )
-        labels = self.labels.filter_keys(lambda k: k in child_groups)
-        newlg = LabelGroup({value: Label(self.t[0], self.t[-1], labels)})
-
-        return self.label(
-            LabelGroups({title: newlg}),
-            **self.labels.filter_keys(lambda k: k not in child_groups).lgs,
         )
 
     def remove_labels(self) -> Self:
