@@ -1,4 +1,5 @@
-from flightdata import fields, Field
+from flightdata import fields
+from flightdata.flight.fields import Field
 import numpy as np
 
 
