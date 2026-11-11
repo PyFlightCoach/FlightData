@@ -60,8 +60,8 @@ def xkf1(fields: dict[str, pd.DataFrame], primary_core: Callable) -> bf.XKF1:
 def test_xkf1_returns_dataframe_for_primary_core(xkf1: bf.XKF1):
     assert isinstance(xkf1.t, np.ndarray)
     assert isinstance(xkf1.att, g.Quaternion)
-    assert isinstance(xkf1.wvel, g.Point)
-    assert len(xkf1.t) == len(xkf1.att) == len(xkf1.wvel)
+    assert isinstance(xkf1.vel, g.Point)
+    assert len(xkf1.t) == len(xkf1.att) == len(xkf1.vel)
 
 
 @fixture

@@ -65,11 +65,14 @@ def test_from_old_dict():
     assert len(st.manoeuvre.sql) == len(df.loc[df.manoeuvre == "sql"]) 
     assert len(st.manoeuvre.hSqL) == len(df.loc[df.manoeuvre == "hSqL"]) + 1
 
-    assert len(st.labels) == 1
+    # old format columns each become a flat label group
+    assert list(st.labels.keys()) == ["manoeuvre", "element"]
     assert len(st.labels.manoeuvre) == 2
-    assert len(st.manoeuvre.sql.labels) == 1
+    assert len(st.manoeuvre.sql.labels) == 2
 
-    assert len(st.manoeuvre.hSqL.element.entry_line) == 4
+    # element names repeated between manoeuvres are suffixed
+    assert len(st.labels.element) == 4
+    assert len(st.element.entry_line_1) == 3
 
 
 def test_to_old_dict():
@@ -182,3 +185,20 @@ def test_state_interpolate():
     assert_almost_equal(st.iloc[0.5].wacc, (st.wacc[0] + st.wacc[1]) / 2, 0.01)
     
     pass
+
+def test_from_dict_legacy_nested_sublabels_ignored():
+    st = State.from_transform(vel=g.PX(20)).fill(
+        g.Time.from_t(np.arange(10) * 0.1)
+    ).label(element=["e1"] * 5 + ["e2"] * 5)
+    data = st.to_dict()
+    # flat labels keep the existing serialised format
+    assert data["labels"]["element"]["e1"] == {"start": 0.0, "stop": 0.5, "sublabels": {}}
+
+    data["labels"]["element"]["e1"]["sublabels"] = {
+        "sub": {"s1": {"start": 0.0, "stop": 0.2, "sublabels": {}}}
+    }
+    loaded = State.from_dict(data)
+    assert list(loaded.labels.keys()) == ["element"]
+    assert loaded.labels.element.e1.stop == 0.5
+    assert len(loaded) == len(st)
+    assert loaded.to_dict()["labels"] == st.to_dict()["labels"]

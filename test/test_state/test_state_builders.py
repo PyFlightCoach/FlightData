@@ -5,6 +5,7 @@ import geometry as g
 import numpy as np
 from geometry import checks
 from pytest import approx, fixture, mark
+from ardupilot_log_reader import Ardupilot
 from schemas import fcj
 
 from flightdata import Flight, Origin, State
@@ -89,12 +90,12 @@ def test_fill_vart():
 
 
 @fixture(scope="session")
-def bindata():
-    return BinData.parse_json(load(open("test/data/web_bin_parse.json", "r")))
+def bindata() -> Ardupilot:
+    return Ardupilot.from_dict(load(open("test/data/web_bin_parse.json", "r")))
 
 
 @fixture(scope="session")
-def flbd(bindata: BinData):
+def flbd(bindata: Ardupilot):
     return Flight.from_log(bindata)
 
 
