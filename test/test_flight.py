@@ -1,5 +1,6 @@
 from flightdata import Flight, Origin
 from json import load
+from pathlib import Path
 from pytest import fixture, approx, mark
 import numpy as np
 import pandas as pd
@@ -116,10 +117,13 @@ def test_make_param_labels(fl: Flight):
 
 @fixture(scope='session')
 def bindata():
-    return BinData.parse_json(load(open('test/data/web_bin_parse.json', 'r')))
+    path = Path(__file__).parent / 'data' / 'web_bin_parse.json'
+    with path.open() as handle:
+        return Ardupilot.from_dict(load(handle))
 
-def test_from_bindata(bindata: BinData):
+def test_from_bindata(bindata: Ardupilot):
     fl = Flight.from_log(bindata)
     assert isinstance(fl, Flight)
-
-    
+    assert len(fl) > 0
+    assert {'position_N', 'position_E', 'position_D'} <= set(fl.data.columns)
+    assert np.isfinite(fl.data.index.to_numpy()).all()

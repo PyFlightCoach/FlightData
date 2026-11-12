@@ -211,10 +211,12 @@ def test_to_dateframe(table: Table):
 def test_over_label(tab_lab: Table):
     tol = tab_lab.over_label("b", "b1")
     assert len(tol.labels) == 1
-    assert len(tol.labels.b.b1.sublabels.a) == 3
-    assert len(tol.b.b1.a.labels) == 3
-    assert len(tol.b.b1.labels) == 1
-    assert len(tol.b["b1"].a["a2"]) == 2
+    child_labels = tol.labels.b.b1.sublabels.a
+    assert len(child_labels) == 3
+    assert child_labels.a0 == Label(0, 2)
+    assert child_labels.a1 == Label(2, 4)
+    assert child_labels.a2 == Label(4, 5)
+    np.testing.assert_array_equal(tol.b.b1.t, np.arange(6))
 
 
 def test_sublabels(table: Table):
@@ -228,8 +230,8 @@ def test_sublabels(table: Table):
         1,
     )
 
-    assert tl.a.a1.b.b1.duration == 3
-    assert tl.a.a2.b.b1.duration == 1
+    assert tl.labels.a.a1.sublabels.b.b1 == Label(0, 3)
+    assert tl.labels.a.a2.sublabels.b.b1 == Label(7, 8)
 
 
 def test_set_boundaries(tab_lab: Table):
@@ -265,10 +267,10 @@ def test_nest_labels_multi():
     tlab = table.nest_labels(a=a, b=b)
     assert tlab.labels.a.a1 == Label(0, 5)
     assert tlab.labels.a.a2 == Label(5, 9)
-    assert tlab.a.a1.labels.b.b1 == Label(0, 2)
-    assert tlab.a.a1.labels.b.b2 == Label(2, 5)
-    assert tlab.a.a2.labels.b.b1 == Label(5, 7)
-    assert tlab.a.a2.labels.b.b2 == Label(7, 9)
+    assert tlab.labels.a.a1.sublabels.b.b1 == Label(0, 2)
+    assert tlab.labels.a.a1.sublabels.b.b2 == Label(2, 5)
+    assert tlab.labels.a.a2.sublabels.b.b1 == Label(5, 7)
+    assert tlab.labels.a.a2.sublabels.b.b2 == Label(7, 9)
     
 
 def test_splice_sts_inserts_new_indeces_but_not_existing_ones(table: Table):
@@ -277,10 +279,32 @@ def test_splice_sts_inserts_new_indeces_but_not_existing_ones(table: Table):
         assert len(tf) == 9
         assert tf.t[1] == 0.5
         assert "element" in tf.labels
-
         e0 = tf.element.e0
         assert e0.t[-1] == 5.0
         pass
+
+
+def test_slice_stack_and_splice_preserve_explicit_time_samples():
+    first_times = np.array([0.0, 1.0, 3.0])
+    second_times = np.array([3.0, 4.0, 6.0])
+    first = Table(g.Time.from_t(first_times.copy()))
+    second = Table(g.Time.from_t(second_times.copy()))
+
+    sliced = first[1.0:3.0]
+    np.testing.assert_array_equal(sliced.t, [1.0, 3.0])
+
+    stacked = Table.stack([first, second], overlap=True)
+    np.testing.assert_array_equal(stacked.t, [0.0, 1.0, 3.0, 4.0, 6.0])
+    assert stacked.t[0] == first_times[0]
+    assert stacked.t[-1] == second_times[-1]
+
+    spliced = Table.splice([first, second])
+    np.testing.assert_array_equal(spliced.t, [0.0, 1.0, 3.0, 4.0, 6.0])
+    assert spliced.t[0] == first_times[0]
+    assert spliced.t[-1] == second_times[-1]
+
+    np.testing.assert_array_equal(first.t, first_times)
+    np.testing.assert_array_equal(second.t, second_times)
 
 def test_step_label(table: Table):
 

@@ -1,4 +1,5 @@
 from json import load
+from pathlib import Path
 from time import sleep, time
 
 import geometry as g
@@ -6,6 +7,7 @@ import numpy as np
 from geometry import checks
 from pytest import approx, fixture, mark
 from schemas import fcj
+from ardupilot_log_reader import Ardupilot
 
 from flightdata import Flight, Origin, State
 
@@ -90,17 +92,21 @@ def test_fill_vart():
 
 @fixture(scope="session")
 def bindata():
-    return BinData.parse_json(load(open("test/data/web_bin_parse.json", "r")))
+    path = Path(__file__).parents[1] / "data" / "web_bin_parse.json"
+    with path.open() as handle:
+        return Ardupilot.from_dict(load(handle))
 
 
 @fixture(scope="session")
-def flbd(bindata: BinData):
+def flbd(bindata: Ardupilot) -> Flight:
     return Flight.from_log(bindata)
 
 
-def test_st_from_bindata(flbd: State):
+def test_st_from_bindata(flbd: Flight):
     st = State.from_flight(flbd)
     assert isinstance(st, State)
+    assert len(st) == len(flbd) > 0
+    assert np.isfinite(st.pos.data).all()
 
 
 def test_st_slice():
