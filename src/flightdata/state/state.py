@@ -398,7 +398,7 @@ class State(Table):
 
     @staticmethod
     def from_flight(
-        flight: Flight, origin: Origin | str | None = None, smoothing: bool = False
+        flight: Flight, origin: Origin | str | None = None
     ) -> State:
         if isinstance(origin, str):
             extension = Path(origin).split()[1]
@@ -420,41 +420,30 @@ class State(Table):
 
         att = origin.rotation * g.Euler(flight.attitude.ffill().bfill())
         time = g.Time.from_t(np.array(flight.data.time_flight))
-        if smoothing:
-            return State(
-                time,
-                splines=SplineState.build(
-                    StateData(
-                        time,
-                        Field(time, att),
+        return State(
+            time,
+            pos,
+            att,
+            (
+                att.inverse().transform_point(
+                    origin.rotation.transform_point(
+                        g.Point(flight.velocity.ffill().bfill())
                     )
-                ),
-            )
-        else:
-            return State(
-                time,
-                pos,
-                att,
-                (
-                    att.inverse().transform_point(
-                        origin.rotation.transform_point(
-                            g.Point(flight.velocity.ffill().bfill())
-                        )
-                    )
-                    if all(flight.contains("velocity"))
-                    else None
-                ),
-                (
-                    g.Point(flight.axisrate.ffill().bfill())
-                    if all(flight.contains("axisrate"))
-                    else None
-                ),
-                (
-                    g.Point(flight.acceleration.ffill().bfill())
-                    if all(flight.contains("acceleration"))
-                    else None
-                ),
-            )
+                )
+                if all(flight.contains("velocity"))
+                else None
+            ),
+            (
+                g.Point(flight.axisrate.ffill().bfill())
+                if all(flight.contains("axisrate"))
+                else None
+            ),
+            (
+                g.Point(flight.acceleration.ffill().bfill())
+                if all(flight.contains("acceleration"))
+                else None
+            ),
+        )
 
     @staticmethod
     def read_bin(

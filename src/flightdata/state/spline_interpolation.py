@@ -235,8 +235,8 @@ class TSpline:
     pos: Callable[[npt.NDArray[np.float64]], g.Point]
     vel: Callable[[npt.NDArray[np.float64]], g.Point]
     acc: Callable[[npt.NDArray[np.float64]], g.Point]
-    mode: Literal["independent", "interpolating", "smoothing", "quintic_hermite"]
-    obj: g.quintic_hermite_spline.QuinticHermiteSpline | None = None
+    mode: Literal["independent", "smoothing"]
+    obj: g.point.SmoothingSplineFunction | None = None
 
     @staticmethod
     def independent(
@@ -258,20 +258,6 @@ class TSpline:
         )
 
     @staticmethod
-    def interpolating(
-        pos: Field[g.Point],
-        vel: Field[g.Point] | None = None,
-        acc: Field[g.Point] | None = None,
-    ) -> TSpline:
-        pos_spline = pos.data.interpolating_spline(pos.t)
-        return TSpline(
-            pos=lambda t: pos_spline(t, 0),
-            vel=lambda t: pos_spline(t, 1),
-            acc=_with_gravity(lambda t: pos_spline(t, 2)),
-            mode="interpolating",
-        )
-
-    @staticmethod
     def smoothing(
         pos: Field[g.Point],
         vel: Field[g.Point] | None = None,
@@ -287,24 +273,6 @@ class TSpline:
             obj=pos_spline,
         )
 
-    @staticmethod
-    def quintic_hermite(
-        pos: Field[g.Point],
-        vel: Field[g.Point],
-        acc: Field[g.Point],
-    ) -> TSpline:
-
-        spline = g.quintic_hermite_spline.QuinticHermiteSpline(
-            pos.t, pos.data, vel.data, acc.data
-        )
-        return TSpline(
-            pos=spline.pos_spline,
-            vel=spline.vel_spline,
-            acc=spline.acc_spline,
-            mode="quintic_hermite",
-            obj=spline,
-        )
-
     def to_dict(self) -> dict[str, str | npt.NDArray[np.float64]]:
         odata = {"mode": self.mode}
         match self.mode:
@@ -314,17 +282,12 @@ class TSpline:
                     "vel": self.vel.to_dict(),
                     "acc": self.acc.to_dict() if hasattr(self.acc, "to_dict") else None,
                 }
-            case "smoothing" | "interpolating":
+            case "smoothing":
                 return odata | {
                     "obj": self.obj.to_dict(),
                 }
-            case "quintic_hermite":
-                return odata | {
-                    "time": self.obj.time.to_list(),
-                    "pos": self.obj.pos.to_dict(),
-                    "vel": self.obj.vel.to_dict(),
-                    "acc": self.obj.acc.to_dict(),
-                }
+            case _:
+                raise ValueError(f"Unsupported translation spline mode: {self.mode}")
 
     @staticmethod
     def from_dict(data: dict[str, str | npt.NDArray[np.float64]]) -> TSpline:
@@ -347,18 +310,5 @@ class TSpline:
                     mode=mode,
                     obj=_pos,
                 )
-            case "interpolating":
-                _pos = g.point.InterpolatingSplineFunction.from_dict(data["pos"])
-                return TSpline(
-                    pos=lambda t: _pos(t, 0),
-                    vel=lambda t: _pos(t, 1),
-                    acc=_with_gravity(lambda t: _pos(t, 2)),
-                    mode=mode,
-                    obj=_pos
-                )
-            case "quintic_hermite":
-                return TSpline.quintic_hermite(
-                    pos=Field.from_dict(data["pos"]),
-                    vel=Field.from_dict(data["vel"]),
-                    acc=Field.from_dict(data["acc"]),
-                )
+            case _:
+                raise ValueError(f"Unsupported translation spline mode: {mode}")
