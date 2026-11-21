@@ -12,6 +12,22 @@ from scipy.interpolate import BSpline
 from flightdata.ardupilot import Field, StateData
 
 
+GRAVITY = g.PZ(9.81)
+
+
+def _with_gravity(
+    kinematic: Callable[[npt.NDArray[np.float64] | float], g.Point],
+) -> Callable[[npt.NDArray[np.float64] | float], g.Point]:
+    """Express a derivative of the motion as an accelerometer would read it.
+
+    State.acc follows the accelerometer convention (kinematic acceleration plus
+    1 g upwards in the world frame), so acceleration derived from the position or
+    velocity splines must have gravity added to match measured data.
+    """
+    return lambda t: kinematic(t) + GRAVITY
+
+
+
 @dataclass
 class SplineState:
     MAX_SAMPLES = 2500
@@ -213,7 +229,8 @@ class RSpline:
 
 @dataclass
 class TSpline:
-    """This is all World frame"""
+    """This is all World frame. acc follows the accelerometer convention:
+    kinematic acceleration plus 1 g upwards."""
 
     pos: Callable[[npt.NDArray[np.float64]], g.Point]
     vel: Callable[[npt.NDArray[np.float64]], g.Point]
@@ -236,7 +253,7 @@ class TSpline:
         return TSpline(
             pos=pos.data.smoothing_spline(pos.t, **(kwargs | (pos_kwargs or {}))),
             vel=vspline,
-            acc=acc.data.smoothing_spline(acc.t, **(kwargs | (acc_kwargs or {}))) if acc is not None else lambda t: vspline(t, 1),
+            acc=acc.data.smoothing_spline(acc.t, **(kwargs | (acc_kwargs or {}))) if acc is not None else _with_gravity(lambda t: vspline(t, 1)),
             mode="independent",
         )
 
@@ -250,7 +267,7 @@ class TSpline:
         return TSpline(
             pos=lambda t: pos_spline(t, 0),
             vel=lambda t: pos_spline(t, 1),
-            acc=lambda t: pos_spline(t, 2),
+            acc=_with_gravity(lambda t: pos_spline(t, 2)),
             mode="interpolating",
         )
 
@@ -265,7 +282,7 @@ class TSpline:
         return TSpline(
             pos=lambda t: pos_spline(t, 0),
             vel=lambda t: pos_spline(t, 1),
-            acc=lambda t: pos_spline(t, 2),
+            acc=_with_gravity(lambda t: pos_spline(t, 2)),
             mode="smoothing",
             obj=pos_spline,
         )
@@ -318,7 +335,7 @@ class TSpline:
                 return TSpline(
                     pos=g.point.SmoothingSplineFunction.from_dict(data["pos"]),
                     vel=vspline,
-                    acc=g.point.SmoothingSplineFunction.from_dict(data["acc"]) if data["acc"] is not None else lambda t: vspline(t, 1),
+                    acc=g.point.SmoothingSplineFunction.from_dict(data["acc"]) if data["acc"] is not None else _with_gravity(lambda t: vspline(t, 1)),
                     mode="independent",
                 )
             case "smoothing":
@@ -326,7 +343,7 @@ class TSpline:
                 return TSpline(
                     pos=lambda t: _pos(t, 0),
                     vel=lambda t: _pos(t, 1),
-                    acc=lambda t: _pos(t, 2),
+                    acc=_with_gravity(lambda t: _pos(t, 2)),
                     mode=mode,
                     obj=_pos,
                 )
@@ -335,7 +352,7 @@ class TSpline:
                 return TSpline(
                     pos=lambda t: _pos(t, 0),
                     vel=lambda t: _pos(t, 1),
-                    acc=lambda t: _pos(t, 2),
+                    acc=_with_gravity(lambda t: _pos(t, 2)),
                     mode=mode,
                     obj=_pos
                 )
