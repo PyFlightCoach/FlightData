@@ -173,6 +173,10 @@ class State(Table):
             )
         return State(pos=transform.p, att=transform.q, **kwargs)
 
+    def _row_slice_supported(self) -> bool:
+        # Spline-backed states evaluate their constructs from the splines.
+        return self.splines is None and type(self).interpolate is State.interpolate
+
     def interpolate(self, t: float | npt.NDArray) -> State:
         if self.splines is not None:
             return self.__class__(

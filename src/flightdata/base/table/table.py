@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property, partial
+from functools import cache, cached_property, partial
 from inspect import signature
 from itertools import chain
 from numbers import Number
@@ -29,6 +29,14 @@ default_interpolators = {
 
 class TableError(Exception):
     """Base exception for table-related errors."""
+
+
+@cache
+def _init_misc_fields(cls: type) -> tuple[str, ...]:
+    """__init__ parameters after the constructs and labels, which replace() carries over."""
+    return tuple(
+        list(signature(cls.__init__).parameters.keys())[len(cls._constructs) + 2 :]
+    )
 
 
 @dataclass
@@ -84,9 +92,7 @@ class Table:
         def _copy(x):
             return x.copy() if copy and hasattr(x, "copy") else x
 
-        _misc_fields = list(signature(self.__class__.__init__).parameters.keys())[
-            len(self.constructs) + 2 :
-        ]
+        _misc_fields = _init_misc_fields(self.__class__)
 
         return self.__class__(
             *[
@@ -300,6 +306,39 @@ class Table:
     def _dt_np(self):
         return self.data["dt"].to_numpy()
 
+    def _row_slice_supported(self) -> bool:
+        """Whether interpolate() is this class's construct-wise interpolation, so
+        _row_slice can stand in for it."""
+        return type(self).interpolate is Table.interpolate
+
+    def _row_slice(
+        self, t: npt.NDArray, istart: int, istop: int, head: bool, tail: bool
+    ) -> Self:
+        """self.interpolate(t) for t = [start?] + self.t[istart:istop+1] + [stop?].
+
+        Interpolating at a recorded sample returns that sample unchanged, so the
+        recorded rows are copied and only the inserted end rows are interpolated.
+        Time is still interpolated, as it recalculates dt for the new rows.
+        """
+        constructs = []
+        for con in self._constructs:
+            raw = getattr(self, con.raw_name)
+            if raw is None:
+                constructs.append(None)
+            elif con.name == "time":
+                constructs.append(self._get_interpolator("time")(t))
+            else:
+                parts = []
+                if head:
+                    parts.append(self._get_interpolator(con.name)(t[:1]))
+                parts.append(con.type(raw.data[istart : istop + 1].copy()))
+                if tail:
+                    parts.append(self._get_interpolator(con.name)(t[-1:]))
+                constructs.append(
+                    parts[0] if len(parts) == 1 else con.type.concatenate(parts)
+                )
+        return self.__class__(*constructs, labels=self.labels.copy())
+
     def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Self:
 
         if isinstance(sli, Number) and (sli == 0 or sli == -1):
@@ -313,14 +352,25 @@ class Table:
 
             sli = []
 
-            if start >= self.t[0] and start <= self.t[-1] and self.t[istart] != start:
+            head = start >= self.t[0] and start <= self.t[-1] and self.t[istart] != start
+            if head:
                 sli.append(self._get_interpolator("time")(start))
 
             sli.append(self.time[istart : istop + 1])
 
-            if stop >= self.t[0] and stop <= self.t[-1] and self.t[istop] != stop:
+            tail = stop >= self.t[0] and stop <= self.t[-1] and self.t[istop] != stop
+            if tail:
                 sli.append(self._get_interpolator("time")(stop))
             sli = g.Time.concatenate(sli).t
+
+            if (
+                0 <= istart <= istop < len(self)
+                and self._row_slice_supported()
+                and sli[0] >= 0
+            ):
+                return self._row_slice(sli, istart, istop, head, tail).label(
+                    self.labels.slice(np.min(sli), np.max(sli))
+                )
 
         if isinstance(sli, Number | np.ndarray | list):
             sli = np.array(sli)
