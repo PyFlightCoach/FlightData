@@ -29,3 +29,7 @@ dataflash = ["ardupilot_log_reader[pymavlink]"]
 
 [dependency-groups]
 dev = ["pytest>=8.3.3"]
+
+[tool.hatch.build.targets.sdist]
+# The test and example flight logs are well over PyPI's 100 MB file limit.
+exclude = ["test/data", "examples"]
