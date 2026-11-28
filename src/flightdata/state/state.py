@@ -16,6 +16,7 @@ from schemas import fcj
 from flightdata import Environment, Flight, Flow, Origin
 from flightdata.ardupilot import Field, StateData
 from flightdata.base.table import Construct, Label, LabelGroups, Table
+from flightdata.base.table.table import _common_extra
 from flightdata.state.spline_interpolation import SplineState
 
 
@@ -38,6 +39,7 @@ class State(Table):
         acc: g.Point | None = None,
         labels: LabelGroups | None = None,
         splines: SplineState | None = None,
+        extra: dict[str, npt.NDArray] | None = None,
     ):
         assert isinstance(time, g.Time), "time must be a g.Time object"
         assert (att is not None and pos is not None) or (splines is not None), (
@@ -49,7 +51,7 @@ class State(Table):
         self._rvel = rvel
         self._acc = acc
         self.splines = splines
-        super().__init__(time, labels=labels)
+        super().__init__(time, labels=labels, extra=extra)
 
     @property
     def pos(self) -> g.Point:
@@ -154,11 +156,18 @@ class State(Table):
                 "All tables must have the same spline object to splice"
             )
 
-            t = np.unique(np.sort(np.concatenate([st.t for st in sts])))
+            tall = np.concatenate([st.t for st in sts])
+            t, first = np.unique(tall, return_index=True)
+            # at a repeated time the first table's extra values are used, as for Table
+            extra = {
+                k: np.concatenate([st.extra[k] for st in sts])[first]
+                for k in _common_extra(sts)
+            }
             return Cls(
                 g.Time.from_t(t),
                 labels=LabelGroups.concat(*[st.labels for st in sts]),
                 splines=sps,
+                **({"extra": extra} if extra else {}),
             )
         else:
             return super().splice(sts)
@@ -183,6 +192,7 @@ class State(Table):
                 self._get_interpolator("time")(t),
                 splines=self.splines,
                 labels=self.labels.copy(),
+                **self._extra_kwargs(self._interp_extra(t)),
             )
         else:
             return self.__class__(
@@ -193,6 +203,7 @@ class State(Table):
                     for con in self._constructs
                 ],
                 labels=self.labels.copy(),
+                **self._extra_kwargs(self._interp_extra(t)),
             )
 
     def create_splines(

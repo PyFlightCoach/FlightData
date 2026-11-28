@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache, cached_property, partial
 from inspect import signature
 from itertools import chain
 from numbers import Number
 from time import time
+from types import MappingProxyType
 from typing import Annotated, ClassVar, Literal, Self
 
 import geometry as g
@@ -29,6 +31,23 @@ default_interpolators = {
 
 class TableError(Exception):
     """Base exception for table-related errors."""
+
+
+def _interp_column(
+    ts: npt.NDArray, values: npt.NDArray, t: float | npt.NDArray
+) -> npt.NDArray:
+    """Linear interpolation of an extra column (rows of values at times ts) at t."""
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+    if values.ndim == 1:
+        return np.interp(t, ts, values)
+    return np.column_stack([np.interp(t, ts, values[:, i]) for i in range(values.shape[1])])
+
+
+def _common_extra(tables: list[Table]) -> list[str]:
+    """Names of the extra columns that every table has."""
+    if not tables or not tables[0].extra:
+        return []
+    return [k for k in tables[0].extra if all(k in tb.extra for tb in tables[1:])]
 
 
 @cache
@@ -55,16 +74,33 @@ class Table:
     """Base data structure, wraps around a pandas dataframe.
     All the columns are defined in the constructs class variable.
     A dictionary of labels is included, keys are label group names, values are instances of LabelGroup.
+
+    Extra columns are named arrays with one row per sample, for values derived from the
+    table that the code using it needs to carry along, for example a rate smoothed over a
+    whole manoeuvre that its slices must not recompute. Subclasses opt in by accepting an
+    ``extra`` argument in __init__ (State does). Slicing, interpolating, stacking and
+    splicing carry them like constructs, interpolating linearly at new times. Replacing a
+    construct other than time drops them, because the data they were derived from has
+    changed; pass ``extra`` explicitly to keep them. They are not serialised.
     """
 
     _construct_freq: ClassVar[float] = 25
     _constructs: ClassVar[list[Construct]] = [Construct("time", g.Time, ["t", "dt"])]
+    # instance attribute set in __init__; the read-only default covers instances
+    # unpickled from before extra columns existed
+    extra: Mapping[str, npt.NDArray] = MappingProxyType({})
 
-    def __init__(self, time: g.Time, labels: LabelGroups = None):
+    def __init__(
+        self,
+        time: g.Time,
+        labels: LabelGroups = None,
+        extra: dict[str, npt.NDArray] | None = None,
+    ):
         if labels is None:
             labels = LabelGroups()
         self.time = time
         self.labels = labels
+        self.extra = {} if extra is None else dict(extra)
 
         self._validate()
 
@@ -84,6 +120,32 @@ class Table:
                         f"Construct {con.name} must have the same length as time"
                     )
 
+        for name, values in self.extra.items():
+            if len(values) != len(self.time):
+                raise TableError(
+                    f"Extra column {name} must have the same length as time"
+                )
+
+    @classmethod
+    def supports_extra(Cls) -> bool:
+        return "extra" in _init_misc_fields(Cls)
+
+    def _extra_kwargs(self, extra: dict[str, npt.NDArray]) -> dict:
+        """The extra argument for a new instance, omitted when there is nothing to carry
+        (so classes that do not accept extra columns are built as before)."""
+        return {"extra": extra} if extra else {}
+
+    def _interp_extra(self, t: float | npt.NDArray) -> dict[str, npt.NDArray]:
+        return {k: _interp_column(self.t, v, t) for k, v in self.extra.items()}
+
+    def with_extra(self, **columns: npt.ArrayLike) -> Self:
+        """A copy with these extra columns added or replaced (one row per sample)."""
+        if not self.supports_extra():
+            raise TableError(f"{self.__class__.__name__} does not take extra columns")
+        return self.replace(
+            extra={**self.extra, **{k: np.asarray(v, dtype=float) for k, v in columns.items()}}
+        )
+
     def copy(self, **kwargs) -> Self:
         return self.replace(copy=True, **kwargs)
 
@@ -94,13 +156,24 @@ class Table:
 
         _misc_fields = _init_misc_fields(self.__class__)
 
+        misc = {k: kwargs.get(k, getattr(self, k)) for k in _misc_fields if k != "extra"}
+        if "extra" in _misc_fields:
+            if "extra" in kwargs:
+                misc["extra"] = kwargs["extra"]
+            elif not any(con.name in kwargs for con in self._constructs[1:]):
+                # extra columns are derived from the constructs, so keep them only
+                # while the constructs are unchanged
+                misc["extra"] = (
+                    {k: v.copy() for k, v in self.extra.items()} if copy else self.extra
+                )
+
         return self.__class__(
             *[
                 kwargs.get(con.name, _copy(getattr(self, con.raw_name)))
                 for con in self._constructs
             ],
             labels=kwargs.get("labels", self.labels),
-            **{k: kwargs.get(k, getattr(self, k)) for k in _misc_fields},
+            **misc,
         )
 
     @classmethod
@@ -167,7 +240,12 @@ class Table:
         return np.column_stack(_condata)
 
     @classmethod
-    def from_numpy(Cls, data: npt.NDArray, labels: LabelGroups = None) -> Self:
+    def from_numpy(
+        Cls,
+        data: npt.NDArray,
+        labels: LabelGroups = None,
+        extra: dict[str, npt.NDArray] | None = None,
+    ) -> Self:
         if labels is None:
             labels = LabelGroups()
 
@@ -188,6 +266,7 @@ class Table:
         return Cls(
             *_cons,
             labels=labels,
+            **({"extra": extra} if extra else {}),
         )
 
     def __getattr__(self, name: str):
@@ -284,6 +363,7 @@ class Table:
                 for con in self._constructs
             ],
             labels=self.labels.copy(),
+            **self._extra_kwargs(self._interp_extra(t)),
         )
 
     def resample(self, dt: float = 1 / 25, sli: slice | None = None):
@@ -337,7 +417,18 @@ class Table:
                 constructs.append(
                     parts[0] if len(parts) == 1 else con.type.concatenate(parts)
                 )
-        return self.__class__(*constructs, labels=self.labels.copy())
+        extra = {}
+        for name, values in self.extra.items():
+            parts = []
+            if head:
+                parts.append(_interp_column(self.t, values, t[:1]))
+            parts.append(values[istart : istop + 1].copy())
+            if tail:
+                parts.append(_interp_column(self.t, values, t[-1:]))
+            extra[name] = np.concatenate(parts)
+        return self.__class__(
+            *constructs, labels=self.labels.copy(), **self._extra_kwargs(extra)
+        )
 
     def __getitem__(self, sli: Number | slice | npt.ArrayLike) -> Self:
 
@@ -483,6 +574,9 @@ class Table:
                                 for con in newst.construct_names
                             ],
                             labels=newst.labels,
+                            **newst._extra_kwargs(
+                                {k: v[:-1] for k, v in newst.extra.items()}
+                            ),
                         )
 
                     newst = Cls.concatenate(
@@ -507,11 +601,14 @@ class Table:
         must be passed in order. No checks are performed to ensure the resulting time is monotonic
         """
 
+        sts = list(sts.values()) if isinstance(sts, dict) else list(sts)
+        extra = {k: np.concatenate([st.extra[k] for st in sts]) for k in _common_extra(sts)}
         return Cls(
             *[
                 GCls.concatenate([getattr(st, con) for st in sts])
                 for con, GCls in sts[0].constructs.items()
-            ]
+            ],
+            **({"extra": extra} if extra else {}),
         ).label(LabelGroups.concat(*[st.labels for st in sts]))
 
     def remove_duplicate_ts(self) -> Self:
@@ -528,11 +625,17 @@ class Table:
         """
         
         data = np.vstack([st.to_numpy(False) for st in sts])
+        order = data[:, 0].argsort()
+        extra = {
+            k: np.concatenate([st.extra[k] for st in sts])[order]
+            for k in _common_extra(sts)
+        }
 
         return (
             Cls.from_numpy(
-                data[data[:, 0].argsort(), :],
+                data[order, :],
                 LabelGroups.concat(*[st.labels for st in sts]),
+                extra,
             )
             .remove_duplicate_ts()
             .recalculate_dt()
@@ -714,6 +817,12 @@ class _ILocer:
             labels=self.table.labels.slice(
                 self.table.t[start],
                 self.table.t[stop - 1] + self.table.dt[stop - 1],
+            ),
+            **self.table._extra_kwargs(
+                {
+                    k: v[sli : sli + 1] if isinstance(sli, int) else v[sli]
+                    for k, v in self.table.extra.items()
+                }
             ),
         )
 
